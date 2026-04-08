@@ -52,7 +52,7 @@ export default function AffiliateDashboard() {
   });
 
   const { data: libraryItems = [] } = useQuery<VideoLibraryItem[]>({
-    queryKey: ["/api/global-library"],
+    queryKey: ["/api/library"],
   });
 
   const activeCampaigns = campaigns.filter(c => c.status === "active").length;

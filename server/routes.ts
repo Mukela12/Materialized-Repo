@@ -655,31 +655,40 @@ export async function registerRoutes(
         other: 7,
       };
 
-      const totalViewsNum = stats.totalViews || viewsByDay.reduce((s, d) => s + d.views, 0);
-      const totalRevenueNum = stats.totalRevenue || 8452.30;
-      const totalClicksNum = stats.totalClicks || 1840;
-      const salesVolumeUnits = Math.round(totalViewsNum * 0.032);
+      const totalViewsNum = stats.totalViews || 0;
+      const totalRevenueNum = stats.totalRevenue || 0;
+      const totalClicksNum = stats.totalClicks || 0;
+      const salesVolumeUnits = totalViewsNum > 0 ? Math.round(totalViewsNum * 0.032) : 0;
       const averageSpend = salesVolumeUnits > 0 ? +(totalRevenueNum / salesVolumeUnits).toFixed(2) : 0;
       const salesConversionRate = totalClicksNum > 0 ? +((salesVolumeUnits / totalClicksNum) * 100).toFixed(1) : 0;
       const salesVolumeValue = +(salesVolumeUnits * averageSpend).toFixed(2);
 
+      // Get real embed deployment data for this creator's videos
+      const userVideos = await storage.getVideos(user.id);
+      const realEmbedTraces: any[] = [];
+      for (const video of userVideos.slice(0, 10)) {
+        const deployments = await storage.getEmbedDeploymentsByAffiliate(video.creatorId);
+        for (const d of deployments) {
+          if (d.videoId === video.id) {
+            realEmbedTraces.push({
+              utmCode: d.utmCode || "",
+              videoTitle: video.title,
+              publisherName: "",
+              referrerDomain: d.referrerDomain || "",
+              referrerUrl: d.referrerUrl || "",
+              totalLoads: d.totalLoads || 0,
+              totalClicks: 0,
+              totalConversions: 0,
+              revenue: 0,
+            });
+          }
+        }
+      }
+
       res.json({
         ...stats,
-        topCountries: [
-          { country: "United States", views: 5420, avgSpend: 4.85 },
-          { country: "United Kingdom", views: 2180, avgSpend: 5.12 },
-          { country: "Canada", views: 1540, avgSpend: 4.50 },
-          { country: "Australia", views: 890, avgSpend: 5.75 },
-          { country: "Germany", views: 670, avgSpend: 4.20 },
-          { country: "France", views: 520, avgSpend: 3.90 },
-          { country: "Japan", views: 410, avgSpend: 6.10 },
-          { country: "Singapore", views: 320, avgSpend: 5.50 },
-        ],
-        deviceBreakdown: [
-          { device: "Mobile", percentage: 62 },
-          { device: "Desktop", percentage: 31 },
-          { device: "Tablet", percentage: 7 },
-        ],
+        topCountries: [],
+        deviceBreakdown: [],
         viewsByDay,
         viewsByHour,
         ageBreakdown,
@@ -688,12 +697,7 @@ export async function registerRoutes(
         salesConversionRate,
         salesVolumeUnits,
         salesVolumeValue,
-        embedTraces: [
-          { utmCode: "UTM-CR-001", videoTitle: "Summer Haul 2026", publisherName: "My Channel", referrerDomain: "mychannel.com", referrerUrl: "https://mychannel.com/summer-haul", totalLoads: 2140, totalClicks: 178, totalConversions: 12, revenue: 890.00 },
-          { utmCode: "UTM-CR-002", videoTitle: "Summer Haul 2026", publisherName: "StylePartner", referrerDomain: "stylepartner.co", referrerUrl: "https://stylepartner.co/collabs/summer", totalLoads: 1560, totalClicks: 124, totalConversions: 8, revenue: 620.00 },
-          { utmCode: "UTM-CR-003", videoTitle: "Tech Review Q1", publisherName: "TechBlogger", referrerDomain: "techblogger.io", referrerUrl: "https://techblogger.io/reviews/gadgets", totalLoads: 980, totalClicks: 76, totalConversions: 5, revenue: 380.00 },
-          { utmCode: "UTM-CR-004", videoTitle: "Skincare Routine", publisherName: "BeautyHub", referrerDomain: "beautyhub.net", referrerUrl: "https://beautyhub.net/featured", totalLoads: 1320, totalClicks: 98, totalConversions: 7, revenue: 510.00 },
-        ],
+        embedTraces: realEmbedTraces,
       });
     } catch (error) {
       res.status(500).json({ error: "Failed to get detailed analytics" });
@@ -733,60 +737,40 @@ export async function registerRoutes(
         viewsByHour.push({ hour: h, views: base });
       }
 
-      const totalViews = 45230;
-      const totalClicks = 3420;
-      const totalRevenue = 12450;
-      const salesVolumeUnits = Math.round(totalViews * 0.035);
+      // Get real brand stats from analytics
+      const { db } = await import("./db");
+      const { analyticsEvents: ae } = await import("@shared/schema");
+      const { sql: sqlFn } = await import("drizzle-orm");
+      const [brandViewStats] = await db.select({
+        totalViews: sqlFn<number>`COALESCE(COUNT(CASE WHEN ${ae.eventType} = 'view' THEN 1 END), 0)::int`,
+        totalClicks: sqlFn<number>`COALESCE(COUNT(CASE WHEN ${ae.eventType} = 'click' THEN 1 END), 0)::int`,
+        totalRevenue: sqlFn<number>`COALESCE(SUM(CASE WHEN ${ae.eventType} = 'purchase' THEN ${ae.revenue}::numeric ELSE 0 END), 0)::float`,
+      }).from(ae);
+
+      const totalViews = brandViewStats?.totalViews ?? 0;
+      const totalClicks = brandViewStats?.totalClicks ?? 0;
+      const totalRevenue = brandViewStats?.totalRevenue ?? 0;
+      const salesVolumeUnits = totalViews > 0 ? Math.round(totalViews * 0.035) : 0;
       const averageSpend = salesVolumeUnits > 0 ? +(totalRevenue / salesVolumeUnits).toFixed(2) : 0;
       const salesConversionRate = totalClicks > 0 ? +((salesVolumeUnits / totalClicks) * 100).toFixed(1) : 0;
       const salesVolumeValue = +(salesVolumeUnits * averageSpend).toFixed(2);
-
-      const embedTraces = [
-        { utmCode: "UTM-BRAND-NK01", videoTitle: "Summer Collection Lookbook", publisherName: "FashionBlog.com", referrerDomain: "fashionblog.com", referrerUrl: "https://fashionblog.com/summer-styles", totalLoads: 3420, totalClicks: 245, totalConversions: 18, revenue: 1250.00 },
-        { utmCode: "UTM-BRAND-NK02", videoTitle: "Summer Collection Lookbook", publisherName: "StyleMag", referrerDomain: "stylemag.co", referrerUrl: "https://stylemag.co/reviews/nike", totalLoads: 2810, totalClicks: 198, totalConversions: 14, revenue: 980.00 },
-        { utmCode: "UTM-BRAND-NK03", videoTitle: "Running Gear Review 2026", publisherName: "RunnerWorld", referrerDomain: "runnerworld.com", referrerUrl: "https://runnerworld.com/gear", totalLoads: 4150, totalClicks: 312, totalConversions: 28, revenue: 2100.00 },
-        { utmCode: "UTM-BRAND-NK04", videoTitle: "Running Gear Review 2026", publisherName: "FitLife", referrerDomain: "fitlife.io", referrerUrl: "https://fitlife.io/reviews", totalLoads: 1820, totalClicks: 134, totalConversions: 9, revenue: 670.00 },
-        { utmCode: "UTM-BRAND-NK05", videoTitle: "Streetwear Essentials", publisherName: "UrbanStyle", referrerDomain: "urbanstyle.net", referrerUrl: "https://urbanstyle.net/featured", totalLoads: 2560, totalClicks: 189, totalConversions: 12, revenue: 890.00 },
-        { utmCode: "UTM-BRAND-NK06", videoTitle: "Streetwear Essentials", publisherName: "HypeBeast Daily", referrerDomain: "hypebeastdaily.com", referrerUrl: "https://hypebeastdaily.com/drops", totalLoads: 1950, totalClicks: 156, totalConversions: 11, revenue: 780.00 },
-      ];
 
       res.json({
         totalViews,
         totalClicks,
         totalRevenue,
-        averageCTR: totalClicks > 0 ? +((totalClicks / totalViews) * 100).toFixed(2) : 0,
-        topCountries: [
-          { country: "United States", views: 12500, avgSpend: 5.20 },
-          { country: "United Kingdom", views: 6800, avgSpend: 5.80 },
-          { country: "Germany", views: 4200, avgSpend: 4.60 },
-          { country: "Canada", views: 3900, avgSpend: 4.90 },
-          { country: "Australia", views: 3100, avgSpend: 6.10 },
-          { country: "France", views: 2400, avgSpend: 4.30 },
-          { country: "Japan", views: 1800, avgSpend: 6.50 },
-          { country: "Singapore", views: 1200, avgSpend: 5.90 },
-        ],
-        deviceBreakdown: [
-          { device: "Mobile", percentage: 58 },
-          { device: "Desktop", percentage: 34 },
-          { device: "Tablet", percentage: 8 },
-        ],
+        averageCTR: totalViews > 0 ? +((totalClicks / totalViews) * 100).toFixed(2) : 0,
+        topCountries: [],
+        deviceBreakdown: [],
         viewsByDay,
         viewsByHour,
-        ageBreakdown: [
-          { range: "13-17", percentage: 4 },
-          { range: "18-24", percentage: 22 },
-          { range: "25-34", percentage: 32 },
-          { range: "35-44", percentage: 24 },
-          { range: "45-54", percentage: 11 },
-          { range: "55-64", percentage: 5 },
-          { range: "65+", percentage: 2 },
-        ],
-        genderBreakdown: { male: 46, female: 48, other: 6 },
+        ageBreakdown: [],
+        genderBreakdown: { male: 0, female: 0, other: 0 },
         averageSpend,
         salesConversionRate,
         salesVolumeUnits,
         salesVolumeValue,
-        embedTraces,
+        embedTraces: [],
       });
     } catch (error) {
       res.status(500).json({ error: "Failed to get brand analytics" });
@@ -826,16 +810,28 @@ export async function registerRoutes(
         viewsByHour.push({ hour: h, views: base });
       }
 
-      const embedTraces = [
-        { utmCode: "UTM-PUB-A01", videoTitle: "Summer Collection Lookbook", publisherName: "My Fashion Blog", referrerDomain: "myfashionblog.com", referrerUrl: "https://myfashionblog.com/summer-2026", totalLoads: 1240, totalClicks: 89, totalConversions: 7, revenue: 485.00 },
-        { utmCode: "UTM-PUB-A02", videoTitle: "Running Gear Review 2026", publisherName: "My Fashion Blog", referrerDomain: "myfashionblog.com", referrerUrl: "https://myfashionblog.com/gear-reviews", totalLoads: 870, totalClicks: 62, totalConversions: 4, revenue: 310.00 },
-        { utmCode: "UTM-PUB-A03", videoTitle: "Streetwear Essentials", publisherName: "Style Newsletter", referrerDomain: "newsletter.myfashionblog.com", referrerUrl: "https://newsletter.myfashionblog.com/issue-42", totalLoads: 650, totalClicks: 48, totalConversions: 3, revenue: 220.00 },
-      ];
+      // Get real embed deployment data for this publisher
+      const deployments = await storage.getEmbedDeploymentsByAffiliate(user.id);
+      const earnings = await storage.getAffiliateEarningsFromLedger(user.id);
+      const myCampaigns = await storage.getCampaignAffiliatesByUser(user.id);
 
-      const myTotalViews = embedTraces.reduce((s, e) => s + e.totalLoads, 0);
-      const myTotalClicks = embedTraces.reduce((s, e) => s + e.totalClicks, 0);
-      const myTotalRevenue = embedTraces.reduce((s, e) => s + e.revenue, 0);
-      const myTotalConversions = embedTraces.reduce((s, e) => s + e.totalConversions, 0);
+      const embedTraces = deployments.map(d => ({
+        utmCode: d.utmCode || "",
+        videoTitle: "",
+        publisherName: user.displayName,
+        referrerDomain: d.referrerDomain || "",
+        referrerUrl: d.referrerUrl || "",
+        totalLoads: d.totalLoads || 0,
+        totalClicks: 0,
+        totalConversions: 0,
+        revenue: 0,
+      }));
+
+      // Aggregate from campaign affiliates for real stats
+      const myTotalViews = myCampaigns.reduce((s, c) => s + (c.totalClicks || 0), 0) + deployments.reduce((s, d) => s + (d.totalLoads || 0), 0);
+      const myTotalClicks = myCampaigns.reduce((s, c) => s + (c.totalClicks || 0), 0);
+      const myTotalRevenue = earnings.totalCommission || 0;
+      const myTotalConversions = myCampaigns.reduce((s, c) => s + (c.totalConversions || 0), 0);
       const averageSpend = myTotalConversions > 0 ? +(myTotalRevenue / myTotalConversions).toFixed(2) : 0;
       const salesConversionRate = myTotalClicks > 0 ? +((myTotalConversions / myTotalClicks) * 100).toFixed(1) : 0;
 
