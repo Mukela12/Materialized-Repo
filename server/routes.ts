@@ -3571,6 +3571,148 @@ Identify which products from the catalog are most likely to appear or be feature
     });
   }
 
+  // ==================== EMBED ROUTES (public, no auth) ====================
+
+  // Serve embed iframe page
+  app.get("/embed/:videoId", async (req, res) => {
+    try {
+      const video = await storage.getVideo(req.params.videoId);
+      if (!video) return res.status(404).send("Video not found");
+
+      const utm = (req.query.utm as string) || video.utmCode || "";
+      const overlays = await storage.getVideoProductOverlays(video.id);
+      const products = overlays.map(o => ({
+        name: (o.name || "").replace(/[<>"'&]/g, ""),
+        imageUrl: o.imageUrl,
+        price: o.price,
+        productUrl: o.productUrl,
+        brandName: (o.brandName || "").replace(/[<>"'&]/g, ""),
+      }));
+
+      const apiBase = `${req.protocol}://${req.get("host")}`;
+
+      res.set("Content-Type", "text/html");
+      res.send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>${(video.title || "Materialized Video").replace(/[<>"'&]/g, "")}</title>
+  <style>
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{background:#000;overflow:hidden;font-family:-apple-system,sans-serif}
+    #player{width:100vw;height:100vh;position:relative}
+    video{width:100%;height:100%;object-fit:contain}
+    #carousel{position:absolute;bottom:16px;left:16px;right:16px;display:flex;gap:8px;overflow-x:auto;padding:8px 0;scrollbar-width:none}
+    #carousel::-webkit-scrollbar{display:none}
+    .product-card{flex:0 0 auto;background:rgba(255,255,255,0.95);border-radius:12px;padding:8px;width:120px;cursor:pointer;transition:transform .2s;text-decoration:none}
+    .product-card:hover{transform:scale(1.05)}
+    .product-card img{width:100%;height:80px;object-fit:cover;border-radius:8px}
+    .product-name{font-size:11px;font-weight:600;margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#333}
+    .product-price{font-size:10px;color:#677A67;font-weight:700;margin-top:2px}
+  </style>
+</head>
+<body>
+  <div id="player">
+    <video id="vid" autoplay muted loop playsinline></video>
+    <div id="carousel"></div>
+  </div>
+  <script>
+    var utm="${utm.replace(/[<>"'\\]/g, "")}",videoId="${video.id}",apiBase="${apiBase}";
+    document.getElementById("vid").src="${(video.videoUrl || "").replace(/[<>"'\\]/g, "")}";
+    var products=${JSON.stringify(products)};
+    var carousel=document.getElementById("carousel");
+    products.forEach(function(p){
+      var a=document.createElement("a");
+      a.href=p.productUrl||"#";a.target="_blank";a.rel="noopener";a.className="product-card";
+      if(p.imageUrl){var img=document.createElement("img");img.src=p.imageUrl;img.alt=p.name;a.appendChild(img);}
+      var nameDiv=document.createElement("div");nameDiv.className="product-name";nameDiv.textContent=p.name;a.appendChild(nameDiv);
+      if(p.price){var priceDiv=document.createElement("div");priceDiv.className="product-price";priceDiv.textContent="\\u20AC"+p.price;a.appendChild(priceDiv);}
+      a.addEventListener("click",function(){track("click")});
+      carousel.appendChild(a);
+    });
+    function track(type,extra){
+      fetch(apiBase+"/api/analytics/events",{
+        method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify(Object.assign({videoId:videoId,eventType:type,utmCode:utm,
+          referrerDomain:document.referrer?new URL(document.referrer).hostname:""},extra||{}))
+      }).catch(function(){});
+    }
+    track("view");
+  </script>
+</body>
+</html>`);
+    } catch (error) {
+      res.status(500).send("Failed to load embed");
+    }
+  });
+
+  // Serve embed widget JavaScript
+  app.get("/embed/:videoId/widget.js", async (req, res) => {
+    try {
+      const video = await storage.getVideo(req.params.videoId);
+      if (!video) {
+        res.set("Content-Type", "application/javascript");
+        return res.send("console.error('[Materialized] Video not found');");
+      }
+
+      const utm = (req.query.utm as string) || video.utmCode || "";
+      const overlays = await storage.getVideoProductOverlays(video.id);
+      const products = overlays.map(o => ({
+        name: (o.name || "").replace(/"/g, '\\"'),
+        imageUrl: o.imageUrl,
+        price: o.price,
+        productUrl: o.productUrl,
+      }));
+
+      const apiBase = `${req.protocol}://${req.get("host")}`;
+      const safeVideoUrl = (video.videoUrl || "").replace(/"/g, '\\"');
+
+      res.set("Content-Type", "application/javascript");
+      res.set("Cache-Control", "public, max-age=300");
+      res.set("Access-Control-Allow-Origin", "*");
+      res.send(`(function(){
+  var videoId="${video.id}",utm="${utm.replace(/"/g, "")}",apiBase="${apiBase}";
+  var el=document.getElementById("vc-widget-"+videoId);
+  if(!el){console.error("[Materialized] Widget container not found");return;}
+  el.style.position="relative";el.style.width="100%";el.style.maxWidth="640px";
+  el.style.aspectRatio="16/9";el.style.background="#000";el.style.borderRadius="12px";
+  el.style.overflow="hidden";
+  var v=document.createElement("video");
+  v.src="${safeVideoUrl}";v.autoplay=true;v.muted=true;v.loop=true;v.playsInline=true;
+  v.style.cssText="width:100%;height:100%;object-fit:cover;";
+  el.appendChild(v);
+  var products=${JSON.stringify(products)};
+  if(products.length){
+    var c=document.createElement("div");
+    c.style.cssText="position:absolute;bottom:8px;left:8px;right:8px;display:flex;gap:6px;overflow-x:auto;";
+    products.forEach(function(p){
+      var a=document.createElement("a");
+      a.href=p.productUrl||"#";a.target="_blank";a.rel="noopener";
+      a.style.cssText="flex:0 0 auto;background:rgba(255,255,255,.95);border-radius:10px;padding:6px;width:100px;text-decoration:none;";
+      if(p.imageUrl){var img=document.createElement("img");img.src=p.imageUrl;img.alt=p.name;img.style.cssText="width:100%;height:60px;object-fit:cover;border-radius:6px";a.appendChild(img);}
+      var nd=document.createElement("div");nd.style.cssText="font-size:10px;font-weight:600;color:#333;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap";
+      nd.textContent=p.name||"";a.appendChild(nd);
+      if(p.price){var pd=document.createElement("div");pd.style.cssText="font-size:9px;color:#677A67;font-weight:700";pd.textContent="\\u20AC"+p.price;a.appendChild(pd);}
+      a.addEventListener("click",function(){track("click")});
+      c.appendChild(a);
+    });
+    el.appendChild(c);
+  }
+  function track(type,extra){
+    var body=JSON.stringify(Object.assign({videoId:videoId,eventType:type,utmCode:utm,
+      referrerDomain:location.hostname},extra||{}));
+    if(navigator.sendBeacon){navigator.sendBeacon(apiBase+"/api/analytics/events",new Blob([body],{type:"application/json"}));}
+    else{fetch(apiBase+"/api/analytics/events",{method:"POST",headers:{"Content-Type":"application/json"},body:body}).catch(function(){});}
+  }
+  track("view");
+})();`);
+    } catch (error) {
+      res.set("Content-Type", "application/javascript");
+      res.send("console.error('[Materialized] Widget error');");
+    }
+  });
+
   return httpServer;
 }
 
