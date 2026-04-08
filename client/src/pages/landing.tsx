@@ -21,12 +21,13 @@ import { COUNTRIES } from "@shared/schema";
 import { Play, ChevronDown, Users, DollarSign, TrendingUp, ShoppingBag, ArrowRight, Star, Smartphone, Monitor, Video, Volume2, VolumeX } from "lucide-react";
 import { DemoPopup } from "@/components/DemoPopup";
 import { SiInstagram, SiLinkedin } from "react-icons/si";
-import heroVideo from "@assets/Materialized_APP_Intro_Screen_1767864559824.mp4";
-import discoveryPacksVideo from "@assets/Discovery_Packs_1767870108965.mp4";
-import verticalDemoVideo from "@assets/Materialized_APP_Intro_Screen_1767873358319.mp4";
+// Landing page videos hosted on Cloudinary
+const heroVideo = "https://res.cloudinary.com/dvj7ayoot/video/upload/v1775609692/materialized/landing/hero-video.mp4";
+const discoveryPacksVideo = "https://res.cloudinary.com/dvj7ayoot/video/upload/v1775609709/materialized/landing/discovery-packs.mp4";
+const verticalDemoVideo = "https://res.cloudinary.com/dvj7ayoot/video/upload/v1775609713/materialized/landing/vertical-demo.mp4";
 import materializedLogo from "@assets/MATERIALIZED_full_logo_1773324040022.png";
 
-const streetStyleVideo = "/street-style-ss26.mp4";
+const streetStyleVideo = "https://res.cloudinary.com/dvj7ayoot/video/upload/v1775609784/materialized/public/street-style-ss26.mp4";
 
 const formSchema = z.object({
   role: z.enum(["creator", "brand", "publisher"]),
@@ -513,7 +514,7 @@ function VideoOrientationSection() {
                     style={{ objectPosition: "center 60%" }}
                     aria-label="Jetski vessels video"
                   >
-                    <source src="/vessels-jetski.mp4" type="video/mp4" />
+                    <source src="https://res.cloudinary.com/dvj7ayoot/video/upload/v1775609801/materialized/public/vessels-jetski.mp4" type="video/mp4" />
                   </video>
                   {/* Subtle screen glare */}
                   <div className="absolute inset-0 bg-gradient-to-br from-white/5 via-transparent to-transparent pointer-events-none" />
@@ -1442,7 +1443,7 @@ export default function Landing() {
       <section className="relative w-full overflow-hidden" style={{ minHeight: "80vh" }}>
         <video
           ref={miroVideoRef}
-          src="/miro-misljen-dress.mp4?v=25s"
+          src="https://res.cloudinary.com/dvj7ayoot/video/upload/v1775609824/materialized/public/miro-misljen-dress.mp4"
           autoPlay
           loop
           playsInline
