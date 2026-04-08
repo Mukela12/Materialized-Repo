@@ -1,6 +1,6 @@
 /**
- * WooCommerce integration for user-driven product imports.
- * Uses REST API with consumer key/secret (no OAuth needed).
+ * WooCommerce REST API integration for product sync.
+ * Uses consumer key/secret for authentication.
  */
 
 interface WooProduct {
@@ -11,26 +11,25 @@ interface WooProduct {
   sku: string;
   price: string;
   regular_price: string;
-  categories: Array<{ id: number; name: string }>;
-  images: Array<{ id: number; src: string }>;
-  permalink: string;
-  type: string;
   status: string;
+  type: string;
+  categories: Array<{ id: number; name: string }>;
+  images: Array<{ src: string }>;
+  permalink: string;
 }
 
-/**
- * Fetch products from a WooCommerce store.
- */
 export async function fetchWooCommerceProducts(
-  storeUrl: string,
+  storeDomain: string,
   consumerKey: string,
-  consumerSecret: string,
-  limit = 50
+  consumerSecret?: string,
+  limit: number = 100
 ): Promise<WooProduct[]> {
-  const cleanUrl = storeUrl.replace(/\/$/, "");
-  const url = `${cleanUrl}/wp-json/wc/v3/products?per_page=${limit}`;
+  const domain = storeDomain.replace(/^https?:\/\//, "").replace(/\/$/, "");
+  const auth = consumerSecret
+    ? Buffer.from(`${consumerKey}:${consumerSecret}`).toString("base64")
+    : Buffer.from(`${consumerKey}:`).toString("base64");
 
-  const auth = Buffer.from(`${consumerKey}:${consumerSecret}`).toString("base64");
+  const url = `https://${domain}/wp-json/wc/v3/products?per_page=${limit}`;
 
   const response = await fetch(url, {
     headers: {
@@ -47,64 +46,43 @@ export async function fetchWooCommerceProducts(
   return response.json();
 }
 
-/**
- * Map WooCommerce products to local product schema format.
- */
-export function mapWooToLocalProducts(
-  wooProducts: WooProduct[],
-  brandId: string
-): Array<{
-  brandId: string;
-  name: string;
-  description: string;
-  price: string;
-  imageUrl: string;
-  productUrl: string;
-  sku: string;
-  category: string;
-  productType: string;
-  isActive: boolean;
-}> {
-  return wooProducts
-    .filter((p) => p.status === "publish")
-    .map((product) => ({
-      brandId,
-      name: product.name,
-      description: product.short_description?.replace(/<[^>]*>/g, "").substring(0, 500) || "",
-      price: product.price || product.regular_price || "0.00",
-      imageUrl: product.images[0]?.src || "",
-      productUrl: product.permalink,
-      sku: product.sku || "",
-      category: product.categories[0]?.name || "General",
-      productType: product.type === "virtual" ? "Digital" : "Physical",
-      isActive: true,
-    }));
-}
-
-/**
- * Validate WooCommerce credentials.
- */
 export async function validateWooCommerceCredentials(
   storeUrl: string,
   consumerKey: string,
   consumerSecret: string
 ): Promise<{ valid: boolean; storeName?: string; error?: string }> {
   try {
-    const cleanUrl = storeUrl.replace(/\/$/, "");
-    const url = `${cleanUrl}/wp-json/wc/v3/system_status`;
+    const domain = storeUrl.replace(/^https?:\/\//, "").replace(/\/$/, "");
     const auth = Buffer.from(`${consumerKey}:${consumerSecret}`).toString("base64");
-
-    const response = await fetch(url, {
+    const response = await fetch(`https://${domain}/wp-json/wc/v3/system_status`, {
       headers: { Authorization: `Basic ${auth}` },
     });
-
     if (!response.ok) {
-      return { valid: false, error: `API returned ${response.status}` };
+      return { valid: false, error: `HTTP ${response.status}` };
     }
-
     const data = await response.json();
-    return { valid: true, storeName: data.environment?.site_title };
-  } catch (error) {
-    return { valid: false, error: String(error) };
+    return { valid: true, storeName: data.environment?.site_title || domain };
+  } catch (err: any) {
+    return { valid: false, error: err.message };
   }
+}
+
+export function mapWooToLocalProducts(products: WooProduct[], brandId: string) {
+  return products.map(p => mapWooProduct(p, brandId));
+}
+
+export function mapWooProduct(product: WooProduct, brandId: string) {
+  const image = product.images[0];
+  const category = product.categories[0];
+  return {
+    name: product.name,
+    description: product.short_description?.replace(/<[^>]*>/g, "").substring(0, 500) || null,
+    price: product.price || product.regular_price || "0.00",
+    imageUrl: image?.src || null,
+    productUrl: product.permalink || null,
+    sku: product.sku || null,
+    category: category?.name || null,
+    productType: product.type === "virtual" ? "Digital" : "Physical",
+    brandId,
+  };
 }

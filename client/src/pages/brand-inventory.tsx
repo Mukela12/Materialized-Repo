@@ -375,11 +375,20 @@ function AddProductSheet({
   );
 }
 
+interface StoreConnection {
+  id: string;
+  platform: string;
+  storeDomain: string | null;
+  lastSyncAt: string | null;
+  productCount: number;
+  isActive: boolean;
+}
+
 export default function BrandInventory() {
   const [apiKeyInput, setApiKeyInput] = useState("");
+  const [storeUrlInput, setStoreUrlInput] = useState("");
+  const [secretInput, setSecretInput] = useState("");
   const [selectedPlatform, setSelectedPlatform] = useState<PlatformId | null>(null);
-  const [isApiConnected, setIsApiConnected] = useState(false);
-  const [isSyncing, setIsSyncing] = useState(false);
   const [addProductOpen, setAddProductOpen] = useState(false);
   const { toast } = useToast();
 
@@ -397,23 +406,79 @@ export default function BrandInventory() {
     queryKey: ["/api/products"],
   });
 
+  const { data: storeConnections = [] } = useQuery<StoreConnection[]>({
+    queryKey: ["/api/integrations/stores"],
+  });
+
+  const isApiConnected = storeConnections.length > 0;
+  const activeConnection = storeConnections.find(c => c.isActive);
+
+  const connectMutation = useMutation({
+    mutationFn: async () => {
+      if (selectedPlatform === "shopify") {
+        return apiRequest("POST", "/api/integrations/shopify/connect", {
+          storeDomain: storeUrlInput || apiKeyInput.split("@")[1] || "",
+          accessToken: apiKeyInput,
+        });
+      } else if (selectedPlatform === "woocommerce") {
+        return apiRequest("POST", "/api/integrations/woocommerce/connect", {
+          storeUrl: storeUrlInput,
+          consumerKey: apiKeyInput,
+          consumerSecret: secretInput,
+        });
+      }
+      throw new Error("Platform not supported yet");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/integrations/stores"] });
+      toast({
+        title: `${activePlatform?.label ?? "Store"} Connected!`,
+        description: "Your product inventory is ready to sync.",
+      });
+      setApiKeyInput("");
+      setStoreUrlInput("");
+      setSecretInput("");
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Connection Failed",
+        description: err?.message || "Could not connect to your store. Check your credentials.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const syncMutation = useMutation({
+    mutationFn: async () => {
+      if (!activeConnection) throw new Error("No store connected");
+      return apiRequest("POST", `/api/integrations/stores/${activeConnection.id}/sync`);
+    },
+    onSuccess: async (res) => {
+      const data = await res.json();
+      queryClient.invalidateQueries({ queryKey: ["/api/products"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/integrations/stores"] });
+      toast({
+        title: "Sync Complete",
+        description: `Imported ${data.synced} products from your store.`,
+      });
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Sync Failed",
+        description: err?.message || "Could not sync products.",
+        variant: "destructive",
+      });
+    },
+  });
+
   const handleConnectApi = () => {
     if (selectedPlatform && apiKeyInput.trim()) {
-      setIsApiConnected(true);
-      toast({
-        title: `${activePlatform?.label ?? "API"} Connected!`,
-        description: "Your product inventory is now syncing automatically.",
-      });
+      connectMutation.mutate();
     }
   };
 
-  const handleSync = () => {
-    setIsSyncing(true);
-    setTimeout(() => {
-      setIsSyncing(false);
-      toast({ title: "Sync Complete", description: "Your inventory has been updated." });
-    }, 2000);
-  };
+  const isSyncing = syncMutation.isPending;
+  const handleSync = () => syncMutation.mutate();
 
   return (
     <div className="space-y-6 pb-24 md:pb-6">
@@ -490,7 +555,18 @@ export default function BrandInventory() {
                 </div>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="api-key">API Key</Label>
+                <Label htmlFor="store-url">Store URL</Label>
+                <Input
+                  id="store-url"
+                  placeholder={selectedPlatform === "shopify" ? "mystore.myshopify.com" : "mystore.com"}
+                  value={storeUrlInput}
+                  onChange={(e) => setStoreUrlInput(e.target.value)}
+                  disabled={!selectedPlatform}
+                  data-testid="input-store-url"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="api-key">{selectedPlatform === "woocommerce" ? "Consumer Key" : "Access Token / API Key"}</Label>
                 <Input
                   id="api-key"
                   type="password"
@@ -501,21 +577,41 @@ export default function BrandInventory() {
                   data-testid="input-inventory-api-key"
                 />
               </div>
+              {selectedPlatform === "woocommerce" && (
+                <div className="space-y-2">
+                  <Label htmlFor="consumer-secret">Consumer Secret</Label>
+                  <Input
+                    id="consumer-secret"
+                    type="password"
+                    placeholder="cs_xxxxxxxxxxxxxxxxxxxxxxxx"
+                    value={secretInput}
+                    onChange={(e) => setSecretInput(e.target.value)}
+                    data-testid="input-consumer-secret"
+                  />
+                </div>
+              )}
               <Button
                 onClick={handleConnectApi}
                 className="rounded-full"
-                disabled={!selectedPlatform || !apiKeyInput.trim()}
+                disabled={!selectedPlatform || !apiKeyInput.trim() || !storeUrlInput.trim() || connectMutation.isPending}
                 data-testid="button-connect-inventory-api"
               >
-                Connect {activePlatform?.label ?? "API"}
+                {connectMutation.isPending ? "Connecting..." : `Connect ${activePlatform?.label ?? "API"}`}
               </Button>
             </>
           ) : (
-            <div className="flex items-center gap-3 p-4 bg-green-50 dark:bg-green-950/30 rounded-lg">
-              <div className="h-3 w-3 bg-green-500 rounded-full animate-pulse" />
-              <div>
-                <p className="font-medium text-green-700 dark:text-green-400">API Connected</p>
-                <p className="text-sm text-green-600 dark:text-green-500">Your inventory is syncing automatically</p>
+            <div className="flex items-center justify-between p-4 bg-green-50 dark:bg-green-950/30 rounded-lg">
+              <div className="flex items-center gap-3">
+                <div className="h-3 w-3 bg-green-500 rounded-full animate-pulse" />
+                <div>
+                  <p className="font-medium text-green-700 dark:text-green-400">
+                    {activeConnection?.platform === "shopify" ? "Shopify" : activeConnection?.platform === "woocommerce" ? "WooCommerce" : "Store"} Connected
+                  </p>
+                  <p className="text-sm text-green-600 dark:text-green-500">
+                    {activeConnection?.storeDomain || "Store connected"} — {activeConnection?.productCount ?? 0} products
+                    {activeConnection?.lastSyncAt && ` — Last synced ${new Date(activeConnection.lastSyncAt).toLocaleDateString()}`}
+                  </p>
+                </div>
               </div>
             </div>
           )}

@@ -1,6 +1,6 @@
 /**
- * Shopify integration for user-driven product imports.
- * Each brand connects their OWN Shopify store via access token.
+ * Shopify Admin API integration for product sync.
+ * Each brand connects their own Shopify store via access token.
  */
 
 interface ShopifyProduct {
@@ -10,31 +10,18 @@ interface ShopifyProduct {
   vendor: string;
   product_type: string;
   handle: string;
-  variants: Array<{
-    id: number;
-    price: string;
-    sku: string;
-  }>;
-  images: Array<{
-    id: number;
-    src: string;
-  }>;
+  status: string;
+  images: Array<{ src: string }>;
+  variants: Array<{ id: number; price: string; sku: string }>;
 }
 
-interface ShopifyProductsResponse {
-  products: ShopifyProduct[];
-}
-
-/**
- * Fetch products from a Shopify store using the Storefront/Admin API.
- */
 export async function fetchShopifyProducts(
   storeDomain: string,
   accessToken: string,
-  limit = 50
+  limit: number = 250
 ): Promise<ShopifyProduct[]> {
-  const cleanDomain = storeDomain.replace(/^https?:\/\//, "").replace(/\/$/, "");
-  const url = `https://${cleanDomain}/admin/api/2024-01/products.json?limit=${limit}`;
+  const domain = storeDomain.replace(/^https?:\/\//, "").replace(/\/$/, "");
+  const url = `https://${domain}/admin/api/2024-01/products.json?limit=${limit}`;
 
   const response = await fetch(url, {
     headers: {
@@ -48,72 +35,45 @@ export async function fetchShopifyProducts(
     throw new Error(`Shopify API error (${response.status}): ${text}`);
   }
 
-  const data: ShopifyProductsResponse = await response.json();
+  const data = await response.json();
   return data.products;
 }
 
-/**
- * Map Shopify products to local product schema format.
- */
-export function mapShopifyToLocalProducts(
-  shopifyProducts: ShopifyProduct[],
-  brandId: string
-): Array<{
-  brandId: string;
-  name: string;
-  description: string;
-  price: string;
-  imageUrl: string;
-  productUrl: string;
-  sku: string;
-  category: string;
-  productType: string;
-  isActive: boolean;
-}> {
-  return shopifyProducts.map((product) => {
-    const variant = product.variants[0];
-    const image = product.images[0];
-
-    return {
-      brandId,
-      name: product.title,
-      description: product.body_html?.replace(/<[^>]*>/g, "").substring(0, 500) || "",
-      price: variant?.price || "0.00",
-      imageUrl: image?.src || "",
-      productUrl: `https://${product.handle}`,
-      sku: variant?.sku || "",
-      category: product.product_type || "General",
-      productType: "Physical",
-      isActive: true,
-    };
-  });
-}
-
-/**
- * Validate Shopify credentials by making a test API call.
- */
 export async function validateShopifyCredentials(
   storeDomain: string,
   accessToken: string
 ): Promise<{ valid: boolean; shopName?: string; error?: string }> {
   try {
-    const cleanDomain = storeDomain.replace(/^https?:\/\//, "").replace(/\/$/, "");
-    const url = `https://${cleanDomain}/admin/api/2024-01/shop.json`;
-
-    const response = await fetch(url, {
-      headers: {
-        "X-Shopify-Access-Token": accessToken,
-        "Content-Type": "application/json",
-      },
+    const domain = storeDomain.replace(/^https?:\/\//, "").replace(/\/$/, "");
+    const response = await fetch(`https://${domain}/admin/api/2024-01/shop.json`, {
+      headers: { "X-Shopify-Access-Token": accessToken },
     });
-
     if (!response.ok) {
-      return { valid: false, error: `API returned ${response.status}` };
+      return { valid: false, error: `HTTP ${response.status}` };
     }
-
     const data = await response.json();
-    return { valid: true, shopName: data.shop?.name };
-  } catch (error) {
-    return { valid: false, error: String(error) };
+    return { valid: true, shopName: data.shop?.name || domain };
+  } catch (err: any) {
+    return { valid: false, error: err.message };
   }
+}
+
+export function mapShopifyToLocalProducts(products: ShopifyProduct[], brandId: string) {
+  return products.map(p => mapShopifyProduct(p, brandId));
+}
+
+export function mapShopifyProduct(product: ShopifyProduct, brandId: string) {
+  const variant = product.variants[0];
+  const image = product.images[0];
+  return {
+    name: product.title,
+    description: product.body_html?.replace(/<[^>]*>/g, "").substring(0, 500) || null,
+    price: variant?.price || "0.00",
+    imageUrl: image?.src || null,
+    productUrl: null,
+    sku: variant?.sku || null,
+    category: product.product_type || null,
+    productType: "Physical",
+    brandId,
+  };
 }
