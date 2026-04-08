@@ -14,3 +14,5 @@ attached_assets/*.mov
 attached_assets/*.docx
 client/public/*.mp4
 .vercel
+temp_auto_push.bat
+temp_interactive_push.bat
