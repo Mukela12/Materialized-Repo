@@ -3708,18 +3708,18 @@ Identify which products from the catalog are most likely to appear or be feature
   <style>
     *{margin:0;padding:0;box-sizing:border-box}
     body{background:#000;overflow:hidden;font-family:-apple-system,sans-serif}
-    #player{width:100vw;height:100vh;position:relative}
+    #player{width:100vw;height:100vh;position:relative;display:flex;align-items:center;justify-content:center}
     video{width:100%;height:100%;object-fit:contain}
     #loader{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:10}
     .spinner{width:40px;height:40px;border:3px solid rgba(255,255,255,0.2);border-top-color:#677A67;border-radius:50%;animation:spin 0.8s linear infinite}
     @keyframes spin{to{transform:rotate(360deg)}}
-    #carousel{position:absolute;bottom:16px;left:16px;right:16px;display:flex;gap:8px;overflow-x:auto;padding:8px 0;scrollbar-width:none}
+    #carousel{position:absolute;bottom:clamp(8px,2vw,16px);left:clamp(8px,2vw,16px);right:clamp(8px,2vw,16px);display:flex;gap:clamp(4px,1vw,8px);overflow-x:auto;padding:4px 0;scrollbar-width:none;z-index:5}
     #carousel::-webkit-scrollbar{display:none}
-    .product-card{flex:0 0 auto;background:rgba(255,255,255,0.95);border-radius:12px;padding:8px;width:120px;cursor:pointer;transition:transform .2s;text-decoration:none}
+    .product-card{flex:0 0 auto;background:rgba(255,255,255,0.95);border-radius:clamp(6px,1.5vw,12px);padding:clamp(4px,1vw,8px);width:clamp(72px,18vw,120px);cursor:pointer;transition:transform .2s;text-decoration:none;backdrop-filter:blur(8px)}
     .product-card:hover{transform:scale(1.05)}
-    .product-card img{width:100%;height:80px;object-fit:cover;border-radius:8px}
-    .product-name{font-size:11px;font-weight:600;margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#333}
-    .product-price{font-size:10px;color:#677A67;font-weight:700;margin-top:2px}
+    .product-card img{width:100%;height:clamp(40px,10vw,80px);object-fit:cover;border-radius:clamp(4px,1vw,8px)}
+    .product-name{font-size:clamp(8px,2vw,11px);font-weight:600;margin-top:clamp(2px,0.5vw,4px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#333}
+    .product-price{font-size:clamp(7px,1.8vw,10px);color:#677A67;font-weight:700;margin-top:1px}
   </style>
 </head>
 <body>
@@ -3818,13 +3818,13 @@ Identify which products from the catalog are most likely to appear or be feature
   var products=${JSON.stringify(products)};
   if(products.length){
     var c=document.createElement("div");
-    c.style.cssText="position:absolute;bottom:8px;left:8px;right:8px;display:flex;gap:6px;overflow-x:auto;";
+    c.style.cssText="position:absolute;bottom:clamp(4px,2%,12px);left:clamp(4px,2%,12px);right:clamp(4px,2%,12px);display:flex;gap:clamp(3px,1%,6px);overflow-x:auto;z-index:5;scrollbar-width:none;";
     products.forEach(function(p){
       var a=document.createElement("a");
       a.href=p.productUrl||"#";a.target="_blank";a.rel="noopener";
-      a.style.cssText="flex:0 0 auto;background:rgba(255,255,255,.95);border-radius:10px;padding:6px;width:100px;text-decoration:none;";
-      if(p.imageUrl){var img=document.createElement("img");img.src=p.imageUrl;img.alt=p.name;img.style.cssText="width:100%;height:60px;object-fit:cover;border-radius:6px";a.appendChild(img);}
-      var nd=document.createElement("div");nd.style.cssText="font-size:10px;font-weight:600;color:#333;margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap";
+      a.style.cssText="flex:0 0 auto;background:rgba(255,255,255,.95);border-radius:clamp(6px,1.5%,10px);padding:clamp(3px,1%,6px);width:clamp(60px,20%,100px);text-decoration:none;backdrop-filter:blur(8px);";
+      if(p.imageUrl){var img=document.createElement("img");img.src=p.imageUrl;img.alt=p.name;img.style.cssText="width:100%;height:clamp(30px,8vw,60px);object-fit:cover;border-radius:clamp(4px,1%,6px)";a.appendChild(img);}
+      var nd=document.createElement("div");nd.style.cssText="font-size:clamp(7px,2%,10px);font-weight:600;color:#333;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap";
       nd.textContent=p.name||"";a.appendChild(nd);
       if(p.price){var pd=document.createElement("div");pd.style.cssText="font-size:9px;color:#677A67;font-weight:700";pd.textContent="\\u20AC"+p.price;a.appendChild(pd);}
       a.addEventListener("click",function(){track("click")});
