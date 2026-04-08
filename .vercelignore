@@ -4,7 +4,5 @@ attached_assets/*.mov
 attached_assets/*.docx
 client/public/*.mp4
 test-results/
-server/
-shared/
 *.test.ts
 *.spec.ts
