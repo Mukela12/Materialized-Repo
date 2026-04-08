@@ -7,5 +7,12 @@
       "source": "/(.*)",
       "destination": "/index.html"
     }
-  ]
+  ],
+  "experimentalServices": {
+    "web": {
+      "routePrefix": "/",
+      "framework": "vite",
+      "buildCommand": "npx vite build"
+    }
+  }
 }
