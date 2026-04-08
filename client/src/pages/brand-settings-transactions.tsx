@@ -7,12 +7,6 @@ import { ArrowLeft, ArrowUpRight, ArrowDownLeft, ArrowLeftRight } from "lucide-r
 import { format } from "date-fns";
 import type { BrandBillingRecord } from "@shared/schema";
 
-const DEMO_TRANSACTIONS: BrandBillingRecord[] = [
-  { id: 10, userId: "demo", type: "payout",  amount: "320.00", currency: "EUR", status: "paid",    description: "Affiliate payout — Feb 2026",   reference: "PAY-2026-002", createdAt: new Date("2026-02-28") },
-  { id: 11, userId: "demo", type: "payment", amount: "149.00", currency: "EUR", status: "paid",    description: "Subscription charge",           reference: "CHG-2026-003", createdAt: new Date("2026-03-01") },
-  { id: 12, userId: "demo", type: "payout",  amount: "210.00", currency: "EUR", status: "pending", description: "Affiliate payout — Mar 2026",   reference: "PAY-2026-003", createdAt: new Date("2026-03-10") },
-  { id: 13, userId: "demo", type: "payment", amount: "149.00", currency: "EUR", status: "paid",    description: "Subscription charge",           reference: "CHG-2026-002", createdAt: new Date("2026-02-01") },
-];
 
 function TypeIcon({ type }: { type: string }) {
   if (type === "payout")  return <ArrowUpRight   className="h-4 w-4 text-green-500" />;
@@ -38,7 +32,7 @@ export default function BrandSettingsTransactions() {
     queryKey: ["/api/brand/billing-records"],
   });
 
-  const display = records.length > 0 ? records : DEMO_TRANSACTIONS;
+  const display = records;
 
   return (
     <div className="space-y-6 max-w-2xl pb-12">

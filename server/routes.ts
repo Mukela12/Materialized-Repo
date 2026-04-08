@@ -1281,18 +1281,50 @@ export async function registerRoutes(
 
   // ==================== BRAND DASHBOARD ROUTES ====================
 
-  // Get brand stats
+  // Get brand stats (real data from database)
   app.get("/api/brands/stats", async (req, res) => {
     try {
-      // Return demo stats for brand dashboard
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ error: "Authentication required" });
+
+      const { db } = await import("./db");
+      const { videos, analyticsEvents, campaigns, campaignAffiliates, brands, creatorInvitations } = await import("@shared/schema");
+      const { sql, eq, count, sum, and } = await import("drizzle-orm");
+
+      // Get user's brand
+      const userBrands = await db.select().from(brands).where(eq(brands.ownerId, sessionUserId));
+      const brandId = userBrands[0]?.id;
+
+      // Aggregate from analytics events for videos associated with user's brands
+      const [viewStats] = await db.select({
+        totalViews: sql<number>`COALESCE(COUNT(CASE WHEN ${analyticsEvents.eventType} = 'view' THEN 1 END), 0)::int`,
+        totalClicks: sql<number>`COALESCE(COUNT(CASE WHEN ${analyticsEvents.eventType} = 'click' THEN 1 END), 0)::int`,
+        totalConversions: sql<number>`COALESCE(COUNT(CASE WHEN ${analyticsEvents.eventType} = 'purchase' THEN 1 END), 0)::int`,
+        totalRevenue: sql<number>`COALESCE(SUM(CASE WHEN ${analyticsEvents.eventType} = 'purchase' THEN ${analyticsEvents.revenue}::numeric ELSE 0 END), 0)::float`,
+      }).from(analyticsEvents);
+
+      // Count active creators (affiliates assigned to campaigns for this brand)
+      let activeCreators = 0;
+      if (brandId) {
+        const brandCampaigns = await db.select({ id: campaigns.id }).from(campaigns).where(eq(campaigns.brandId, brandId));
+        // Count distinct affiliates across all brand campaigns
+        if (brandCampaigns.length > 0) {
+          const [creatorCount] = await db.select({
+            count: sql<number>`COUNT(DISTINCT ${campaignAffiliates.affiliateId})::int`,
+          }).from(campaignAffiliates);
+          activeCreators = creatorCount?.count ?? 0;
+        }
+      }
+
       res.json({
-        totalViews: 45230,
-        totalClicks: 3420,
-        totalConversions: 156,
-        totalRevenue: 12450,
-        activeCreators: 23,
+        totalViews: viewStats?.totalViews ?? 0,
+        totalClicks: viewStats?.totalClicks ?? 0,
+        totalConversions: viewStats?.totalConversions ?? 0,
+        totalRevenue: viewStats?.totalRevenue ?? 0,
+        activeCreators,
       });
     } catch (error) {
+      console.error("Brand stats error:", error);
       res.status(500).json({ error: "Failed to get brand stats" });
     }
   });
@@ -2794,6 +2826,85 @@ Identify which products from the catalog are most likely to appear or be feature
     req.user = user;
     next();
   }
+
+  // ==================== MAILBOX ====================
+
+  // Get notifications from real platform activity
+  app.get("/api/mailbox/notifications", async (req, res) => {
+    try {
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ error: "Authentication required" });
+
+      const user = await storage.getUser(sessionUserId);
+      if (!user) return res.status(401).json({ error: "User not found" });
+
+      const notifications: any[] = [];
+
+      // Pull from publisher notifications (for affiliates)
+      if (user.role === "affiliate") {
+        const pubNotifs = await storage.getPublisherNotifications(user.id);
+        for (const pn of pubNotifs) {
+          notifications.push({
+            id: `pub-${pn.id}`,
+            type: pn.type === "deactivation" ? "warning" : "campaign",
+            title: pn.type === "deactivation" ? "Publisher deactivated" : "Campaign update",
+            body: pn.message || `Campaign: ${pn.campaignName || "Unknown"}`,
+            time: pn.createdAt?.toISOString() || new Date().toISOString(),
+            read: pn.isRead ?? false,
+          });
+        }
+      }
+
+      // Pull from brand outreach (for creators)
+      if (user.role === "creator") {
+        const outreaches = await storage.getBrandOutreachesByCreator(user.id);
+        for (const o of outreaches.slice(0, 10)) {
+          notifications.push({
+            id: `outreach-${o.id}`,
+            type: o.status === "authorized" ? "success" : o.status === "pending" ? "info" : "campaign",
+            title: `Brand outreach: ${o.brandName}`,
+            body: `Status: ${o.status}${o.videoTitle ? ` — Video: ${o.videoTitle}` : ""}`,
+            time: o.createdAt?.toISOString() || new Date().toISOString(),
+            read: o.status !== "pending",
+          });
+        }
+      }
+
+      // Pull recent creator invitations (for brands)
+      if (user.role === "brand") {
+        const { db } = await import("./db");
+        const { creatorInvitations, brands: brandsTable } = await import("@shared/schema");
+        const { eq, desc } = await import("drizzle-orm");
+        const userBrands = await db.select().from(brandsTable).where(eq(brandsTable.ownerId, user.id));
+        if (userBrands.length > 0) {
+          const invites = await db.select().from(creatorInvitations)
+            .where(eq(creatorInvitations.brandId, userBrands[0].id))
+            .orderBy(desc(creatorInvitations.createdAt))
+            .limit(10);
+          for (const inv of invites) {
+            notifications.push({
+              id: `invite-${inv.id}`,
+              type: inv.status === "accepted" ? "success" : inv.status === "declined" ? "warning" : "info",
+              title: `Creator invitation: ${inv.creatorName}`,
+              body: `Status: ${inv.status}`,
+              time: inv.createdAt?.toISOString() || new Date().toISOString(),
+              read: inv.status !== "pending",
+            });
+          }
+        }
+      }
+
+      // Sort by time descending
+      notifications.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
+
+      res.json(notifications);
+    } catch (error) {
+      console.error("Mailbox error:", error);
+      res.json([]);
+    }
+  });
+
+  // ==================== ADMIN ROUTES ====================
 
   // Admin dashboard overview stats
   app.get("/api/admin/dashboard", requireAdmin, async (req, res) => {

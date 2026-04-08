@@ -20,18 +20,12 @@ function StatusPill({ status }: { status: string }) {
   );
 }
 
-const DEMO_INVOICES: BrandBillingRecord[] = [
-  { id: 1, userId: "demo", type: "invoice", amount: "149.00", currency: "EUR", status: "paid",    description: "Pro Plan — March 2026",    reference: "INV-2026-003", createdAt: new Date("2026-03-01") },
-  { id: 2, userId: "demo", type: "invoice", amount: "149.00", currency: "EUR", status: "paid",    description: "Pro Plan — February 2026",  reference: "INV-2026-002", createdAt: new Date("2026-02-01") },
-  { id: 3, userId: "demo", type: "invoice", amount: "49.00",  currency: "EUR", status: "paid",    description: "Starter Plan — January 2026", reference: "INV-2026-001", createdAt: new Date("2026-01-01") },
-];
-
 export default function BrandSettingsBillingHistory() {
   const { data: records = [], isLoading } = useQuery<BrandBillingRecord[]>({
     queryKey: ["/api/brand/billing-records", "invoice"],
   });
 
-  const display = records.length > 0 ? records : DEMO_INVOICES;
+  const display = records;
 
   return (
     <div className="space-y-6 max-w-2xl pb-12">

@@ -163,11 +163,11 @@ export default function BrandDashboard() {
   };
 
   const brandStats = stats || {
-    totalViews: 45230,
-    totalClicks: 3420,
-    totalConversions: 156,
-    totalRevenue: 12450,
-    activeCreators: 23,
+    totalViews: 0,
+    totalClicks: 0,
+    totalConversions: 0,
+    totalRevenue: 0,
+    activeCreators: 0,
   };
 
   return (
