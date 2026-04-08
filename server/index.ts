@@ -30,6 +30,9 @@ for (const envVar of requiredEnvVars) {
 const app = express();
 const httpServer = createServer(app);
 
+// Trust proxy (Railway is behind a reverse proxy, and Vercel proxies API calls)
+app.set("trust proxy", 1);
+
 // ── CORS ─────────────────────────────────────────────────────────────────────
 const corsOrigins = process.env.CORS_ORIGINS?.split(',').map(s => s.trim()).filter(Boolean) || [];
 app.use(cors({

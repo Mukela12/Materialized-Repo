@@ -56,10 +56,14 @@ export default function Register() {
       navigate(destination);
     },
     onError: async (err: any) => {
-      let message = "Registration failed. Please try again.";
+      let message = err?.message || "Registration failed. Please try again.";
+      // Extract error message from "STATUS: {json}" format
       try {
-        const body = await err.response?.json();
-        if (body?.error) message = body.error;
+        const jsonPart = message.substring(message.indexOf("{"));
+        if (jsonPart) {
+          const parsed = JSON.parse(jsonPart);
+          if (parsed.error) message = parsed.error;
+        }
       } catch {}
       toast({ title: "Registration failed", description: message, variant: "destructive" });
     },

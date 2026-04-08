@@ -1,7 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useParams, useLocation, Link } from "wouter";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
+import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import materializedLogo from "@assets/MATERIALIZED_full_logo_1773352270197.png";
 
@@ -18,30 +17,39 @@ export default function VerifyEmail() {
   const [status, setStatus] = useState<"verifying" | "success" | "error">("verifying");
   const [errorMessage, setErrorMessage] = useState("");
   const [userRole, setUserRole] = useState("creator");
-
-  const verifyMutation = useMutation({
-    mutationFn: () => apiRequest("POST", "/api/auth/verify-email", { token }),
-    onSuccess: async (res: any) => {
-      const data = await res.json();
-      queryClient.setQueryData(["/api/auth/me"], data);
-      setUserRole(data.role || "creator");
-      setStatus("success");
-    },
-    onError: async (err: any) => {
-      let message = "Verification failed. The link may have expired.";
-      try {
-        const body = await err.response?.json();
-        if (body?.error) message = body.error;
-      } catch {}
-      setErrorMessage(message);
-      setStatus("error");
-    },
-  });
+  const hasRun = useRef(false);
 
   useEffect(() => {
-    if (token) {
-      verifyMutation.mutate();
+    if (!token || hasRun.current) return;
+    hasRun.current = true;
+
+    async function verify() {
+      try {
+        const res = await fetch("/api/auth/verify-email", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token }),
+          credentials: "include",
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          setErrorMessage(data.error || "Verification failed");
+          setStatus("error");
+          return;
+        }
+
+        queryClient.setQueryData(["/api/auth/me"], data);
+        setUserRole(data.role || "creator");
+        setStatus("success");
+      } catch {
+        setErrorMessage("Verification failed. Please try again.");
+        setStatus("error");
+      }
     }
+
+    verify();
   }, [token]);
 
   return (
@@ -93,11 +101,18 @@ export default function VerifyEmail() {
               </div>
               <h1 className="text-xl font-semibold text-foreground mb-2">Verification failed</h1>
               <p className="text-sm text-muted-foreground mb-6">{errorMessage}</p>
-              <Link href="/register">
-                <Button variant="outline" className="w-full">
-                  Try registering again
-                </Button>
-              </Link>
+              <div className="space-y-3">
+                <Link href="/login">
+                  <Button className="w-full bg-[#677A67] hover:bg-[#556655] text-white">
+                    Go to Login
+                  </Button>
+                </Link>
+                <Link href="/register">
+                  <Button variant="outline" className="w-full">
+                    Register Again
+                  </Button>
+                </Link>
+              </div>
             </>
           )}
         </div>

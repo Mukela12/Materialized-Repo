@@ -45,12 +45,15 @@ export default function Login() {
       navigate(destination);
     },
     onError: async (err: any) => {
-      let message = "Login failed. Please check your email and password.";
+      let message = err?.message || "Login failed. Please check your email and password.";
       try {
-        const body = await err.response?.json();
-        if (body?.error) message = body.error;
-        if (body?.needsVerification) {
-          message = "Please verify your email first. Check your inbox for the verification link.";
+        const jsonPart = message.substring(message.indexOf("{"));
+        if (jsonPart) {
+          const parsed = JSON.parse(jsonPart);
+          if (parsed.error) message = parsed.error;
+          if (parsed.needsVerification) {
+            message = "Please verify your email first. Check your inbox for the verification link.";
+          }
         }
       } catch {}
       toast({ title: "Login failed", description: message, variant: "destructive" });

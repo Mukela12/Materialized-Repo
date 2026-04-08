@@ -1,9 +1,5 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
 
-// API base URL — uses env var for split deployment (frontend on Vercel, backend on Railway)
-// Falls back to same-origin for monolith deployment
-const API_BASE = import.meta.env.VITE_API_URL || "";
-
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
     const text = (await res.text()) || res.statusText;
@@ -16,8 +12,7 @@ export async function apiRequest(
   url: string,
   data?: unknown | undefined,
 ): Promise<Response> {
-  const fullUrl = url.startsWith("http") ? url : `${API_BASE}${url}`;
-  const res = await fetch(fullUrl, {
+  const res = await fetch(url, {
     method,
     headers: data ? { "Content-Type": "application/json" } : {},
     body: data ? JSON.stringify(data) : undefined,
@@ -34,9 +29,7 @@ export const getQueryFn: <T>(options: {
 }) => QueryFunction<T> =
   ({ on401: unauthorizedBehavior }) =>
   async ({ queryKey }) => {
-    const path = queryKey.join("/") as string;
-    const fullUrl = path.startsWith("http") ? path : `${API_BASE}${path}`;
-    const res = await fetch(fullUrl, {
+    const res = await fetch(queryKey.join("/") as string, {
       credentials: "include",
     });
 
