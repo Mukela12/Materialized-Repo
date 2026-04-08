@@ -31,10 +31,12 @@ const app = express();
 const httpServer = createServer(app);
 
 // ── CORS ─────────────────────────────────────────────────────────────────────
-const corsOrigins = process.env.CORS_ORIGINS?.split(',').map(s => s.trim()) || [];
+const corsOrigins = process.env.CORS_ORIGINS?.split(',').map(s => s.trim()).filter(Boolean) || [];
 app.use(cors({
   origin: corsOrigins.length > 0 ? corsOrigins : true,
   credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Admin-Secret'],
 }));
 
 // ── Session ──────────────────────────────────────────────────────────────────
