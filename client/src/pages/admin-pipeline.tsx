@@ -270,6 +270,115 @@ function AdminUsers() {
   );
 }
 
+interface AdminVideo {
+  id: string;
+  title: string;
+  status: string;
+  totalViews: number;
+  totalClicks: number;
+  totalRevenue: string;
+  createdAt: string | null;
+  creatorName: string;
+}
+
+function AdminVideos() {
+  const { data: videos = [] } = useQuery<AdminVideo[]>({
+    queryKey: ["/api/admin/videos"],
+    queryFn: () => fetch("/api/admin/videos", { credentials: "include" }).then(r => r.json()),
+  });
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b text-left">
+            <th className="p-3 font-medium">Title</th>
+            <th className="p-3 font-medium">Creator</th>
+            <th className="p-3 font-medium">Status</th>
+            <th className="p-3 font-medium">Views</th>
+            <th className="p-3 font-medium">Clicks</th>
+            <th className="p-3 font-medium">Revenue</th>
+            <th className="p-3 font-medium">Created</th>
+          </tr>
+        </thead>
+        <tbody>
+          {videos.map(v => (
+            <tr key={v.id} className="border-b hover:bg-muted/50">
+              <td className="p-3 font-medium max-w-[200px] truncate">{v.title}</td>
+              <td className="p-3 text-muted-foreground">{v.creatorName}</td>
+              <td className="p-3">
+                <Badge variant="outline" className="capitalize">{v.status}</Badge>
+              </td>
+              <td className="p-3">{v.totalViews?.toLocaleString() ?? 0}</td>
+              <td className="p-3">{v.totalClicks?.toLocaleString() ?? 0}</td>
+              <td className="p-3">{v.totalRevenue ? `$${Number(v.totalRevenue).toFixed(2)}` : "$0.00"}</td>
+              <td className="p-3 text-muted-foreground text-xs">
+                {v.createdAt ? format(new Date(v.createdAt), "MMM d, yyyy") : "-"}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {videos.length === 0 && (
+        <p className="text-center py-8 text-muted-foreground">No videos uploaded yet</p>
+      )}
+    </div>
+  );
+}
+
+interface AdminBrand {
+  id: string;
+  name: string;
+  category: string | null;
+  website: string | null;
+  isActive: boolean;
+}
+
+function AdminBrands() {
+  const { data: brands = [] } = useQuery<AdminBrand[]>({
+    queryKey: ["/api/admin/brands"],
+    queryFn: () => fetch("/api/admin/brands", { credentials: "include" }).then(r => r.json()),
+  });
+
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b text-left">
+            <th className="p-3 font-medium">Brand</th>
+            <th className="p-3 font-medium">Category</th>
+            <th className="p-3 font-medium">Website</th>
+            <th className="p-3 font-medium">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {brands.map(b => (
+            <tr key={b.id} className="border-b hover:bg-muted/50">
+              <td className="p-3 font-medium">{b.name}</td>
+              <td className="p-3 text-muted-foreground">{b.category || "-"}</td>
+              <td className="p-3">
+                {b.website ? (
+                  <a href={b.website.startsWith("http") ? b.website : `https://${b.website}`} target="_blank" rel="noopener noreferrer" className="text-[#677A67] hover:underline text-xs">
+                    {b.website}
+                  </a>
+                ) : "-"}
+              </td>
+              <td className="p-3">
+                <Badge className={b.isActive ? "bg-green-500/20 text-green-600 border-0" : "bg-red-500/20 text-red-600 border-0"}>
+                  {b.isActive ? "Active" : "Inactive"}
+                </Badge>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {brands.length === 0 && (
+        <p className="text-center py-8 text-muted-foreground">No brands registered yet</p>
+      )}
+    </div>
+  );
+}
+
 export default function AdminPipeline() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -278,7 +387,7 @@ export default function AdminPipeline() {
   const [selectedFollowUp, setSelectedFollowUp] = useState<string>("");
   const [notesValues, setNotesValues] = useState<Record<string, string>>({});
   const [filterStage, setFilterStage] = useState<string>("all");
-  const [activeTab, setActiveTab] = useState<"overview" | "users" | "pipeline">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "users" | "videos" | "brands" | "pipeline">("overview");
 
   const { data: pipeline = [], isLoading, refetch } = useQuery<PipelineEntry[]>({
     queryKey: ["/api/admin/pipeline"],
@@ -360,7 +469,7 @@ export default function AdminPipeline() {
 
         {/* Tab Navigation */}
         <div className="flex gap-1 mb-6 border-b">
-          {(["overview", "users", "pipeline"] as const).map(tab => (
+          {(["overview", "users", "videos", "brands", "pipeline"] as const).map(tab => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -377,6 +486,8 @@ export default function AdminPipeline() {
 
         {activeTab === "overview" && <AdminOverview />}
         {activeTab === "users" && <AdminUsers />}
+        {activeTab === "videos" && <AdminVideos />}
+        {activeTab === "brands" && <AdminBrands />}
         {activeTab === "pipeline" && (
         <div>
         {/* Header */}
