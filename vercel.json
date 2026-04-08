@@ -1,18 +1,17 @@
 {
-  "buildCommand": "npx vite build",
-  "outputDirectory": "dist/public",
   "installCommand": "npm install",
+  "experimentalServices": {
+    "web": {
+      "routePrefix": "/",
+      "framework": "vite",
+      "buildCommand": "npx vite build",
+      "outputDirectory": "dist/public"
+    }
+  },
   "rewrites": [
     {
       "source": "/(.*)",
       "destination": "/index.html"
     }
-  ],
-  "experimentalServices": {
-    "web": {
-      "routePrefix": "/",
-      "framework": "vite",
-      "buildCommand": "npx vite build"
-    }
-  }
+  ]
 }
