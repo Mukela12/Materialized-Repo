@@ -3710,6 +3710,9 @@ Identify which products from the catalog are most likely to appear or be feature
     body{background:#000;overflow:hidden;font-family:-apple-system,sans-serif}
     #player{width:100vw;height:100vh;position:relative}
     video{width:100%;height:100%;object-fit:contain}
+    #loader{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:10}
+    .spinner{width:40px;height:40px;border:3px solid rgba(255,255,255,0.2);border-top-color:#677A67;border-radius:50%;animation:spin 0.8s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
     #carousel{position:absolute;bottom:16px;left:16px;right:16px;display:flex;gap:8px;overflow-x:auto;padding:8px 0;scrollbar-width:none}
     #carousel::-webkit-scrollbar{display:none}
     .product-card{flex:0 0 auto;background:rgba(255,255,255,0.95);border-radius:12px;padding:8px;width:120px;cursor:pointer;transition:transform .2s;text-decoration:none}
@@ -3721,12 +3724,15 @@ Identify which products from the catalog are most likely to appear or be feature
 </head>
 <body>
   <div id="player">
+    <div id="loader"><div class="spinner"></div></div>
     <video id="vid" autoplay muted loop playsinline></video>
     <div id="carousel"></div>
   </div>
   <script>
     var utm="${utm.replace(/[<>"'\\]/g, "")}",videoId="${video.id}",apiBase="${apiBase}";
-    document.getElementById("vid").src="${(video.videoUrl || "").replace(/[<>"'\\]/g, "")}";
+    var vid=document.getElementById("vid");
+    vid.src="${(video.videoUrl || "").replace(/[<>"'\\]/g, "")}";
+    vid.addEventListener("playing",function(){document.getElementById("loader").style.display="none";});
     var products=${JSON.stringify(products)};
     var carousel=document.getElementById("carousel");
     products.forEach(function(p){

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
@@ -92,6 +92,7 @@ export function ProductCarouselEditor({
   videoUrl,
 }: ProductCarouselEditorProps) {
   const [showPreview, setShowPreview] = useState(true);
+  const [videoLoading, setVideoLoading] = useState(true);
 
   const updateSetting = <K extends keyof CarouselSettings>(
     key: K, 
@@ -178,14 +179,23 @@ export function ProductCarouselEditor({
       {showPreview && (
         <div className="relative bg-muted rounded-lg overflow-hidden aspect-video">
           {videoUrl ? (
-            <video
-              src={videoUrl}
-              className="absolute inset-0 w-full h-full object-cover"
-              autoPlay
-              muted
-              loop
-              playsInline
-            />
+            <>
+              {videoLoading && (
+                <div className="absolute inset-0 flex items-center justify-center z-10">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+                </div>
+              )}
+              <video
+                src={videoUrl}
+                className="absolute inset-0 w-full h-full object-cover"
+                autoPlay
+                muted
+                loop
+                playsInline
+                onPlaying={() => setVideoLoading(false)}
+                onLoadedData={() => setVideoLoading(false)}
+              />
+            </>
           ) : (
             <div className="absolute inset-0 flex items-center justify-center text-muted-foreground text-xs">
               Video Preview

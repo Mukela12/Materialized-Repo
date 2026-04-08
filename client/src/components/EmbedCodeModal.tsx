@@ -11,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Copy, Check, Code, Monitor, Smartphone } from "lucide-react";
+import { Copy, Check, Code, Monitor, Smartphone, Eye, ExternalLink } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { Video } from "@shared/schema";
 
@@ -23,26 +23,29 @@ interface EmbedCodeModalProps {
 
 export function EmbedCodeModal({ open, onOpenChange, video }: EmbedCodeModalProps) {
   const [copied, setCopied] = useState(false);
+  const [showPreview, setShowPreview] = useState(false);
   const { toast } = useToast();
 
   if (!video) return null;
 
-  const baseUrl = typeof window !== "undefined" ? window.location.origin : "";
-  
-  const iframeCode = `<iframe 
-  src="${baseUrl}/embed/${video.id}?utm=${video.utmCode}" 
-  width="100%" 
-  height="450" 
-  frameborder="0" 
+  // Embed URL goes through the Vercel proxy to Railway backend
+  const embedUrl = `/embed/${video.id}?utm=${video.utmCode || ""}`;
+  const fullEmbedUrl = `${window.location.origin}${embedUrl}`;
+
+  const iframeCode = `<iframe
+  src="${fullEmbedUrl}"
+  width="100%"
+  height="450"
+  frameborder="0"
   allowfullscreen
   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
 ></iframe>`;
 
   const responsiveCode = `<div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden;">
-  <iframe 
-    src="${baseUrl}/embed/${video.id}?utm=${video.utmCode}" 
-    style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;" 
-    frameborder="0" 
+  <iframe
+    src="${fullEmbedUrl}"
+    style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;"
+    frameborder="0"
     allowfullscreen
     allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
   ></iframe>
@@ -60,14 +63,14 @@ export function EmbedCodeModal({ open, onOpenChange, video }: EmbedCodeModalProp
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-xl font-bold">
             <Code className="h-5 w-5" />
-            Embed Code
+            Embed Code & Preview
           </DialogTitle>
           <DialogDescription>
-            Add this video with product carousel to your website
+            Preview your shoppable video and copy the embed code for your website
           </DialogDescription>
         </DialogHeader>
 
@@ -85,7 +88,7 @@ export function EmbedCodeModal({ open, onOpenChange, video }: EmbedCodeModalProp
                   <div className="w-full h-full bg-gradient-to-br from-primary/20 to-chart-2/20" />
                 )}
               </div>
-              <div>
+              <div className="flex-1">
                 <p className="font-medium">{video.title}</p>
                 <div className="flex items-center gap-2 mt-1">
                   <Badge variant="secondary" className="text-xs">
@@ -96,11 +99,41 @@ export function EmbedCodeModal({ open, onOpenChange, video }: EmbedCodeModalProp
                   </Badge>
                 </div>
               </div>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1"
+                  onClick={() => setShowPreview(!showPreview)}
+                >
+                  <Eye className="h-3.5 w-3.5" />
+                  {showPreview ? "Hide" : "Preview"}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1"
+                  onClick={() => window.open(embedUrl, "_blank")}
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  Open
+                </Button>
+              </div>
             </div>
           </CardContent>
         </Card>
 
-        <Tabs defaultValue="standard" className="mt-4">
+        {showPreview && (
+          <div className="relative rounded-lg overflow-hidden bg-black" style={{ aspectRatio: "16/9" }}>
+            <iframe
+              src={embedUrl}
+              className="absolute inset-0 w-full h-full"
+              allow="autoplay; encrypted-media"
+            />
+          </div>
+        )}
+
+        <Tabs defaultValue="standard" className="mt-2">
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="standard" className="gap-2">
               <Monitor className="h-4 w-4" />
@@ -111,13 +144,13 @@ export function EmbedCodeModal({ open, onOpenChange, video }: EmbedCodeModalProp
               Responsive
             </TabsTrigger>
           </TabsList>
-          
-          <TabsContent value="standard" className="space-y-4">
+
+          <TabsContent value="standard" className="space-y-3">
             <div className="relative">
               <Textarea
                 value={iframeCode}
                 readOnly
-                className="min-h-[150px] font-mono text-sm bg-muted/50"
+                className="min-h-[120px] font-mono text-xs bg-muted/50"
                 data-testid="textarea-embed-code-standard"
               />
               <Button
@@ -127,30 +160,20 @@ export function EmbedCodeModal({ open, onOpenChange, video }: EmbedCodeModalProp
                 onClick={() => copyCode(iframeCode)}
                 data-testid="button-copy-embed-standard"
               >
-                {copied ? (
-                  <>
-                    <Check className="h-3 w-3" />
-                    Copied
-                  </>
-                ) : (
-                  <>
-                    <Copy className="h-3 w-3" />
-                    Copy
-                  </>
-                )}
+                {copied ? <><Check className="h-3 w-3" /> Copied</> : <><Copy className="h-3 w-3" /> Copy</>}
               </Button>
             </div>
-            <p className="text-sm text-muted-foreground">
+            <p className="text-xs text-muted-foreground">
               Fixed 450px height. Best for sidebars or fixed-size containers.
             </p>
           </TabsContent>
-          
-          <TabsContent value="responsive" className="space-y-4">
+
+          <TabsContent value="responsive" className="space-y-3">
             <div className="relative">
               <Textarea
                 value={responsiveCode}
                 readOnly
-                className="min-h-[200px] font-mono text-sm bg-muted/50"
+                className="min-h-[160px] font-mono text-xs bg-muted/50"
                 data-testid="textarea-embed-code-responsive"
               />
               <Button
@@ -160,26 +183,16 @@ export function EmbedCodeModal({ open, onOpenChange, video }: EmbedCodeModalProp
                 onClick={() => copyCode(responsiveCode)}
                 data-testid="button-copy-embed-responsive"
               >
-                {copied ? (
-                  <>
-                    <Check className="h-3 w-3" />
-                    Copied
-                  </>
-                ) : (
-                  <>
-                    <Copy className="h-3 w-3" />
-                    Copy
-                  </>
-                )}
+                {copied ? <><Check className="h-3 w-3" /> Copied</> : <><Copy className="h-3 w-3" /> Copy</>}
               </Button>
             </div>
-            <p className="text-sm text-muted-foreground">
-              Maintains 16:9 aspect ratio and scales with container width. Best for responsive layouts.
+            <p className="text-xs text-muted-foreground">
+              Maintains 16:9 aspect ratio. Best for responsive layouts.
             </p>
           </TabsContent>
         </Tabs>
 
-        <div className="flex justify-end gap-3 mt-4">
+        <div className="flex justify-end gap-3 mt-2">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Close
           </Button>
