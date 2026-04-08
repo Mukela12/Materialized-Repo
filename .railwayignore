@@ -1,7 +1,9 @@
-attached_assets/
+# Only ignore large video/media files, keep PNGs for build
+attached_assets/*.mp4
+attached_assets/*.MOV
+attached_assets/*.mov
+attached_assets/*.docx
 client/public/*.mp4
 client/public/*.mov
 test-results/
 .git/
-*.MOV
-*.mov
