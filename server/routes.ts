@@ -39,7 +39,7 @@ import {
 import { setupPdfAnalysisRoutes } from "./replit_integrations/pdf_analysis";
 import { registerDetectionRoutes } from "./replit_integrations/detection/routes";
 import { ai } from "./replit_integrations/detection/client";
-import { registerObjectStorageRoutes } from "./replit_integrations/object_storage";
+// Object storage removed — using Cloudinary instead
 import type Stripe from "stripe";
 import { stripeService } from "./stripeService";
 import { getStripePublishableKey, getUncachableStripeClient } from "./stripeClient";
@@ -57,7 +57,7 @@ export async function registerRoutes(
   registerDetectionRoutes(app, storage);
 
   // ==================== OBJECT STORAGE ROUTES ====================
-  registerObjectStorageRoutes(app);
+  // Object storage removed — using Cloudinary instead
 
   // ==================== USER ROUTES ====================
   
