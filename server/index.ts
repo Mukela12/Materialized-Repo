@@ -49,7 +49,7 @@ app.use(
     store: new PgStore({
       conString: process.env.DATABASE_URL,
       tableName: "session",
-      createTableIfMissing: true,
+      createTableIfMissing: false,
     }),
     secret: process.env.SESSION_SECRET!,
     resave: false,
