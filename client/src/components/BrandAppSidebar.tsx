@@ -104,12 +104,12 @@ export function BrandAppSidebar({ user }: BrandAppSidebarProps) {
 
   return (
     <Sidebar>
-      <SidebarHeader className="px-4 pt-4 pb-3">
-        <div className="flex items-center justify-center mb-5">
+      <SidebarHeader className="px-4 pt-3 pb-2">
+        <div className="flex items-center justify-center mb-2">
           <img
             src={materializedLogo}
             alt="Materialized"
-            style={{ height: 200, width: "auto", filter: "invert(1)" }}
+            style={{ height: 28, width: "auto", filter: "invert(1)" }}
           />
         </div>
 

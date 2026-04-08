@@ -845,6 +845,7 @@ export function VideoUploadModal({
                   settings={carouselSettings}
                   onChange={setCarouselSettings}
                   onReset={() => setCarouselSettings(defaultCarouselSettings)}
+                  videoUrl={videoUrl}
                   compact
                 />
               </div>

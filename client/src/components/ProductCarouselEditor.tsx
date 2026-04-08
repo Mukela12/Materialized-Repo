@@ -45,6 +45,7 @@ interface ProductCarouselEditorProps {
   onReset?: () => void;
   onSaveDraft?: () => void;
   compact?: boolean;
+  videoUrl?: string;
 }
 
 const defaultSettings: CarouselSettings = {
@@ -82,12 +83,13 @@ const getFontFamily = (font: string): string => {
   return fontMap[font] || fontMap["system"];
 };
 
-export function ProductCarouselEditor({ 
-  settings, 
-  onChange, 
+export function ProductCarouselEditor({
+  settings,
+  onChange,
   onReset,
   onSaveDraft,
-  compact = false 
+  compact = false,
+  videoUrl,
 }: ProductCarouselEditorProps) {
   const [showPreview, setShowPreview] = useState(true);
 
@@ -175,9 +177,20 @@ export function ProductCarouselEditor({
 
       {showPreview && (
         <div className="relative bg-muted rounded-lg overflow-hidden aspect-video">
-          <div className="absolute inset-0 flex items-center justify-center text-muted-foreground text-xs">
-            Video Preview
-          </div>
+          {videoUrl ? (
+            <video
+              src={videoUrl}
+              className="absolute inset-0 w-full h-full object-cover"
+              autoPlay
+              muted
+              loop
+              playsInline
+            />
+          ) : (
+            <div className="absolute inset-0 flex items-center justify-center text-muted-foreground text-xs">
+              Video Preview
+            </div>
+          )}
           
           <div 
             className="p-2 flex items-center gap-2 max-w-[200px]"

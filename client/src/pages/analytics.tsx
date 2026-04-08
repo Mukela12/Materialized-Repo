@@ -207,28 +207,24 @@ export default function Analytics() {
           value={currentStats.totalViews.toLocaleString()}
           subtitle={isPublisherView ? "From your embeds" : "All-time video views"}
           icon={Eye}
-          trend={{ value: 12.5, isPositive: true }}
         />
         <StatCard
           title={isPublisherView ? "My Clicks" : "Total Clicks"}
           value={currentStats.totalClicks.toLocaleString()}
           subtitle={isPublisherView ? "From your embeds" : "Product interactions"}
           icon={MousePointer}
-          trend={{ value: 8.2, isPositive: true }}
         />
         <StatCard
           title={isPublisherView ? "My Revenue" : "Revenue"}
           value={fmtCurrency(currentStats.totalRevenue)}
           subtitle={isPublisherView ? "Your earnings" : "Total earnings"}
           icon={DollarSign}
-          trend={{ value: 23.1, isPositive: true }}
         />
         <StatCard
           title="Avg. CTR"
           value={`${currentStats.averageCTR.toFixed(2)}%`}
           subtitle="Click-through rate"
           icon={TrendingUp}
-          trend={{ value: 4.3, isPositive: true }}
         />
       </div>
 
@@ -238,28 +234,24 @@ export default function Analytics() {
           value={fmtCurrency(currentStats.averageSpend)}
           subtitle="Per transaction"
           icon={ShoppingCart}
-          trend={{ value: 5.8, isPositive: true }}
         />
         <StatCard
           title="Conversion Rate"
           value={`${currentStats.salesConversionRate}%`}
           subtitle="Sales conversion"
           icon={Percent}
-          trend={{ value: 2.1, isPositive: true }}
         />
         <StatCard
           title="Sales Volume"
           value={currentStats.salesVolumeUnits.toLocaleString()}
           subtitle="Units sold"
           icon={Package}
-          trend={{ value: 15.3, isPositive: true }}
         />
         <StatCard
           title="Sales Value"
           value={fmtCurrency(currentStats.salesVolumeValue)}
           subtitle="Total sales value"
           icon={DollarSign}
-          trend={{ value: 18.7, isPositive: true }}
         />
       </div>
 
