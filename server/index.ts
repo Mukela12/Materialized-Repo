@@ -18,6 +18,7 @@ declare module "express-session" {
 
 // ── Validate required env vars ───────────────────────────────────────────────
 const requiredEnvVars = ['DATABASE_URL', 'SESSION_SECRET'];
+const optionalEnvVars = ['RESEND_API_KEY', 'CLOUDINARY_CLOUD_NAME', 'STRIPE_SECRET_KEY', 'ADMIN_EMAIL'];
 for (const envVar of requiredEnvVars) {
   if (!process.env[envVar]) {
     console.error(`[FATAL] Missing required environment variable: ${envVar}`);
@@ -25,6 +26,10 @@ for (const envVar of requiredEnvVars) {
       process.exit(1);
     }
   }
+}
+const missing = optionalEnvVars.filter(v => !process.env[v]);
+if (missing.length) {
+  console.log(`[Config] Optional env vars not set: ${missing.join(', ')} — some features will be disabled`);
 }
 
 const app = express();
