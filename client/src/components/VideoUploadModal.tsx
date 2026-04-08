@@ -139,7 +139,7 @@ export function VideoUploadModal({
 
   const { uploadFile, isUploading, progress } = useUpload({
     onSuccess: (response) => {
-      setVideoUrl(response.objectPath);
+      setVideoUrl(response.objectUrl);
       setStep("details");
     },
   });
