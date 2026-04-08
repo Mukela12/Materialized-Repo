@@ -3725,14 +3725,31 @@ Identify which products from the catalog are most likely to appear or be feature
 <body>
   <div id="player">
     <div id="loader"><div class="spinner"></div></div>
-    <video id="vid" autoplay muted loop playsinline></video>
+    <div id="playbtn" style="display:none;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:11;cursor:pointer;width:72px;height:72px;background:rgba(255,255,255,.9);border-radius:50%;align-items:center;justify-content:center" onclick="document.getElementById('vid').play();this.style.display='none'">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="#333" style="margin-left:4px"><polygon points="5,3 19,12 5,21"/></svg>
+    </div>
+    <video id="vid" muted loop playsinline preload="auto"></video>
     <div id="carousel"></div>
   </div>
   <script>
     var utm="${utm.replace(/[<>"'\\]/g, "")}",videoId="${video.id}",apiBase="${apiBase}";
     var vid=document.getElementById("vid");
-    vid.src="${(video.videoUrl || "").replace(/[<>"'\\]/g, "")}";
-    vid.addEventListener("playing",function(){document.getElementById("loader").style.display="none";});
+    var rawUrl="${(video.videoUrl || "").replace(/[<>"'\\]/g, "")}";
+    // Optimize Cloudinary URL for streaming
+    if(rawUrl.includes("cloudinary.com")){
+      rawUrl=rawUrl.replace("/upload/","/upload/q_auto,f_auto,w_720/");
+    }
+    vid.src=rawUrl;
+    vid.addEventListener("playing",function(){
+      document.getElementById("loader").style.display="none";
+      document.getElementById("playbtn").style.display="none";
+    });
+    vid.addEventListener("canplay",function(){
+      document.getElementById("loader").style.display="none";
+      vid.play().catch(function(){
+        document.getElementById("playbtn").style.display="flex";
+      });
+    });
     var products=${JSON.stringify(products)};
     var carousel=document.getElementById("carousel");
     products.forEach(function(p){
@@ -3792,8 +3809,11 @@ Identify which products from the catalog are most likely to appear or be feature
   el.style.aspectRatio="16/9";el.style.background="#000";el.style.borderRadius="12px";
   el.style.overflow="hidden";
   var v=document.createElement("video");
-  v.src="${safeVideoUrl}";v.autoplay=true;v.muted=true;v.loop=true;v.playsInline=true;
+  var vsrc="${safeVideoUrl}";
+  if(vsrc.indexOf("cloudinary.com")>-1){vsrc=vsrc.replace("/upload/","/upload/q_auto,f_auto,w_640/");}
+  v.src=vsrc;v.muted=true;v.loop=true;v.playsInline=true;v.preload="auto";
   v.style.cssText="width:100%;height:100%;object-fit:cover;";
+  v.addEventListener("canplay",function(){v.play().catch(function(){});});
   el.appendChild(v);
   var products=${JSON.stringify(products)};
   if(products.length){
