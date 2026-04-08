@@ -616,7 +616,6 @@ export default function AdminPipeline() {
           </div>
         )}
       </div>
-      </div>
       )}
 
       {/* Follow-up dialog */}
@@ -683,6 +682,7 @@ export default function AdminPipeline() {
           </div>
         </DialogContent>
       </Dialog>
+      </div>
     </div>
   );
 }
