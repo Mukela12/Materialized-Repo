@@ -14,6 +14,8 @@ const allowlist = [
   "express-session",
   "multer",
   "nanoid",
+  "p-limit",
+  "p-retry",
   "pg",
   "resend",
   "stripe",
