@@ -204,9 +204,9 @@ export default function Dashboard() {
 
       {activeTab === "affiliate" && (
         <AffiliateCard
-          trackingId={currentUser?.affiliateTrackingId || "f917b3b7-xxxx-xxxx"}
-          referralCode={currentUser?.referralCode || "REF_E6601237"}
-          commissionRate={Number(currentUser?.commissionRate) || 15}
+          trackingId={currentUser?.affiliateTrackingId || ""}
+          referralCode={currentUser?.referralCode || ""}
+          commissionRate={Number(currentUser?.commissionRate) || 0}
         />
       )}
 

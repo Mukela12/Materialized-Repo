@@ -91,7 +91,7 @@ export default function Affiliates() {
 
   const inviteMutation = useMutation({
     mutationFn: async (data: InviteFormValues) => {
-      const res = await apiRequest('/api/affiliates/invite', 'POST', data);
+      const res = await apiRequest('POST', '/api/affiliates/invite', data);
       return res.json();
     },
     onSuccess: () => {
@@ -114,7 +114,7 @@ export default function Affiliates() {
 
   const bulkInviteMutation = useMutation({
     mutationFn: async (invitations: any[]) => {
-      const res = await apiRequest('/api/affiliates/invite/bulk', 'POST', { invitations });
+      const res = await apiRequest('POST', '/api/affiliates/invite/bulk', { invitations });
       return res.json();
     },
     onSuccess: (data) => {
