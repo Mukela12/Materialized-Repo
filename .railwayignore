@@ -1,0 +1,7 @@
+attached_assets/
+client/public/*.mp4
+client/public/*.mov
+test-results/
+.git/
+*.MOV
+*.mov

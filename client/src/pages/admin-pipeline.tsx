@@ -616,8 +616,6 @@ export default function AdminPipeline() {
           </div>
         )}
       </div>
-
-      {/* Close pipeline tab div */}
       </div>
       )}
 
