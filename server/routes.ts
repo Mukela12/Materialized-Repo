@@ -1,6 +1,7 @@
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
+import { computeSaleSplit, toCents, centsToAmount } from "./feeConfig";
 import { 
   insertVideoSchema, 
   insertBrandReferralSchema, 
@@ -914,31 +915,62 @@ export async function registerRoutes(
         }
       }
 
-      if (data.eventType === "purchase" && affiliateId && data.revenue) {
-        const commRate = resolvedCommissionRate || "10.00";
-        const saleAmount = parseFloat(data.revenue);
-        const rate = parseFloat(commRate);
-        const commissionAmount = (saleAmount * rate) / 100;
+      if (data.eventType === "purchase" && data.revenue) {
+        // Split the sale across brand / creator / publisher / platform in integer
+        // cents (see server/feeConfig.ts). The video's creator always earns; a
+        // distinct attributed affiliate is treated as the reposting publisher.
+        const saleCents = toCents(data.revenue);
+        const video = await storage.getVideo(data.videoId);
+        const creatorId = video?.creatorId ?? null;
+        const publisherId = affiliateId && affiliateId !== creatorId ? affiliateId : null;
 
-        await storage.createCommissionTransaction({
-          affiliateId,
-          analyticsEventId: event.id,
-          videoId: data.videoId,
-          productId: data.productId || null,
-          saleAmount: data.revenue,
-          commissionRate: commRate,
-          commissionAmount: commissionAmount.toFixed(2),
-          campaignAffiliateId,
+        // A per-repost publisher rate set by admin (on the campaign affiliate)
+        // overrides the platform default; otherwise the default publisher rate applies.
+        const publisherOverridePct = publisherId && resolvedCommissionRate != null
+          ? parseFloat(resolvedCommissionRate)
+          : undefined;
+
+        const split = computeSaleSplit(saleCents, {
+          hasPublisher: !!publisherId,
+          publisherPct: publisherOverridePct,
         });
 
-        if (campaignAffiliateId) {
-          const ca = (await storage.getCampaignAffiliates(data.videoId)).find(c => c.id === campaignAffiliateId);
-          if (ca) {
-            await storage.updateCampaignAffiliateStats(campaignAffiliateId, {
-              totalConversions: (ca.totalConversions || 0) + 1,
-              totalRevenue: ((parseFloat(ca.totalRevenue || "0")) + saleAmount).toFixed(2),
-              totalEarnings: ((parseFloat(ca.totalEarnings || "0")) + commissionAmount).toFixed(2),
-            });
+        // Creator commission (video owner always earns their share)
+        if (creatorId && split.creatorCents > 0) {
+          await storage.createCommissionTransaction({
+            affiliateId: creatorId,
+            analyticsEventId: event.id,
+            videoId: data.videoId,
+            productId: data.productId || null,
+            saleAmount: data.revenue,
+            commissionRate: split.effectiveRates.creatorPct.toFixed(2),
+            commissionAmount: centsToAmount(split.creatorCents),
+            campaignAffiliateId: null,
+          });
+        }
+
+        // Publisher commission (only when a distinct publisher is attributed)
+        if (publisherId && split.publisherCents > 0) {
+          await storage.createCommissionTransaction({
+            affiliateId: publisherId,
+            analyticsEventId: event.id,
+            videoId: data.videoId,
+            productId: data.productId || null,
+            saleAmount: data.revenue,
+            commissionRate: split.effectiveRates.publisherPct.toFixed(2),
+            commissionAmount: centsToAmount(split.publisherCents),
+            campaignAffiliateId,
+          });
+
+          if (campaignAffiliateId) {
+            const ca = (await storage.getCampaignAffiliates(data.videoId)).find(c => c.id === campaignAffiliateId);
+            if (ca) {
+              await storage.updateCampaignAffiliateStats(campaignAffiliateId, {
+                totalConversions: (ca.totalConversions || 0) + 1,
+                totalRevenue: centsToAmount(toCents(ca.totalRevenue || "0") + saleCents),
+                totalEarnings: centsToAmount(toCents(ca.totalEarnings || "0") + split.publisherCents),
+              });
+            }
           }
         }
       }
