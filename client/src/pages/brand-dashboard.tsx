@@ -601,8 +601,8 @@ export default function BrandDashboard() {
           <CardContent>
             <div className="text-center py-12 text-muted-foreground">
               <TrendingUp className="h-12 w-12 mx-auto mb-3 opacity-50" />
-              <p>View full audience analytics, demographics, and embed traces</p>
-              <p className="text-sm mb-4">See viewing trends, audience breakdowns, and per-source performance</p>
+              <p>View full performance analytics and embed traces</p>
+              <p className="text-sm mb-4">See viewing trends, peak hours, and per-source performance</p>
               <Link href="/brand/analytics">
                 <Button className="rounded-full gap-2" data-testid="button-view-analytics">
                   <TrendingUp className="h-4 w-4" />
