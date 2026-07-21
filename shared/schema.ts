@@ -176,7 +176,8 @@ export const affiliatePayouts = pgTable("affiliate_payouts", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => users.id),
   amount: decimal("amount", { precision: 10, scale: 2 }).notNull(),
-  status: text("status").default("pending"), // pending, paid
+  status: text("status").default("pending"), // pending | processing | paid | failed
+  stripeTransferId: text("stripe_transfer_id"),
   periodStart: timestamp("period_start"),
   periodEnd: timestamp("period_end"),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
@@ -446,6 +447,7 @@ export const commissionTransactions = pgTable("commission_transactions", {
   status: commissionStatusEnum("status").default("pending"),
   campaignAffiliateId: varchar("campaign_affiliate_id").references(() => campaignAffiliates.id),
   licensePurchaseId: varchar("license_purchase_id").references(() => videoLicensePurchases.id),
+  payoutId: varchar("payout_id").references(() => affiliatePayouts.id),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
 });
 

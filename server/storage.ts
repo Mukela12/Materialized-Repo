@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import { eq, desc, sql, and } from "drizzle-orm";
+import { eq, desc, sql, and, inArray } from "drizzle-orm";
 import { db } from "./db";
 import {
   type User, type InsertUser,
@@ -150,6 +150,9 @@ export interface IStorage {
   // Payouts
   getPayouts(userId: string): Promise<AffiliatePayout[]>;
   createPayout(payout: InsertAffiliatePayout): Promise<AffiliatePayout>;
+  updatePayoutStatus(id: string, status: string, stripeTransferId?: string): Promise<AffiliatePayout | undefined>;
+  getCommissionsByStatus(status: string): Promise<CommissionTransaction[]>;
+  markCommissionsPaid(commissionIds: string[], payoutId: string): Promise<void>;
   
   // Campaigns
   getCampaigns(brandId: string): Promise<Campaign[]>;
@@ -776,6 +779,7 @@ export class MemStorage implements IStorage {
       userId: payout.userId,
       amount: payout.amount,
       status: payout.status ?? "pending",
+      stripeTransferId: payout.stripeTransferId ?? null,
       periodStart: payout.periodStart ?? null,
       periodEnd: payout.periodEnd ?? null,
       createdAt: new Date(),
@@ -1508,6 +1512,7 @@ export class MemStorage implements IStorage {
       status: "pending",
       campaignAffiliateId: transaction.campaignAffiliateId ?? null,
       licensePurchaseId: transaction.licensePurchaseId ?? null,
+      payoutId: transaction.payoutId ?? null,
       createdAt: new Date(),
     };
     this.commissionTransactionsMap.set(id, newTx);
@@ -1519,6 +1524,25 @@ export class MemStorage implements IStorage {
     if (!tx) return undefined;
     const updated = { ...tx, status: status as "pending" | "approved" | "paid" | "rejected" };
     this.commissionTransactionsMap.set(id, updated);
+    return updated;
+  }
+
+  async getCommissionsByStatus(status: string): Promise<CommissionTransaction[]> {
+    return Array.from(this.commissionTransactionsMap.values()).filter(t => t.status === status);
+  }
+
+  async markCommissionsPaid(commissionIds: string[], payoutId: string): Promise<void> {
+    for (const id of commissionIds) {
+      const tx = this.commissionTransactionsMap.get(id);
+      if (tx) this.commissionTransactionsMap.set(id, { ...tx, status: "paid", payoutId } as CommissionTransaction);
+    }
+  }
+
+  async updatePayoutStatus(id: string, status: string, stripeTransferId?: string): Promise<AffiliatePayout | undefined> {
+    const p = this.payouts.get(id);
+    if (!p) return undefined;
+    const updated = { ...p, status, ...(stripeTransferId ? { stripeTransferId } : {}) } as AffiliatePayout;
+    this.payouts.set(id, updated);
     return updated;
   }
 
@@ -2329,6 +2353,26 @@ export class DatabaseStorage implements IStorage {
 
   async updateCommissionTransactionStatus(id: string, status: string): Promise<CommissionTransaction | undefined> {
     const [updated] = await db.update(commissionTransactions).set({ status: status as "pending" | "approved" | "paid" | "rejected" }).where(eq(commissionTransactions.id, id)).returning();
+    return updated;
+  }
+
+  async getCommissionsByStatus(status: string): Promise<CommissionTransaction[]> {
+    return db.select().from(commissionTransactions)
+      .where(eq(commissionTransactions.status, status as "pending" | "approved" | "paid" | "rejected"));
+  }
+
+  async markCommissionsPaid(commissionIds: string[], payoutId: string): Promise<void> {
+    if (commissionIds.length === 0) return;
+    await db.update(commissionTransactions)
+      .set({ status: "paid", payoutId })
+      .where(inArray(commissionTransactions.id, commissionIds));
+  }
+
+  async updatePayoutStatus(id: string, status: string, stripeTransferId?: string): Promise<AffiliatePayout | undefined> {
+    const [updated] = await db.update(affiliatePayouts)
+      .set({ status, ...(stripeTransferId ? { stripeTransferId } : {}) })
+      .where(eq(affiliatePayouts.id, id))
+      .returning();
     return updated;
   }
 
