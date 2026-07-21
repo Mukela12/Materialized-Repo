@@ -5,9 +5,11 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ReferralsTable } from "@/components/ReferralsTable";
 import { Send, CheckCircle, Clock, XCircle, Plus, TrendingUp } from "lucide-react";
+import { useLocation } from "wouter";
 import type { BrandReferral } from "@shared/schema";
 
 export default function Referrals() {
+  const [, navigate] = useLocation();
   const { data: referrals = [], isLoading } = useQuery<BrandReferral[]>({
     queryKey: ["/api/referrals"],
   });
@@ -28,7 +30,7 @@ export default function Referrals() {
             Track and manage your brand referrals to grow the network
           </p>
         </div>
-        <Button className="rounded-full gap-2">
+        <Button className="rounded-full gap-2" onClick={() => navigate("/creator/crm")}>
           <Plus className="h-4 w-4" />
           New Referral
         </Button>

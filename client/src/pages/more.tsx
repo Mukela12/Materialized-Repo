@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import type { User } from "@shared/schema";
+import { useLogout } from "@/hooks/useCurrentUser";
 import {
   UserPen,
   CalendarDays,
@@ -92,6 +93,7 @@ function MenuRow({
 
 export default function More() {
   const [, navigate] = useLocation();
+  const logoutMutation = useLogout();
 
   const { data: user } = useQuery<User>({
     queryKey: ["/api/users/me"],
@@ -216,6 +218,8 @@ export default function More() {
         variant="outline"
         className="w-full gap-2 text-destructive hover:text-destructive"
         data-testid="button-sign-out"
+        onClick={() => logoutMutation.mutate()}
+        disabled={logoutMutation.isPending}
       >
         <LogOut className="h-4 w-4" />
         Sign Out

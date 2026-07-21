@@ -13,6 +13,7 @@ import {
   CheckCircle2
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { Link } from "wouter";
 
 type CampaignAffiliate = {
   id: string;
@@ -128,9 +129,11 @@ export default function AffiliateCampaigns() {
           <CardDescription>
             Browse the Global Library to license videos and start earning commissions.
           </CardDescription>
-          <Button className="mt-4" data-testid="button-browse-library">
-            Browse Library
-          </Button>
+          <Link href="/affiliate/library">
+            <Button className="mt-4" data-testid="button-browse-library">
+              Browse Library
+            </Button>
+          </Link>
         </Card>
       ) : (
         <div className="space-y-4">

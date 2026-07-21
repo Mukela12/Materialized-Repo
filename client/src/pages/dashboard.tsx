@@ -13,10 +13,12 @@ import { CreatorRewardNotification } from "@/components/EarningsNotification";
 import { Eye, DollarSign, Heart, MousePointer, Upload, Play, TrendingUp } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useLocation } from "wouter";
 import type { Video, Brand, User } from "@shared/schema";
 
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState("stats");
+  const [, navigate] = useLocation();
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [demoEarnings, setDemoEarnings] = useState(0);
   const { toast } = useToast();
@@ -229,7 +231,7 @@ export default function Dashboard() {
               <p className="text-muted-foreground max-w-md mx-auto">
                 A portion of your earnings goes to charitable causes. Adjust your contribution rate in settings.
               </p>
-              <Button variant="outline" className="mt-4 rounded-full">
+              <Button variant="outline" className="mt-4 rounded-full" onClick={() => navigate("/creator/settings/subscription")}>
                 Manage Contributions
               </Button>
             </div>
@@ -273,7 +275,7 @@ export default function Dashboard() {
               </p>
             </CardContent>
           </Card>
-          <Card className="hover-elevate cursor-pointer">
+          <Card className="hover-elevate cursor-pointer" onClick={() => navigate("/creator/analytics")}>
             <CardContent className="p-6 text-center">
               <div className="h-12 w-12 mx-auto rounded-xl bg-chart-2/10 flex items-center justify-center mb-3">
                 <Eye className="h-6 w-6 text-chart-2" />
@@ -284,7 +286,7 @@ export default function Dashboard() {
               </p>
             </CardContent>
           </Card>
-          <Card className="hover-elevate cursor-pointer">
+          <Card className="hover-elevate cursor-pointer" onClick={() => setActiveTab("performance")}>
             <CardContent className="p-6 text-center">
               <div className="h-12 w-12 mx-auto rounded-xl bg-chart-3/10 flex items-center justify-center mb-3">
                 <TrendingUp className="h-6 w-6 text-chart-3" />
