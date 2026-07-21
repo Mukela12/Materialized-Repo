@@ -725,55 +725,23 @@ export async function registerRoutes(
 
       const stats = await storage.getVideoStats(user.id);
 
-      const now = new Date();
-      const viewsByDay: { date: string; views: number }[] = [];
-      for (let i = 89; i >= 0; i--) {
-        const d = new Date(now);
-        d.setDate(d.getDate() - i);
-        const dateStr = d.toISOString().split("T")[0];
-        const base = Math.floor(Math.random() * 120) + 30;
-        const weekday = d.getDay();
-        const multiplier = weekday === 0 || weekday === 6 ? 0.7 : 1.0;
-        viewsByDay.push({ date: dateStr, views: Math.round(base * multiplier) });
-      }
+      // Scope all detailed aggregations to this creator's videos.
+      const creatorVideos = await storage.getVideos(user.id);
+      const creatorVideoIds = creatorVideos.map((v) => v.id);
+      const scope = { type: "creator" as const, videoIds: creatorVideoIds };
 
-      const viewsByHour: { hour: number; views: number }[] = [];
-      for (let h = 0; h < 24; h++) {
-        let base = 20;
-        if (h >= 8 && h <= 11) base = 60 + Math.floor(Math.random() * 40);
-        else if (h >= 12 && h <= 14) base = 80 + Math.floor(Math.random() * 50);
-        else if (h >= 17 && h <= 21) base = 100 + Math.floor(Math.random() * 60);
-        else if (h >= 22 || h <= 5) base = 10 + Math.floor(Math.random() * 20);
-        else base = 40 + Math.floor(Math.random() * 30);
-        viewsByHour.push({ hour: h, views: base });
-      }
+      const { viewsByDay, viewsByHour } = await storage.getAnalyticsTimeSeries(scope);
+      const topCountries = await storage.getAnalyticsGeo(scope);
+      const deviceBreakdown = await storage.getAnalyticsDevices(scope);
 
-      const ageBreakdown = [
-        { range: "13-17", percentage: 5 },
-        { range: "18-24", percentage: 28 },
-        { range: "25-34", percentage: 35 },
-        { range: "35-44", percentage: 18 },
-        { range: "45-54", percentage: 9 },
-        { range: "55-64", percentage: 3 },
-        { range: "65+", percentage: 2 },
-      ];
-
-      const genderBreakdown = {
-        male: 42,
-        female: 51,
-        other: 7,
-      };
-
-      const totalViewsNum = stats.totalViews || 0;
-      const totalRevenueNum = stats.totalRevenue || 0;
+      // Real sales metrics from verified purchase events.
       const totalClicksNum = stats.totalClicks || 0;
-      const salesVolumeUnits = totalViewsNum > 0 ? Math.round(totalViewsNum * 0.032) : 0;
-      const averageSpend = salesVolumeUnits > 0 ? +(totalRevenueNum / salesVolumeUnits).toFixed(2) : 0;
+      const { salesVolumeUnits, salesVolumeValue } = await storage.getAnalyticsSalesStats(scope);
+      const averageSpend = salesVolumeUnits > 0 ? +(salesVolumeValue / salesVolumeUnits).toFixed(2) : 0;
       const salesConversionRate = totalClicksNum > 0 ? +((salesVolumeUnits / totalClicksNum) * 100).toFixed(1) : 0;
-      const salesVolumeValue = +(salesVolumeUnits * averageSpend).toFixed(2);
 
       // Get real embed deployment data for this creator's videos
-      const userVideos = await storage.getVideos(user.id);
+      const userVideos = creatorVideos;
       const realEmbedTraces: any[] = [];
       for (const video of userVideos.slice(0, 10)) {
         const deployments = await storage.getEmbedDeploymentsByAffiliate(video.creatorId);
@@ -796,12 +764,10 @@ export async function registerRoutes(
 
       res.json({
         ...stats,
-        topCountries: [],
-        deviceBreakdown: [],
+        topCountries,
+        deviceBreakdown,
         viewsByDay,
         viewsByHour,
-        ageBreakdown,
-        genderBreakdown,
         averageSpend,
         salesConversionRate,
         salesVolumeUnits,
@@ -823,28 +789,13 @@ export async function registerRoutes(
         return res.status(401).json({ error: "User not found" });
       }
 
-      const now = new Date();
-      const viewsByDay: { date: string; views: number }[] = [];
-      for (let i = 89; i >= 0; i--) {
-        const d = new Date(now);
-        d.setDate(d.getDate() - i);
-        const dateStr = d.toISOString().split("T")[0];
-        const base = Math.floor(Math.random() * 200) + 50;
-        const weekday = d.getDay();
-        const multiplier = weekday === 0 || weekday === 6 ? 0.65 : 1.0;
-        viewsByDay.push({ date: dateStr, views: Math.round(base * multiplier) });
-      }
-
-      const viewsByHour: { hour: number; views: number }[] = [];
-      for (let h = 0; h < 24; h++) {
-        let base = 30;
-        if (h >= 8 && h <= 11) base = 80 + Math.floor(Math.random() * 50);
-        else if (h >= 12 && h <= 14) base = 100 + Math.floor(Math.random() * 60);
-        else if (h >= 17 && h <= 21) base = 130 + Math.floor(Math.random() * 70);
-        else if (h >= 22 || h <= 5) base = 15 + Math.floor(Math.random() * 25);
-        else base = 50 + Math.floor(Math.random() * 40);
-        viewsByHour.push({ hour: h, views: base });
-      }
+      // Brand aggregations run platform-wide (unscoped) to stay internally
+      // consistent with the brandViewStats block below. Proper per-brand scoping
+      // is a separate correctness fix.
+      const scope = { type: "brand" as const };
+      const { viewsByDay, viewsByHour } = await storage.getAnalyticsTimeSeries(scope);
+      const topCountries = await storage.getAnalyticsGeo(scope);
+      const deviceBreakdown = await storage.getAnalyticsDevices(scope);
 
       // Get real brand stats from analytics
       const { db } = await import("./db");
@@ -859,22 +810,19 @@ export async function registerRoutes(
       const totalViews = brandViewStats?.totalViews ?? 0;
       const totalClicks = brandViewStats?.totalClicks ?? 0;
       const totalRevenue = brandViewStats?.totalRevenue ?? 0;
-      const salesVolumeUnits = totalViews > 0 ? Math.round(totalViews * 0.035) : 0;
-      const averageSpend = salesVolumeUnits > 0 ? +(totalRevenue / salesVolumeUnits).toFixed(2) : 0;
+      const { salesVolumeUnits, salesVolumeValue } = await storage.getAnalyticsSalesStats(scope);
+      const averageSpend = salesVolumeUnits > 0 ? +(salesVolumeValue / salesVolumeUnits).toFixed(2) : 0;
       const salesConversionRate = totalClicks > 0 ? +((salesVolumeUnits / totalClicks) * 100).toFixed(1) : 0;
-      const salesVolumeValue = +(salesVolumeUnits * averageSpend).toFixed(2);
 
       res.json({
         totalViews,
         totalClicks,
         totalRevenue,
         averageCTR: totalViews > 0 ? +((totalClicks / totalViews) * 100).toFixed(2) : 0,
-        topCountries: [],
-        deviceBreakdown: [],
+        topCountries,
+        deviceBreakdown,
         viewsByDay,
         viewsByHour,
-        ageBreakdown: [],
-        genderBreakdown: { male: 0, female: 0, other: 0 },
         averageSpend,
         salesConversionRate,
         salesVolumeUnits,
@@ -896,28 +844,11 @@ export async function registerRoutes(
         return res.status(401).json({ error: "User not found" });
       }
 
-      const now = new Date();
-      const viewsByDay: { date: string; views: number }[] = [];
-      for (let i = 89; i >= 0; i--) {
-        const d = new Date(now);
-        d.setDate(d.getDate() - i);
-        const dateStr = d.toISOString().split("T")[0];
-        const base = Math.floor(Math.random() * 60) + 10;
-        const weekday = d.getDay();
-        const multiplier = weekday === 0 || weekday === 6 ? 0.6 : 1.0;
-        viewsByDay.push({ date: dateStr, views: Math.round(base * multiplier) });
-      }
-
-      const viewsByHour: { hour: number; views: number }[] = [];
-      for (let h = 0; h < 24; h++) {
-        let base = 8;
-        if (h >= 9 && h <= 12) base = 25 + Math.floor(Math.random() * 20);
-        else if (h >= 13 && h <= 15) base = 35 + Math.floor(Math.random() * 25);
-        else if (h >= 18 && h <= 21) base = 45 + Math.floor(Math.random() * 30);
-        else if (h >= 22 || h <= 6) base = 5 + Math.floor(Math.random() * 10);
-        else base = 15 + Math.floor(Math.random() * 15);
-        viewsByHour.push({ hour: h, views: base });
-      }
+      // Scope all publisher aggregations to this affiliate's events only.
+      const scope = { type: "publisher" as const, affiliateId: user.id };
+      const { viewsByDay, viewsByHour } = await storage.getAnalyticsTimeSeries(scope);
+      const topCountries = await storage.getAnalyticsGeo(scope);
+      const deviceBreakdown = await storage.getAnalyticsDevices(scope);
 
       // Get real embed deployment data for this publisher
       const deployments = await storage.getEmbedDeploymentsByAffiliate(user.id);
@@ -949,30 +880,10 @@ export async function registerRoutes(
         totalClicks: myTotalClicks,
         totalRevenue: myTotalRevenue,
         averageCTR: myTotalViews > 0 ? +((myTotalClicks / myTotalViews) * 100).toFixed(2) : 0,
-        topCountries: [
-          { country: "United States", views: 1200, avgSpend: 4.50 },
-          { country: "United Kingdom", views: 580, avgSpend: 5.00 },
-          { country: "Canada", views: 340, avgSpend: 4.20 },
-          { country: "Australia", views: 280, avgSpend: 5.30 },
-          { country: "Germany", views: 180, avgSpend: 3.90 },
-        ],
-        deviceBreakdown: [
-          { device: "Mobile", percentage: 65 },
-          { device: "Desktop", percentage: 28 },
-          { device: "Tablet", percentage: 7 },
-        ],
+        topCountries,
+        deviceBreakdown,
         viewsByDay,
         viewsByHour,
-        ageBreakdown: [
-          { range: "13-17", percentage: 6 },
-          { range: "18-24", percentage: 30 },
-          { range: "25-34", percentage: 33 },
-          { range: "35-44", percentage: 17 },
-          { range: "45-54", percentage: 8 },
-          { range: "55-64", percentage: 4 },
-          { range: "65+", percentage: 2 },
-        ],
-        genderBreakdown: { male: 38, female: 55, other: 7 },
         averageSpend,
         salesConversionRate,
         salesVolumeUnits: myTotalConversions,
@@ -1004,7 +915,13 @@ export async function registerRoutes(
         }
       }
 
-      const event = await storage.createAnalyticsEvent({ ...data, affiliateId });
+      // Derive geo/device server-side from the request (the embed players only
+      // send videoId/eventType/utmCode/referrerDomain). Prefer server-derived
+      // values but honor any client-supplied ones already on `data`.
+      const device = data.device ?? classifyDevice(req.headers["user-agent"]);
+      const country = data.country ?? deriveCountry(req);
+
+      const event = await storage.createAnalyticsEvent({ ...data, affiliateId, device, country });
 
       if (affiliateId && data.referrerDomain) {
         const videoId = data.videoId;
@@ -4360,4 +4277,30 @@ function generateAffiliateEmbedCode(videoId: string, utmCode: string, baseUrl: s
   return `<!-- Materialized Video Commerce Widget - Affiliate -->
 <div id="vc-widget-${videoId}" data-video-id="${videoId}" data-utm="${utmCode}"></div>
 <script src="${cleanBase}/embed/${videoId}/widget.js?utm=${utmCode}" async></script>`;
+}
+
+// Classify a User-Agent string into a coarse device bucket for analytics.
+// Tablets are checked before phones because tablet UAs (e.g. iPad, Android
+// tablets) frequently also contain "mobile"-adjacent tokens.
+function classifyDevice(userAgent: string | undefined): "Mobile" | "Desktop" | "Tablet" | null {
+  if (!userAgent) return null;
+  const ua = userAgent.toLowerCase();
+  if (/ipad|tablet|(android(?!.*mobile))|kindle|silk|playbook/.test(ua)) return "Tablet";
+  if (/mobile|iphone|ipod|android|blackberry|iemobile|opera mini|windows phone/.test(ua)) return "Mobile";
+  return "Desktop";
+}
+
+// Derive a 2-letter country code from CDN/proxy geo headers when the deployment
+// target provides them (Cloudflare, Vercel, generic). Returns null when unknown
+// so the column stays NULL rather than storing a placeholder.
+function deriveCountry(req: Request): string | null {
+  const header =
+    req.headers["cf-ipcountry"] ||
+    req.headers["x-vercel-ip-country"] ||
+    req.headers["x-country-code"];
+  const value = Array.isArray(header) ? header[0] : header;
+  if (!value) return null;
+  const trimmed = value.trim().toUpperCase();
+  if (!trimmed || trimmed === "XX" || trimmed === "T1") return null;
+  return trimmed;
 }

@@ -83,6 +83,15 @@ import {
   type InsertPlatformSettings,
 } from "@shared/schema";
 
+// Scope for detailed-analytics aggregations. Creator scope filters events to a
+// set of the creator's video ids; publisher scope filters to a single affiliate;
+// brand scope is unscoped (platform-wide) to stay consistent with the existing
+// brand aggregation until proper brand scoping is added.
+export type AnalyticsScope =
+  | { type: "creator"; videoIds: string[] }
+  | { type: "publisher"; affiliateId: string }
+  | { type: "brand" };
+
 export interface IStorage {
   // Users
   getUser(id: string): Promise<User | undefined>;
@@ -149,7 +158,14 @@ export interface IStorage {
     totalRevenue: number;
     averageCTR: number;
   }>;
-  
+  getAnalyticsTimeSeries(scope: AnalyticsScope): Promise<{
+    viewsByDay: { date: string; views: number }[];
+    viewsByHour: { hour: number; views: number }[];
+  }>;
+  getAnalyticsGeo(scope: AnalyticsScope): Promise<{ country: string; views: number; avgSpend: number }[]>;
+  getAnalyticsDevices(scope: AnalyticsScope): Promise<{ device: string; percentage: number }[]>;
+  getAnalyticsSalesStats(scope: AnalyticsScope): Promise<{ salesVolumeUnits: number; salesVolumeValue: number }>;
+
   // Payouts
   getPayouts(userId: string): Promise<AffiliatePayout[]>;
   createPayout(payout: InsertAffiliatePayout): Promise<AffiliatePayout>;
@@ -781,8 +797,102 @@ export class MemStorage implements IStorage {
     }
     
     const averageCTR = totalViews > 0 ? (totalClicks / totalViews) * 100 : 0;
-    
+
     return { totalViews, totalClicks, totalRevenue, averageCTR };
+  }
+
+  // Return the analytics events matching a scope (in-memory equivalent of the
+  // DatabaseStorage scope predicate).
+  private analyticsEventsInScope(scope: AnalyticsScope): AnalyticsEvent[] {
+    const all = Array.from(this.analyticsEvents.values());
+    if (scope.type === "creator") {
+      if (scope.videoIds.length === 0) return [];
+      const ids = new Set(scope.videoIds);
+      return all.filter((e) => ids.has(e.videoId));
+    }
+    if (scope.type === "publisher") {
+      return all.filter((e) => e.affiliateId === scope.affiliateId);
+    }
+    return all;
+  }
+
+  async getAnalyticsTimeSeries(scope: AnalyticsScope): Promise<{
+    viewsByDay: { date: string; views: number }[];
+    viewsByHour: { hour: number; views: number }[];
+  }> {
+    const now = new Date();
+    const viewsByDay: { date: string; views: number }[] = [];
+    const dayIndex: Record<string, number> = {};
+    for (let i = 89; i >= 0; i--) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - i);
+      const dateStr = d.toISOString().split("T")[0];
+      dayIndex[dateStr] = viewsByDay.length;
+      viewsByDay.push({ date: dateStr, views: 0 });
+    }
+    const viewsByHour: { hour: number; views: number }[] = [];
+    for (let h = 0; h < 24; h++) viewsByHour.push({ hour: h, views: 0 });
+
+    const cutoff = new Date(now);
+    cutoff.setDate(cutoff.getDate() - 90);
+    for (const e of this.analyticsEventsInScope(scope)) {
+      if (e.eventType !== "view" || !e.createdAt) continue;
+      const created = new Date(e.createdAt);
+      if (created < cutoff) continue;
+      const dateStr = created.toISOString().split("T")[0];
+      const idx = dayIndex[dateStr];
+      if (idx !== undefined) viewsByDay[idx].views += 1;
+      const h = created.getHours();
+      if (h >= 0 && h < 24) viewsByHour[h].views += 1;
+    }
+    return { viewsByDay, viewsByHour };
+  }
+
+  async getAnalyticsGeo(scope: AnalyticsScope): Promise<{ country: string; views: number; avgSpend: number }[]> {
+    const agg = new Map<string, { views: number; spendSum: number; spendCount: number }>();
+    for (const e of this.analyticsEventsInScope(scope)) {
+      if (!e.country) continue;
+      const row = agg.get(e.country) ?? { views: 0, spendSum: 0, spendCount: 0 };
+      if (e.eventType === "view") row.views += 1;
+      if (e.eventType === "purchase" && e.revenue != null) {
+        row.spendSum += Number(e.revenue) || 0;
+        row.spendCount += 1;
+      }
+      agg.set(e.country, row);
+    }
+    return Array.from(agg.entries())
+      .map(([country, r]) => ({
+        country,
+        views: r.views,
+        avgSpend: r.spendCount > 0 ? Math.round((r.spendSum / r.spendCount) * 100) / 100 : 0,
+      }))
+      .sort((a, b) => b.views - a.views)
+      .slice(0, 5);
+  }
+
+  async getAnalyticsDevices(scope: AnalyticsScope): Promise<{ device: string; percentage: number }[]> {
+    const agg = new Map<string, number>();
+    let total = 0;
+    for (const e of this.analyticsEventsInScope(scope)) {
+      if (e.eventType !== "view" || !e.device) continue;
+      agg.set(e.device, (agg.get(e.device) ?? 0) + 1);
+      total += 1;
+    }
+    if (total === 0) return [];
+    return Array.from(agg.entries())
+      .map(([device, views]) => ({ device, percentage: Math.round((views / total) * 100) }))
+      .sort((a, b) => b.percentage - a.percentage);
+  }
+
+  async getAnalyticsSalesStats(scope: AnalyticsScope): Promise<{ salesVolumeUnits: number; salesVolumeValue: number }> {
+    let salesVolumeUnits = 0;
+    let salesVolumeValue = 0;
+    for (const e of this.analyticsEventsInScope(scope)) {
+      if (e.eventType !== "purchase") continue;
+      salesVolumeUnits += 1;
+      salesVolumeValue += Number(e.revenue) || 0;
+    }
+    return { salesVolumeUnits, salesVolumeValue: Math.round(salesVolumeValue * 100) / 100 };
   }
 
   // Payouts
@@ -2016,6 +2126,130 @@ export class DatabaseStorage implements IStorage {
     return { totalViews, totalClicks, totalRevenue: Math.round(totalRevenue * 100) / 100, averageCTR };
   }
 
+  // Build a SQL scope predicate for an analytics aggregation, or `null` when the
+  // scope resolves to "no rows possible" (e.g. a creator with zero videos) so
+  // callers can short-circuit and return empty results.
+  private analyticsScopeSql(scope: AnalyticsScope): ReturnType<typeof sql> | null {
+    if (scope.type === "creator") {
+      if (scope.videoIds.length === 0) return null;
+      return sql`${analyticsEvents.videoId} IN ${scope.videoIds}`;
+    }
+    if (scope.type === "publisher") {
+      return sql`${analyticsEvents.affiliateId} = ${scope.affiliateId}`;
+    }
+    // brand: platform-wide (unscoped)
+    return sql`TRUE`;
+  }
+
+  async getAnalyticsTimeSeries(scope: AnalyticsScope): Promise<{
+    viewsByDay: { date: string; views: number }[];
+    viewsByHour: { hour: number; views: number }[];
+  }> {
+    const scopeSql = this.analyticsScopeSql(scope);
+    // Zero-filled 90-day contiguous array (client slices the tail per range).
+    const now = new Date();
+    const viewsByDay: { date: string; views: number }[] = [];
+    const dayIndex: Record<string, number> = {};
+    for (let i = 89; i >= 0; i--) {
+      const d = new Date(now);
+      d.setDate(d.getDate() - i);
+      const dateStr = d.toISOString().split("T")[0];
+      dayIndex[dateStr] = viewsByDay.length;
+      viewsByDay.push({ date: dateStr, views: 0 });
+    }
+    // Zero-filled 24-hour buckets so the heatmap always has 24 bars.
+    const viewsByHour: { hour: number; views: number }[] = [];
+    for (let h = 0; h < 24; h++) viewsByHour.push({ hour: h, views: 0 });
+
+    if (!scopeSql) return { viewsByDay, viewsByHour };
+
+    const dayRows = await db
+      .select({
+        date: sql<string>`to_char(date_trunc('day', ${analyticsEvents.createdAt}), 'YYYY-MM-DD')`,
+        views: sql<number>`count(*)::int`,
+      })
+      .from(analyticsEvents)
+      .where(sql`${analyticsEvents.eventType} = 'view' AND ${analyticsEvents.createdAt} >= now() - interval '90 days' AND ${scopeSql}`)
+      .groupBy(sql`date_trunc('day', ${analyticsEvents.createdAt})`);
+    for (const r of dayRows) {
+      const idx = dayIndex[r.date];
+      if (idx !== undefined) viewsByDay[idx].views = Number(r.views) || 0;
+    }
+
+    const hourRows = await db
+      .select({
+        hour: sql<number>`extract(hour from ${analyticsEvents.createdAt})::int`,
+        views: sql<number>`count(*)::int`,
+      })
+      .from(analyticsEvents)
+      .where(sql`${analyticsEvents.eventType} = 'view' AND ${scopeSql}`)
+      .groupBy(sql`extract(hour from ${analyticsEvents.createdAt})`);
+    for (const r of hourRows) {
+      const h = Number(r.hour);
+      if (h >= 0 && h < 24) viewsByHour[h].views = Number(r.views) || 0;
+    }
+
+    return { viewsByDay, viewsByHour };
+  }
+
+  async getAnalyticsGeo(scope: AnalyticsScope): Promise<{ country: string; views: number; avgSpend: number }[]> {
+    const scopeSql = this.analyticsScopeSql(scope);
+    if (!scopeSql) return [];
+    const rows = await db
+      .select({
+        country: analyticsEvents.country,
+        views: sql<number>`count(*) FILTER (WHERE ${analyticsEvents.eventType} = 'view')::int`,
+        avgSpend: sql<number>`COALESCE(AVG(CASE WHEN ${analyticsEvents.eventType} = 'purchase' THEN ${analyticsEvents.revenue}::numeric END), 0)::float`,
+      })
+      .from(analyticsEvents)
+      .where(sql`${analyticsEvents.country} IS NOT NULL AND ${scopeSql}`)
+      .groupBy(analyticsEvents.country)
+      .orderBy(sql`count(*) FILTER (WHERE ${analyticsEvents.eventType} = 'view') DESC`)
+      .limit(5);
+    return rows.map((r) => ({
+      country: r.country || "Unknown",
+      views: Number(r.views) || 0,
+      avgSpend: Math.round((Number(r.avgSpend) || 0) * 100) / 100,
+    }));
+  }
+
+  async getAnalyticsDevices(scope: AnalyticsScope): Promise<{ device: string; percentage: number }[]> {
+    const scopeSql = this.analyticsScopeSql(scope);
+    if (!scopeSql) return [];
+    const rows = await db
+      .select({
+        device: analyticsEvents.device,
+        views: sql<number>`count(*)::int`,
+      })
+      .from(analyticsEvents)
+      .where(sql`${analyticsEvents.eventType} = 'view' AND ${analyticsEvents.device} IS NOT NULL AND ${scopeSql}`)
+      .groupBy(analyticsEvents.device);
+    const total = rows.reduce((s, r) => s + (Number(r.views) || 0), 0);
+    if (total === 0) return [];
+    return rows
+      .map((r) => ({
+        device: r.device || "Unknown",
+        percentage: Math.round(((Number(r.views) || 0) / total) * 100),
+      }))
+      .sort((a, b) => b.percentage - a.percentage);
+  }
+
+  async getAnalyticsSalesStats(scope: AnalyticsScope): Promise<{ salesVolumeUnits: number; salesVolumeValue: number }> {
+    const scopeSql = this.analyticsScopeSql(scope);
+    if (!scopeSql) return { salesVolumeUnits: 0, salesVolumeValue: 0 };
+    const [row] = await db
+      .select({
+        units: sql<number>`count(*)::int`,
+        value: sql<number>`COALESCE(SUM(${analyticsEvents.revenue}::numeric), 0)::float`,
+      })
+      .from(analyticsEvents)
+      .where(sql`${analyticsEvents.eventType} = 'purchase' AND ${scopeSql}`);
+    return {
+      salesVolumeUnits: Number(row?.units) || 0,
+      salesVolumeValue: Math.round((Number(row?.value) || 0) * 100) / 100,
+    };
+  }
+
   // Payouts
   async getPayouts(userId: string): Promise<AffiliatePayout[]> {
     return db.select().from(affiliatePayouts).where(eq(affiliatePayouts.userId, userId));
@@ -2053,13 +2287,16 @@ export class DatabaseStorage implements IStorage {
 
   async getCampaignStats(brandId: string): Promise<{ totalCampaigns: number; activeCampaigns: number; totalBudget: number; totalSpent: number; totalRevenue: number; averageROI: number }> {
     const allCampaigns = await this.getCampaigns(brandId);
+    const totalSpent = allCampaigns.reduce((sum, c) => sum + parseFloat(c.spentAmount || "0"), 0);
+    const totalRevenue = allCampaigns.reduce((sum, c) => sum + parseFloat(c.actualRevenue || "0"), 0);
+    const averageROI = totalSpent > 0 ? Math.round(((totalRevenue - totalSpent) / totalSpent) * 10000) / 100 : 0;
     return {
       totalCampaigns: allCampaigns.length,
       activeCampaigns: allCampaigns.filter(c => c.status === "active").length,
       totalBudget: allCampaigns.reduce((sum, c) => sum + parseFloat(c.budget || "0"), 0),
-      totalSpent: 0,
-      totalRevenue: 0,
-      averageROI: 0,
+      totalSpent: Math.round(totalSpent * 100) / 100,
+      totalRevenue: Math.round(totalRevenue * 100) / 100,
+      averageROI,
     };
   }
 

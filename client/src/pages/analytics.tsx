@@ -23,7 +23,6 @@ import {
   Globe,
   Smartphone,
   Monitor,
-  Users,
   ShoppingCart,
   Percent,
   Package,
@@ -65,8 +64,6 @@ interface DetailedStats {
   deviceBreakdown: { device: string; percentage: number }[];
   viewsByDay: { date: string; views: number }[];
   viewsByHour: { hour: number; views: number }[];
-  ageBreakdown: { range: string; percentage: number }[];
-  genderBreakdown: { male: number; female: number; other: number };
   averageSpend: number;
   salesConversionRate: number;
   salesVolumeUnits: number;
@@ -138,15 +135,9 @@ export default function Analytics() {
     totalRevenue: 0,
     averageCTR: 0,
     topCountries: [],
-    deviceBreakdown: [
-      { device: "Mobile", percentage: 62 },
-      { device: "Desktop", percentage: 31 },
-      { device: "Tablet", percentage: 7 },
-    ],
+    deviceBreakdown: [],
     viewsByDay: [],
     viewsByHour: [],
-    ageBreakdown: [],
-    genderBreakdown: { male: 0, female: 0, other: 0 },
     averageSpend: 0,
     salesConversionRate: 0,
     salesVolumeUnits: 0,
@@ -258,7 +249,7 @@ export default function Analytics() {
       <Tabs defaultValue="overview" className="space-y-6">
         <TabsList>
           <TabsTrigger value="overview" data-testid="tab-overview">Overview</TabsTrigger>
-          <TabsTrigger value="audience" data-testid="tab-audience">Audience</TabsTrigger>
+          <TabsTrigger value="audience" data-testid="tab-audience">Engagement</TabsTrigger>
           <TabsTrigger value="sources" data-testid="tab-sources">Publishing Sources</TabsTrigger>
           {showAffiliateTable && (
             <>
@@ -334,70 +325,6 @@ export default function Analytics() {
         </TabsContent>
 
         <TabsContent value="audience" className="space-y-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Users className="h-5 w-5" />
-                  Age Breakdown
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-3" data-testid="chart-age-breakdown">
-                  {currentStats.ageBreakdown.map((age) => (
-                    <div key={age.range} className="flex items-center gap-3" data-testid={`row-age-${age.range}`}>
-                      <span className="text-sm text-muted-foreground w-12 text-right">{age.range}</span>
-                      <div className="flex-1 h-6 bg-muted rounded-full overflow-hidden">
-                        <div
-                          className="h-full bg-primary rounded-full flex items-center justify-end pr-2 transition-all"
-                          style={{ width: `${Math.max(age.percentage, 5)}%` }}
-                        >
-                          {age.percentage >= 10 && (
-                            <span className="text-xs font-medium text-primary-foreground">{age.percentage}%</span>
-                          )}
-                        </div>
-                      </div>
-                      {age.percentage < 10 && (
-                        <span className="text-xs text-muted-foreground w-8">{age.percentage}%</span>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Users className="h-5 w-5" />
-                  Gender Split
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-6" data-testid="chart-gender-breakdown">
-                  {[
-                    { label: "Female", value: currentStats.genderBreakdown.female, color: "bg-pink-500" },
-                    { label: "Male", value: currentStats.genderBreakdown.male, color: "bg-blue-500" },
-                    { label: "Other", value: currentStats.genderBreakdown.other, color: "bg-purple-500" },
-                  ].map((g) => (
-                    <div key={g.label} className="space-y-2" data-testid={`row-gender-${g.label.toLowerCase()}`}>
-                      <div className="flex items-center justify-between">
-                        <span className="font-medium text-sm">{g.label}</span>
-                        <span className="text-2xl font-bold">{g.value}%</span>
-                      </div>
-                      <div className="h-3 bg-muted rounded-full overflow-hidden">
-                        <div
-                          className={`h-full ${g.color} rounded-full transition-all`}
-                          style={{ width: `${g.value}%` }}
-                        />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -611,26 +538,43 @@ export default function Analytics() {
         </TabsContent>
 
         <TabsContent value="devices" className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {currentStats.deviceBreakdown.map((device) => {
-              const Icon = device.device === "Mobile"
-                ? Smartphone
-                : device.device === "Desktop"
-                ? Monitor
-                : Smartphone;
-              return (
-                <Card key={device.device}>
-                  <CardContent className="p-6 text-center">
-                    <div className="h-12 w-12 mx-auto rounded-xl bg-primary/10 flex items-center justify-center mb-3">
-                      <Icon className="h-6 w-6 text-primary" />
-                    </div>
-                    <p className="text-3xl font-bold" data-testid={`text-device-${device.device.toLowerCase()}`}>{device.percentage}%</p>
-                    <p className="text-muted-foreground mt-1">{device.device}</p>
-                  </CardContent>
-                </Card>
-              );
-            })}
-          </div>
+          {currentStats.deviceBreakdown.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {currentStats.deviceBreakdown.map((device) => {
+                const Icon = device.device === "Mobile"
+                  ? Smartphone
+                  : device.device === "Desktop"
+                  ? Monitor
+                  : Smartphone;
+                return (
+                  <Card key={device.device}>
+                    <CardContent className="p-6 text-center">
+                      <div className="h-12 w-12 mx-auto rounded-xl bg-primary/10 flex items-center justify-center mb-3">
+                        <Icon className="h-6 w-6 text-primary" />
+                      </div>
+                      <p className="text-3xl font-bold" data-testid={`text-device-${device.device.toLowerCase()}`}>{device.percentage}%</p>
+                      <p className="text-muted-foreground mt-1">{device.device}</p>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          ) : (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Smartphone className="h-5 w-5" />
+                  Device Breakdown
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-center py-12 text-muted-foreground">
+                  <Smartphone className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                  <p>No device data yet</p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
       </Tabs>
     </div>

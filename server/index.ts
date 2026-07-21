@@ -191,6 +191,10 @@ app.post(
 
 app.use(
   express.json({
+    // base64-encoded PDFs/images (e.g. brand-guideline uploads) are sent in the
+    // JSON body and routinely exceed the body-parser default of 100kb; raise the
+    // ceiling so those requests reach the handler instead of failing with 413.
+    limit: "25mb",
     verify: (req, _res, buf) => {
       req.rawBody = buf;
     },
