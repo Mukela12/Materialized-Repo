@@ -2,6 +2,7 @@ import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { recordSaleCommissions } from "./commissions";
+import { appendUtm } from "./embedUtils";
 import { 
   insertVideoSchema, 
   insertBrandReferralSchema, 
@@ -1257,7 +1258,7 @@ export async function registerRoutes(
       if (connection.platform === "shopify") {
         const { fetchShopifyProducts, mapShopifyToLocalProducts } = await import("./integrations/shopifyService");
         const shopifyProducts = await fetchShopifyProducts(connection.storeDomain, connection.accessToken);
-        importedProducts = mapShopifyToLocalProducts(shopifyProducts, userBrand.id);
+        importedProducts = mapShopifyToLocalProducts(shopifyProducts, userBrand.id, connection.storeDomain);
       } else if (connection.platform === "woocommerce") {
         const { fetchWooCommerceProducts, mapWooToLocalProducts } = await import("./integrations/woocommerceService");
         const [consumerKey, consumerSecret] = connection.accessToken.split(":");
@@ -1265,20 +1266,29 @@ export async function registerRoutes(
         importedProducts = mapWooToLocalProducts(wooProducts, userBrand.id);
       }
 
-      // Upsert products
+      // Upsert products: skip any whose SKU (or name, when no SKU) already exists
+      // for this brand, so re-syncing doesn't create duplicates.
+      const existingProducts = await storage.getProducts(userBrand.id);
+      const seenKeys = new Set(
+        existingProducts.map(p => (p.sku || p.name || "").toLowerCase()).filter(Boolean),
+      );
       let created = 0;
+      let skipped = 0;
       for (const product of importedProducts) {
+        const key = (product.sku || product.name || "").toLowerCase();
+        if (key && seenKeys.has(key)) { skipped++; continue; }
         await storage.createProduct(product as any);
+        if (key) seenKeys.add(key);
         created++;
       }
 
       // Update connection metadata
       await db.update(storeConnections).set({
         lastSyncAt: new Date(),
-        productCount: created,
+        productCount: existingProducts.length + created,
       }).where(eq(storeConnections.id, connection.id));
 
-      res.json({ synced: created, total: importedProducts.length });
+      res.json({ synced: created, skipped, total: importedProducts.length });
     } catch (error) {
       console.error("Store sync error:", error);
       res.status(500).json({ error: "Failed to sync products" });
@@ -3721,7 +3731,7 @@ Identify which products from the catalog are most likely to appear or be feature
         name: (o.name || "").replace(/[<>"'&]/g, ""),
         imageUrl: o.imageUrl,
         price: o.price,
-        productUrl: o.productUrl,
+        productUrl: appendUtm(o.productUrl, utm),
         brandName: (o.brandName || "").replace(/[<>"'&]/g, ""),
       }));
 
@@ -3821,7 +3831,7 @@ Identify which products from the catalog are most likely to appear or be feature
         name: (o.name || "").replace(/"/g, '\\"'),
         imageUrl: o.imageUrl,
         price: o.price,
-        productUrl: o.productUrl,
+        productUrl: appendUtm(o.productUrl, utm),
       }));
 
       const apiBase = `${req.protocol}://${req.get("host")}`;
