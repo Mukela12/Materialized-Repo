@@ -1593,6 +1593,12 @@ export class MemStorage implements IStorage {
       }
     }
 
+    // Default self-attribution: a video's own utmCode attributes to its creator.
+    const videoMatch = Array.from(this.videos.values()).find((v) => v.utmCode === utmCode);
+    if (videoMatch) {
+      return { affiliateId: videoMatch.creatorId, campaignAffiliateId: null, videoId: videoMatch.id, commissionRate: "8.00" };
+    }
+
     return null;
   }
 
@@ -2469,6 +2475,16 @@ export class DatabaseStorage implements IStorage {
       .where(eq(videoLicensePurchases.utmCode, utmCode));
     if (lpMatch && lpMatch.videoId) {
       return { affiliateId: lpMatch.affiliateId, campaignAffiliateId: null, videoId: lpMatch.videoId, commissionRate: lpMatch.commissionRate || "10.00" };
+    }
+
+    // Default self-attribution: a video's own utmCode attributes the sale to its
+    // creator, so an ordinary (non-campaign) video still pays out to the creator.
+    const [videoMatch] = await db
+      .select({ id: videos.id, creatorId: videos.creatorId })
+      .from(videos)
+      .where(eq(videos.utmCode, utmCode));
+    if (videoMatch) {
+      return { affiliateId: videoMatch.creatorId, campaignAffiliateId: null, videoId: videoMatch.id, commissionRate: "8.00" };
     }
 
     return null;

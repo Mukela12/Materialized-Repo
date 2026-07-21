@@ -342,6 +342,13 @@ export function VideoUploadModal({
           status: "published",
           carouselSettings: JSON.stringify(carouselSettings),
         });
+        // Turn the detected products into clickable overlays so the published
+        // video is actually shoppable (non-fatal if there are no detections).
+        try {
+          await apiRequest("POST", `/api/videos/${createdVideoId}/overlays/import-detections`, {});
+        } catch {
+          /* video still publishes even if overlay import fails */
+        }
         toast({ title: "Video Published!", description: "Your video with product carousel is now live." });
       } else {
         // Fallback if no video was created

@@ -2111,7 +2111,12 @@ Identify which products from the catalog are most likely to appear or be feature
   });
 
   app.post("/api/videos/:id/overlays", async (req, res) => {
-    if (!req.user) return res.status(401).json({ error: "Not authenticated" });
+    const uid = (req.session as any)?.userId;
+    if (!uid) return res.status(401).json({ error: "Not authenticated" });
+    const ownerVideo = await storage.getVideo(req.params.id);
+    if (!ownerVideo) return res.status(404).json({ error: "Video not found" });
+    const overlayActor = await storage.getUser(uid);
+    if (!overlayActor?.isAdmin && ownerVideo.creatorId !== uid) return res.status(403).json({ error: "Forbidden" });
     try {
       const { name, productUrl, imageUrl, price, brandName, position, startTime, endTime, source, productId } = req.body;
       if (!name) return res.status(400).json({ error: "name is required" });
@@ -2135,7 +2140,12 @@ Identify which products from the catalog are most likely to appear or be feature
   });
 
   app.patch("/api/videos/:id/overlays/:overlayId", async (req, res) => {
-    if (!req.user) return res.status(401).json({ error: "Not authenticated" });
+    const uid = (req.session as any)?.userId;
+    if (!uid) return res.status(401).json({ error: "Not authenticated" });
+    const ownerVideo = await storage.getVideo(req.params.id);
+    if (!ownerVideo) return res.status(404).json({ error: "Video not found" });
+    const overlayActor = await storage.getUser(uid);
+    if (!overlayActor?.isAdmin && ownerVideo.creatorId !== uid) return res.status(403).json({ error: "Forbidden" });
     try {
       const id = parseInt(req.params.overlayId, 10);
       const { position, startTime, endTime, name, productUrl, imageUrl, price, brandName } = req.body;
@@ -2157,7 +2167,12 @@ Identify which products from the catalog are most likely to appear or be feature
   });
 
   app.delete("/api/videos/:id/overlays/:overlayId", async (req, res) => {
-    if (!req.user) return res.status(401).json({ error: "Not authenticated" });
+    const uid = (req.session as any)?.userId;
+    if (!uid) return res.status(401).json({ error: "Not authenticated" });
+    const ownerVideo = await storage.getVideo(req.params.id);
+    if (!ownerVideo) return res.status(404).json({ error: "Video not found" });
+    const overlayActor = await storage.getUser(uid);
+    if (!overlayActor?.isAdmin && ownerVideo.creatorId !== uid) return res.status(403).json({ error: "Forbidden" });
     try {
       const id = parseInt(req.params.overlayId, 10);
       await storage.deleteVideoProductOverlay(id);
@@ -2169,7 +2184,12 @@ Identify which products from the catalog are most likely to appear or be feature
 
   // Import AI-detected products as overlays for a video
   app.post("/api/videos/:id/overlays/import-detections", async (req, res) => {
-    if (!req.user) return res.status(401).json({ error: "Not authenticated" });
+    const uid = (req.session as any)?.userId;
+    if (!uid) return res.status(401).json({ error: "Not authenticated" });
+    const ownerVideo = await storage.getVideo(req.params.id);
+    if (!ownerVideo) return res.status(404).json({ error: "Video not found" });
+    const overlayActor = await storage.getUser(uid);
+    if (!overlayActor?.isAdmin && ownerVideo.creatorId !== uid) return res.status(403).json({ error: "Forbidden" });
     try {
       const results = await storage.getDetectionResultsByVideo(req.params.id);
       const created = [];
