@@ -81,6 +81,28 @@ export async function sendVerificationEmail(opts: {
   await sendEmail(opts.email, "Verify your Materialized account", baseTemplate(body));
 }
 
+// ── Password Reset ───────────────────────────────────────────────────────────
+
+export async function sendPasswordResetEmail(opts: {
+  email: string;
+  displayName: string;
+  resetUrl: string;
+}): Promise<void> {
+  const firstName = opts.displayName.split(" ")[0];
+  const body = `
+    <h1>Reset your password, ${firstName}</h1>
+    <p>
+      We received a request to reset your Materialized password. Click the button
+      below to choose a new one.
+    </p>
+    <div class="cta-wrap">
+      <a href="${opts.resetUrl}" class="cta">Reset Password</a>
+    </div>
+    <p class="note">This link expires in 1 hour. If you didn't request this, you can safely ignore this email &mdash; your password won't change.</p>
+  `;
+  await sendEmail(opts.email, "Reset your Materialized password", baseTemplate(body));
+}
+
 // ── Brand Outreach ─────────────────────────────────────────────────────────
 
 export async function sendBrandOutreachEmail(opts: {
@@ -309,6 +331,181 @@ export async function sendContactEnquiryEmail(opts: {
     `[Materialized] New ${roleLabel} Enquiry — ${opts.firstName} ${opts.surname}`,
     baseTemplate(body),
     opts.email
+  );
+}
+
+// ── Creator Invitation (brand → creator) ────────────────────────────────────
+
+export async function sendCreatorInvitationEmail(opts: {
+  creatorName: string;
+  creatorEmail: string;
+  brandName: string;
+  category?: string | null;
+  message?: string | null;
+  acceptUrl: string;
+}): Promise<void> {
+  const firstName = opts.creatorName.split(" ")[0];
+  const body = `
+    <h1>You're invited, ${firstName}!</h1>
+    <p>
+      <strong>${opts.brandName}</strong> would love to collaborate with you on Materialized &mdash;
+      the platform that turns your videos into fully shoppable, commission-earning experiences.
+    </p>
+    ${opts.category ? `<div class="video-box"><p><strong>Content category:</strong> ${opts.category}</p></div>` : ""}
+    ${opts.message ? `<p style="font-style:italic;border-left:3px solid #677A67;padding-left:14px;color:#444;">"${opts.message}"</p>` : ""}
+    <p>
+      Join Materialized to start making your content shoppable and earning commissions on every sale
+      you drive.
+    </p>
+    <div class="cta-wrap">
+      <a href="${opts.acceptUrl}" class="cta">Join Materialized</a>
+    </div>
+    <p class="note">If you weren't expecting this invitation, you can safely ignore this email.</p>
+  `;
+  await sendEmail(
+    opts.creatorEmail,
+    `${opts.brandName} invited you to collaborate on Materialized`,
+    baseTemplate(body)
+  );
+}
+
+// ── Affiliate / Publisher Invitation ─────────────────────────────────────────
+
+export async function sendAffiliateInvitationEmail(opts: {
+  affiliateName: string;
+  affiliateEmail: string;
+  inviterName: string;
+  commissionRate: string;
+  message?: string | null;
+  acceptUrl: string;
+}): Promise<void> {
+  const firstName = opts.affiliateName.split(" ")[0];
+  const body = `
+    <h1>You've been invited, ${firstName}!</h1>
+    <p>
+      <strong>${opts.inviterName}</strong> has invited you to join their affiliate programme on
+      Materialized &mdash; earn commissions by promoting shoppable videos and driving sales.
+    </p>
+    <div class="video-box">
+      <p><strong>Your commission rate:</strong> ${opts.commissionRate}%</p>
+    </div>
+    ${opts.message ? `<p style="font-style:italic;border-left:3px solid #677A67;padding-left:14px;color:#444;">"${opts.message}"</p>` : ""}
+    <p>
+      Click the button below to accept your invitation and set up your affiliate account.
+    </p>
+    <div class="cta-wrap">
+      <a href="${opts.acceptUrl}" class="cta">Accept Invitation</a>
+    </div>
+    <p class="note">If you weren't expecting this invitation, you can safely ignore this email.</p>
+  `;
+  await sendEmail(
+    opts.affiliateEmail,
+    `${opts.inviterName} invited you to join their affiliate programme on Materialized`,
+    baseTemplate(body)
+  );
+}
+
+// ── Referral (creator → brand PR contact) ────────────────────────────────────
+
+export async function sendReferralEmail(opts: {
+  prContactName: string;
+  prContactEmail: string;
+  creatorDisplayName: string;
+  brandName: string;
+  message?: string | null;
+  signupUrl: string;
+}): Promise<void> {
+  const firstName = opts.prContactName.split(" ")[0];
+  const body = `
+    <h1>Hey ${firstName},</h1>
+    <p>
+      <strong>${opts.creatorDisplayName}</strong> thinks <strong>${opts.brandName}</strong> would be a
+      great fit for Materialized &mdash; the platform that turns creator videos into fully shoppable,
+      commission-tracked experiences.
+    </p>
+    ${opts.message ? `<p style="font-style:italic;border-left:3px solid #677A67;padding-left:14px;color:#444;">"${opts.message}"</p>` : ""}
+    <p>
+      Get started below to see how ${opts.brandName} can turn creator content into a new,
+      fully tracked sales channel.
+    </p>
+    <div class="cta-wrap">
+      <a href="${opts.signupUrl}" class="cta">Get Started with Materialized</a>
+    </div>
+    <p class="note">If you weren't expecting this email, you can safely ignore it.</p>
+  `;
+  await sendEmail(
+    opts.prContactEmail,
+    `${opts.creatorDisplayName} thinks ${opts.brandName} should be on Materialized`,
+    baseTemplate(body)
+  );
+}
+
+// ── Payout Executed (to the affiliate who got paid) ──────────────────────────
+
+export async function sendPayoutExecutedEmail(opts: {
+  affiliateName: string;
+  affiliateEmail: string;
+  amount: string;
+  transferId: string;
+  payoutId: string;
+}): Promise<void> {
+  const firstName = opts.affiliateName.split(" ")[0];
+  const body = `
+    <h1>You've been paid, ${firstName}!</h1>
+    <p>
+      Great news &mdash; your Materialized affiliate payout has been processed and is on its way to
+      your connected account.
+    </p>
+    <div class="video-box" style="text-align:center;">
+      <p style="font-size:28px;font-weight:800;color:#202120;margin:0;">${opts.amount}</p>
+      <p style="margin-top:4px;color:#677A67;font-weight:600;">Payout amount</p>
+    </div>
+    <div class="video-box">
+      <p><strong>Payout reference:</strong> ${opts.payoutId}</p>
+      <p style="margin-top:8px;"><strong>Transfer reference:</strong> ${opts.transferId}</p>
+    </div>
+    <p class="note">Funds are typically available in your account within a few business days, depending on your bank.</p>
+  `;
+  await sendEmail(
+    opts.affiliateEmail,
+    `Your Materialized payout of ${opts.amount} is on its way`,
+    baseTemplate(body)
+  );
+}
+
+// ── Commission Approved (to the affiliate) ───────────────────────────────────
+
+export async function sendCommissionApprovedEmail(opts: {
+  affiliateName: string;
+  affiliateEmail: string;
+  commissionAmount: string;
+  saleAmount: string;
+  commissionRate: string;
+}): Promise<void> {
+  const firstName = opts.affiliateName.split(" ")[0];
+  const body = `
+    <h1>Commission approved, ${firstName}!</h1>
+    <p>
+      One of your commissions on Materialized has been approved and is now eligible for payout.
+      Here are the details:
+    </p>
+    <div class="video-box" style="text-align:center;">
+      <p style="font-size:28px;font-weight:800;color:#202120;margin:0;">${opts.commissionAmount}</p>
+      <p style="margin-top:4px;color:#677A67;font-weight:600;">Approved commission</p>
+    </div>
+    <div class="video-box">
+      <p><strong>Sale amount:</strong> ${opts.saleAmount}</p>
+      <p style="margin-top:8px;"><strong>Commission rate:</strong> ${opts.commissionRate}%</p>
+    </div>
+    <p>
+      Approved commissions are batched and paid out to your connected account automatically. Keep up
+      the great work!
+    </p>
+  `;
+  await sendEmail(
+    opts.affiliateEmail,
+    `Your Materialized commission of ${opts.commissionAmount} has been approved`,
+    baseTemplate(body)
   );
 }
 

@@ -90,6 +90,7 @@ export interface IStorage {
   getUserByEmail(email: string): Promise<User | undefined>;
   getUserByStripeCustomerId(customerId: string): Promise<User | undefined>;
   getUserByVerificationToken(token: string): Promise<User | undefined>;
+  getUserByPasswordResetTokenHash(tokenHash: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
   updateUser(id: string, data: Partial<InsertUser>): Promise<User | undefined>;
   
@@ -419,6 +420,10 @@ export class MemStorage implements IStorage {
 
   async getUserByVerificationToken(token: string): Promise<User | undefined> {
     return Array.from(this.users.values()).find((u) => u.emailVerificationToken === token);
+  }
+
+  async getUserByPasswordResetTokenHash(tokenHash: string): Promise<User | undefined> {
+    return Array.from(this.users.values()).find((u) => (u as any).passwordResetTokenHash === tokenHash);
   }
 
   async createUser(user: InsertUser): Promise<User> {
@@ -1778,6 +1783,11 @@ export class DatabaseStorage implements IStorage {
 
   async getUserByVerificationToken(token: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.emailVerificationToken, token));
+    return user;
+  }
+
+  async getUserByPasswordResetTokenHash(tokenHash: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.passwordResetTokenHash, tokenHash));
     return user;
   }
 

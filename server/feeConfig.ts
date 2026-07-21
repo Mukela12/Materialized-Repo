@@ -57,6 +57,24 @@ export function getPlatformCurrency(): string {
   return (process.env.PLATFORM_CURRENCY || "usd").toLowerCase();
 }
 
+/**
+ * Format a decimal-string (or number) amount for human display using the
+ * configured platform currency, e.g. "12.50" → "$12.50" (usd) / "€12.50" (eur).
+ * Falls back to "<CODE> 12.50" for currencies Intl can't symbolise.
+ */
+export function formatMoney(amount: string | number, currency: string = getPlatformCurrency()): string {
+  const n = typeof amount === "string" ? parseFloat(amount) : amount;
+  const value = Number.isFinite(n) ? n : 0;
+  try {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: currency.toUpperCase(),
+    }).format(value);
+  } catch {
+    return `${currency.toUpperCase()} ${value.toFixed(2)}`;
+  }
+}
+
 /** Admin-editable platform settings row (all optional; null → fall back to defaults). */
 export interface PlatformFeeSettings {
   marketplaceFeePct?: number | string | null;
