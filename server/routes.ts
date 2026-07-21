@@ -3394,7 +3394,7 @@ Identify which products from the catalog are most likely to appear or be feature
         .set({ isAdmin: true })
         .where((await import("drizzle-orm")).eq((await import("@shared/schema")).users.id, userId))
         .returning();
-      res.json({ success: true, user: updated });
+      res.json({ success: true, user: sanitizeUser(updated) });
     } catch (err) {
       res.status(500).json({ error: "Failed to make admin" });
     }
