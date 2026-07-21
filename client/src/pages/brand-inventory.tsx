@@ -21,7 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Package, Link2, Plus, RefreshCw, Code2, UploadCloud, X, AlertTriangle, ExternalLink, ImageIcon, Video } from "lucide-react";
+import { Package, Link2, Plus, RefreshCw, Code2, UploadCloud, X, AlertTriangle, ExternalLink, ImageIcon, Video, Trash2 } from "lucide-react";
 import { SiShopify, SiWoocommerce, SiBigcommerce, SiMagento, SiGoogledrive, SiDropbox } from "react-icons/si";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -53,25 +53,30 @@ function AddProductSheet({
   onClose,
   isApiConnected,
   brandId,
+  product,
 }: {
   open: boolean;
   onClose: () => void;
   isApiConnected: boolean;
   brandId?: string;
+  product?: Product;
 }) {
   const { toast } = useToast();
   const { uploadFile } = useUpload();
 
-  // Form fields
-  const [title, setTitle] = useState("");
-  const [productType, setProductType] = useState("");
-  const [price, setPrice] = useState("");
-  const [posUrl, setPosUrl] = useState("");
+  const isEdit = !!product;
+
+  // Form fields — seeded from the product when editing (the call site keys this
+  // component by product id, so these initializers run fresh per product).
+  const [title, setTitle] = useState(product?.name ?? "");
+  const [productType, setProductType] = useState((product as any)?.productType ?? "");
+  const [price, setPrice] = useState(product ? String(product.price) : "");
+  const [posUrl, setPosUrl] = useState(product?.productUrl ?? "");
 
   // Thumbnail
   const [thumbSource, setThumbSource] = useState<ThumbSource>("computer");
   const [thumbFile, setThumbFile] = useState<File | null>(null);
-  const [thumbPreview, setThumbPreview] = useState<string | null>(null);
+  const [thumbPreview, setThumbPreview] = useState<string | null>(product?.imageUrl ?? null);
   const [thumbUrl, setThumbUrl] = useState("");
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -118,6 +123,18 @@ function AddProductSheet({
         imageUrl = thumbUrl.trim();
       }
 
+      if (isEdit) {
+        // On edit, only send imageUrl when a new one was actually provided so the
+        // existing thumbnail isn't wiped. brandId is not editable and is omitted.
+        return apiRequest("PATCH", `/api/products/${product!.id}`, {
+          name: title.trim(),
+          price: parseFloat(price),
+          productUrl: posUrl.trim() || undefined,
+          productType: productType || undefined,
+          ...(imageUrl ? { imageUrl } : {}),
+        });
+      }
+
       return apiRequest("POST", "/api/products", {
         name: title.trim(),
         price: parseFloat(price),
@@ -130,11 +147,20 @@ function AddProductSheet({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/products"] });
-      toast({ title: "Product added", description: `"${title}" has been added to your inventory.` });
+      toast({
+        title: isEdit ? "Product updated" : "Product added",
+        description: isEdit
+          ? `"${title}" has been updated.`
+          : `"${title}" has been added to your inventory.`,
+      });
       handleClose();
     },
     onError: (err: any) => {
-      toast({ title: "Failed to add product", description: err.message ?? "Please try again.", variant: "destructive" });
+      toast({
+        title: isEdit ? "Failed to update product" : "Failed to add product",
+        description: err.message ?? "Please try again.",
+        variant: "destructive",
+      });
     },
   });
 
@@ -148,9 +174,9 @@ function AddProductSheet({
         data-testid="sheet-add-product"
       >
         <SheetHeader className="px-6 pt-6 pb-4 border-b border-border">
-          <SheetTitle className="text-foreground text-lg font-bold">Add Product</SheetTitle>
+          <SheetTitle className="text-foreground text-lg font-bold">{isEdit ? "Edit Product" : "Add Product"}</SheetTitle>
           <SheetDescription className="text-muted-foreground text-sm">
-            Manually enter a product for a trial campaign.
+            {isEdit ? "Update the details for this product." : "Manually enter a product for a trial campaign."}
           </SheetDescription>
         </SheetHeader>
 
@@ -363,7 +389,7 @@ function AddProductSheet({
               disabled={!canSubmit}
               className="flex-1 rounded-xl"
             >
-              {createMutation.isPending || isUploading ? "Saving…" : "Add Product"}
+              {createMutation.isPending || isUploading ? "Saving…" : isEdit ? "Save Changes" : "Add Product"}
             </Button>
           </div>
         </div>
@@ -387,6 +413,7 @@ export default function BrandInventory() {
   const [secretInput, setSecretInput] = useState("");
   const [selectedPlatform, setSelectedPlatform] = useState<PlatformId | null>(null);
   const [addProductOpen, setAddProductOpen] = useState(false);
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const { toast } = useToast();
 
   const activePlatform = PLATFORMS.find((p) => p.id === selectedPlatform);
@@ -467,6 +494,27 @@ export default function BrandInventory() {
       });
     },
   });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => apiRequest("DELETE", `/api/products/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/products"] });
+      toast({ title: "Product deleted" });
+    },
+    onError: (err: any) => {
+      toast({
+        title: "Failed to delete product",
+        description: err?.message ?? "Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleDeleteProduct = (product: Product) => {
+    if (window.confirm(`Delete "${product.name}"? This cannot be undone.`)) {
+      deleteMutation.mutate(product.id);
+    }
+  };
 
   const handleConnectApi = () => {
     if (selectedPlatform && apiKeyInput.trim()) {
@@ -674,9 +722,28 @@ export default function BrandInventory() {
                       </a>
                     )}
                   </div>
-                  <Button variant="outline" size="sm" className="rounded-full">
-                    Edit
-                  </Button>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="rounded-full"
+                      onClick={() => setEditingProduct(product)}
+                      data-testid={`button-edit-product-${product.id}`}
+                    >
+                      Edit
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="rounded-full text-muted-foreground hover:text-destructive"
+                      onClick={() => handleDeleteProduct(product)}
+                      disabled={deleteMutation.isPending && deleteMutation.variables === product.id}
+                      data-testid={`button-delete-product-${product.id}`}
+                      title="Delete product"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -699,10 +766,12 @@ export default function BrandInventory() {
       </Card>
 
       <AddProductSheet
-        open={addProductOpen}
-        onClose={() => setAddProductOpen(false)}
+        key={editingProduct?.id ?? "new"}
+        open={addProductOpen || !!editingProduct}
+        onClose={() => { setAddProductOpen(false); setEditingProduct(null); }}
         isApiConnected={isApiConnected}
         brandId={currentBrandId}
+        product={editingProduct ?? undefined}
       />
     </div>
   );

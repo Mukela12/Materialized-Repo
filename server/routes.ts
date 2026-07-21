@@ -294,7 +294,7 @@ export async function registerRoutes(
       if (!actor?.isAdmin && brand?.ownerId !== sessionUserId) {
         return res.status(403).json({ error: "Forbidden" });
       }
-      const editable = ["name", "description", "price", "imageUrl", "productUrl", "sku", "category", "isActive"];
+      const editable = ["name", "description", "price", "imageUrl", "productUrl", "productType", "sku", "category", "isActive"];
       const patch: Record<string, any> = {};
       for (const k of editable) if (k in req.body) patch[k] = req.body[k];
       if (patch.price !== undefined && patch.price !== null) patch.price = String(patch.price);
@@ -562,6 +562,43 @@ export async function registerRoutes(
       }
       console.error("Create brand referral error:", error);
       res.status(500).json({ error: "Failed to create brand referral" });
+    }
+  });
+
+  // Resend a referral email (owner creator or admin only)
+  app.post("/api/referrals/:id/resend", async (req, res) => {
+    try {
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ error: "Authentication required" });
+      const user = await storage.getUser(sessionUserId);
+      if (!user) return res.status(401).json({ error: "User not found" });
+
+      const referral = await storage.getReferral(req.params.id);
+      if (!referral) return res.status(404).json({ error: "Referral not found" });
+      // getReferral is not scoped by creator, so enforce ownership here.
+      if (!user.isAdmin && referral.creatorId !== user.id) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+
+      if (!isEmailConfigured()) {
+        return res.status(503).json({ error: "Email is not configured" });
+      }
+
+      const signupUrl = `${req.protocol}://${req.get("host")}/register?ref=${referral.signupToken}`;
+      await sendReferralEmail({
+        prContactName: referral.prContactName,
+        prContactEmail: referral.prContactEmail,
+        creatorDisplayName: user.displayName,
+        brandName: referral.brandName,
+        message: referral.message,
+        signupUrl,
+      });
+      await storage.updateReferralStatus(referral.id, "sent");
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Resend referral error:", error);
+      res.status(500).json({ error: "Failed to resend referral" });
     }
   });
 
@@ -3239,6 +3276,9 @@ Identify which products from the catalog are most likely to appear or be feature
         freeAccess: users.freeAccess,
         emailVerified: users.emailVerified,
         createdAt: users.createdAt,
+        commissionRateOverride: users.commissionRateOverride,
+        stripeConnectAccountId: users.stripeConnectAccountId,
+        stripeConnectOnboarded: users.stripeConnectOnboarded,
       }).from(users).orderBy(desc(users.createdAt));
 
       res.json(allUsers);
@@ -3307,6 +3347,65 @@ Identify which products from the catalog are most likely to appear or be feature
     } catch (error) {
       console.error("Approve commission error:", error);
       res.status(500).json({ error: "Failed to approve commission" });
+    }
+  });
+
+  // Admin: list commissions by status (default "pending"), enriched with the
+  // affiliate's name/email and sorted newest-first — drives the Money Ops
+  // commissions table and the payout-run preview.
+  app.get("/api/admin/commissions", requireAdmin, async (req, res) => {
+    try {
+      const status = String(req.query.status ?? "pending");
+      const rows = await storage.getCommissionsByStatus(status);
+
+      // Enrich each row with the affiliate's display name/email (batched lookups).
+      const affiliateIds = Array.from(new Set(rows.map(r => r.affiliateId)));
+      const affiliates = new Map<string, { displayName: string; email: string }>();
+      await Promise.all(affiliateIds.map(async (id) => {
+        const u = await storage.getUser(id);
+        if (u) affiliates.set(id, { displayName: u.displayName, email: u.email });
+      }));
+
+      const enriched = rows
+        .map(r => ({
+          ...r,
+          affiliateName: affiliates.get(r.affiliateId)?.displayName ?? "Unknown affiliate",
+          affiliateEmail: affiliates.get(r.affiliateId)?.email ?? "",
+        }))
+        .sort((a, b) => {
+          const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+          const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+          return tb - ta;
+        });
+
+      res.json(enriched);
+    } catch (error) {
+      console.error("Admin commissions error:", error);
+      res.status(500).json({ error: "Failed to load commissions" });
+    }
+  });
+
+  // Admin: full payout history, newest-first, enriched with the affiliate's name.
+  app.get("/api/admin/payouts", requireAdmin, async (_req, res) => {
+    try {
+      const rows = await storage.getAllPayouts();
+
+      const userIds = Array.from(new Set(rows.map(r => r.userId)));
+      const names = new Map<string, string>();
+      await Promise.all(userIds.map(async (id) => {
+        const u = await storage.getUser(id);
+        if (u) names.set(id, u.displayName);
+      }));
+
+      const enriched = rows.map(r => ({
+        ...r,
+        affiliateName: names.get(r.userId) ?? "Unknown affiliate",
+      }));
+
+      res.json(enriched);
+    } catch (error) {
+      console.error("Admin payouts error:", error);
+      res.status(500).json({ error: "Failed to load payouts" });
     }
   });
 
@@ -3684,6 +3783,24 @@ Identify which products from the catalog are most likely to appear or be feature
       const description = `Overage charges — ${(views ?? 0).toLocaleString()} views × ${publishers ?? 1} publishers + ${(minutes ?? 0).toLocaleString()} min × ${publishers ?? 1} publishers`;
       const invoice = await stripeService.createSurplusInvoice(customerId, totalAmount, description);
 
+      // Record the invoice in billing history so it appears in the Billing History page
+      // and its hosted URL can be resolved on demand for downloads.
+      try {
+        await storage.createBrandBillingRecord({
+          userId,
+          type: "invoice",
+          amount: String(totalAmount),
+          currency: (invoice.currency ?? "usd").toUpperCase(),
+          status: invoice.status === "paid" ? "paid" : "pending",
+          description,
+          reference: invoice.number ?? invoice.id,
+          stripeInvoiceId: invoice.id,
+          hostedInvoiceUrl: invoice.hosted_invoice_url ?? null,
+        });
+      } catch (recordErr) {
+        console.error("Failed to record surplus invoice in billing history:", recordErr);
+      }
+
       res.json({ invoiceId: invoice.id, url: invoice.hosted_invoice_url });
     } catch (e: any) {
       console.error("Surplus invoice error:", e);
@@ -3710,6 +3827,39 @@ Identify which products from the catalog are most likely to appear or be feature
       const record = await storage.createBrandBillingRecord(parsed);
       res.json(record);
     } catch (e) { res.status(400).json({ error: "Invalid data" }); }
+  });
+
+  // Resolve the hosted Stripe invoice URL for a billing record (owner only)
+  app.get("/api/brand/billing-records/:id/invoice-url", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+      const id = Number(req.params.id);
+      if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid record id" });
+
+      const record = await storage.getBrandBillingRecord(id);
+      if (!record) return res.status(404).json({ error: "Billing record not found" });
+      if (record.userId !== userId) return res.status(403).json({ error: "Forbidden" });
+
+      // Prefer a cached hosted URL, then fall back to resolving it from Stripe.
+      if (record.hostedInvoiceUrl) {
+        return res.json({ url: record.hostedInvoiceUrl });
+      }
+      if (!record.stripeInvoiceId) {
+        return res.status(404).json({ error: "No downloadable invoice for this record" });
+      }
+
+      const stripe = await getUncachableStripeClient();
+      const invoice = await stripe.invoices.retrieve(record.stripeInvoiceId);
+      if (!invoice.hosted_invoice_url) {
+        return res.status(404).json({ error: "Invoice has no hosted URL" });
+      }
+      res.json({ url: invoice.hosted_invoice_url });
+    } catch (e: any) {
+      console.error("Resolve invoice URL error:", e);
+      res.status(500).json({ error: e?.message ?? "Failed to resolve invoice URL" });
+    }
   });
 
   // Payout method

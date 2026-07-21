@@ -809,6 +809,8 @@ export const brandBillingRecords = pgTable("brand_billing_records", {
   status: text("status").notNull().default("pending"), // "paid" | "pending" | "failed"
   description: text("description"),
   reference: text("reference"),
+  stripeInvoiceId: text("stripe_invoice_id"), // Stripe invoice id, used to resolve the hosted invoice URL on demand
+  hostedInvoiceUrl: text("hosted_invoice_url"), // cached Stripe hosted invoice URL (may expire; falls back to stripeInvoiceId)
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
 });
 export const insertBrandBillingRecordSchema = createInsertSchema(brandBillingRecords).omit({ id: true, createdAt: true });
