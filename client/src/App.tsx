@@ -52,6 +52,9 @@ import WishlistPage from "@/pages/wishlist";
 import Login from "@/pages/login";
 import Register from "@/pages/register";
 import VerifyEmail from "@/pages/verify-email";
+import ForgotPassword from "@/pages/forgot-password";
+import ResetPassword from "@/pages/reset-password";
+import AffiliateAccept from "@/pages/affiliate-accept";
 import { useCurrentUser, useLogout } from "@/hooks/useCurrentUser";
 import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
@@ -241,7 +244,13 @@ function AppContent() {
   const isLandingRoute = location === "/";
   const isAuthorizeRoute = location.startsWith("/brand-authorize");
   const isAdminRoute = location.startsWith("/admin");
-  const isAuthRoute = location === "/login" || location === "/register" || location.startsWith("/verify-email");
+  const isAuthRoute =
+    location === "/login" ||
+    location === "/register" ||
+    location === "/forgot-password" ||
+    location.startsWith("/verify-email") ||
+    location.startsWith("/reset-password") ||
+    location.startsWith("/affiliate/accept");
 
   if (isAuthRoute) {
     return (
@@ -249,6 +258,9 @@ function AppContent() {
         <Route path="/login" component={Login} />
         <Route path="/register" component={Register} />
         <Route path="/verify-email/:token" component={VerifyEmail} />
+        <Route path="/forgot-password" component={ForgotPassword} />
+        <Route path="/reset-password/:token" component={ResetPassword} />
+        <Route path="/affiliate/accept/:token" component={AffiliateAccept} />
       </Switch>
     );
   }
@@ -359,7 +371,12 @@ function AppWithSidebar() {
 function App() {
   const [location] = useLocation();
   const isLandingRoute = location === "/";
-  const isAuthRoute = location === "/login" || location === "/register" || location.startsWith("/verify-email");
+  const isAuthRoute =
+    location === "/login" ||
+    location === "/register" ||
+    location === "/forgot-password" ||
+    location.startsWith("/verify-email") ||
+    location.startsWith("/reset-password");
 
   return (
     <QueryClientProvider client={queryClient}>
@@ -371,6 +388,8 @@ function App() {
               <Route path="/login" component={Login} />
               <Route path="/register" component={Register} />
               <Route path="/verify-email/:token" component={VerifyEmail} />
+              <Route path="/forgot-password" component={ForgotPassword} />
+              <Route path="/reset-password/:token" component={ResetPassword} />
             </Switch>
           ) : (
             <AppWithSidebar />

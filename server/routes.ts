@@ -4,9 +4,10 @@ import { storage } from "./storage";
 import { sanitizeUser } from "./serializers";
 import { canAccessUserResource } from "./authz";
 import { encryptSecret, decryptSecret } from "./crypto";
+import { hashPassword } from "./auth";
 import { recordSaleCommissions } from "./commissions";
 import { appendUtm } from "./embedUtils";
-import { resolveFeeConfig, userRateOr, centsToAmount } from "./feeConfig";
+import { resolveFeeConfig, userRateOr, centsToAmount, formatMoney } from "./feeConfig";
 import { executePayouts } from "./payouts";
 import { verifyStoreHmac, extractShopifyAttribution, extractWooAttribution, type OrderAttribution } from "./storeWebhooks";
 import { 
@@ -42,6 +43,11 @@ import {
   sendGlobalPitchEmail,
   sendSubscriptionNudgeEmail,
   sendContactEnquiryEmail,
+  sendCreatorInvitationEmail,
+  sendAffiliateInvitationEmail,
+  sendReferralEmail,
+  sendPayoutExecutedEmail,
+  sendCommissionApprovedEmail,
   isEmailConfigured,
 } from "./emailService";
 import { setupPdfAnalysisRoutes } from "./replit_integrations/pdf_analysis";
@@ -494,10 +500,23 @@ export async function registerRoutes(
       
       const referral = await storage.createReferral(data);
 
-      // Simulate sending email (update status to "sent" after a delay)
-      setTimeout(async () => {
-        await storage.updateReferralStatus(referral.id, "sent");
-      }, 2000);
+      // Send the referral email to the brand's PR contact, then mark it "sent".
+      if (isEmailConfigured()) {
+        try {
+          const signupUrl = `${req.protocol}://${req.get("host")}/register?ref=${referral.signupToken}`;
+          await sendReferralEmail({
+            prContactName: referral.prContactName,
+            prContactEmail: referral.prContactEmail,
+            creatorDisplayName: user.displayName,
+            brandName: referral.brandName,
+            message: referral.message,
+            signupUrl,
+          });
+          await storage.updateReferralStatus(referral.id, "sent");
+        } catch (emailErr) {
+          console.error("Referral email failed:", emailErr);
+        }
+      }
 
       res.status(201).json(referral);
     } catch (error) {
@@ -517,6 +536,25 @@ export async function registerRoutes(
       if (!user) return res.status(401).json({ error: "User not found" });
       const data = insertBrandReferralSchema.parse({ ...req.body, creatorId: user.id });
       const referral = await storage.createReferral(data);
+
+      // Send the referral email to the brand's PR contact, then mark it "sent".
+      if (isEmailConfigured()) {
+        try {
+          const signupUrl = `${req.protocol}://${req.get("host")}/register?ref=${referral.signupToken}`;
+          await sendReferralEmail({
+            prContactName: referral.prContactName,
+            prContactEmail: referral.prContactEmail,
+            creatorDisplayName: user.displayName,
+            brandName: referral.brandName,
+            message: referral.message,
+            signupUrl,
+          });
+          await storage.updateReferralStatus(referral.id, "sent");
+        } catch (emailErr) {
+          console.error("Brand referral email failed:", emailErr);
+        }
+      }
+
       res.status(201).json(referral);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -1549,6 +1587,25 @@ export async function registerRoutes(
         message: message || null,
       });
 
+      // Notify the invited creator. There is no per-invite token/accept flow for
+      // creator invitations yet, so we link to the generic signup page.
+      if (isEmailConfigured()) {
+        try {
+          const brandName = brands.find(b => b.id === useBrandId)?.name || "A brand";
+          const acceptUrl = `${req.protocol}://${req.get("host")}/register`;
+          await sendCreatorInvitationEmail({
+            creatorName,
+            creatorEmail,
+            brandName,
+            category: contentCategory || null,
+            message: message || null,
+            acceptUrl,
+          });
+        } catch (emailErr) {
+          console.error("Creator invitation email failed:", emailErr);
+        }
+      }
+
       res.status(201).json(invitation);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -1604,6 +1661,26 @@ export async function registerRoutes(
       });
 
       const created = await storage.createCreatorInvitationsBulk(validInvitations);
+
+      // Notify each invited creator (best-effort; a failed send never fails the row).
+      if (isEmailConfigured()) {
+        const brandName = brands.find(b => b.id === useBrandId)?.name || "A brand";
+        const acceptUrl = `${req.protocol}://${req.get("host")}/register`;
+        for (const inv of created) {
+          try {
+            await sendCreatorInvitationEmail({
+              creatorName: inv.creatorName,
+              creatorEmail: inv.email,
+              brandName,
+              category: inv.category,
+              message: inv.message,
+              acceptUrl,
+            });
+          } catch (emailErr) {
+            console.error(`Creator invitation email failed for ${inv.email}:`, emailErr);
+          }
+        }
+      }
 
       res.status(201).json({
         success: true,
@@ -2300,6 +2377,26 @@ Identify which products from the catalog are most likely to appear or be feature
         ...validatedData,
         inviterId: user.id,
       });
+
+      // Email the invitee with their accept link (carries the invite token so
+      // they can accept via POST /api/affiliates/accept/:token), then mark "sent".
+      if (isEmailConfigured()) {
+        try {
+          const acceptUrl = `${req.protocol}://${req.get("host")}/affiliate/accept/${invitation.inviteToken}`;
+          await sendAffiliateInvitationEmail({
+            affiliateName: invitation.affiliateName,
+            affiliateEmail: invitation.email,
+            inviterName: user.displayName,
+            commissionRate: invitation.commissionRate,
+            message: invitation.message,
+            acceptUrl,
+          });
+          await storage.updateAffiliateInvitationStatus(invitation.id, "sent");
+        } catch (emailErr) {
+          console.error("Affiliate invitation email failed:", emailErr);
+        }
+      }
+
       res.status(201).json(invitation);
     } catch (error) {
       if (error instanceof z.ZodError) {
@@ -2337,6 +2434,27 @@ Identify which products from the catalog are most likely to appear or be feature
       }));
 
       const created = await storage.createAffiliateInvitationsBulk(validatedInvitations);
+
+      // Email each invitee with their own accept link (best-effort per row).
+      if (isEmailConfigured()) {
+        for (const inv of created) {
+          try {
+            const acceptUrl = `${req.protocol}://${req.get("host")}/affiliate/accept/${inv.inviteToken}`;
+            await sendAffiliateInvitationEmail({
+              affiliateName: inv.affiliateName,
+              affiliateEmail: inv.email,
+              inviterName: user.displayName,
+              commissionRate: inv.commissionRate,
+              message: inv.message,
+              acceptUrl,
+            });
+            await storage.updateAffiliateInvitationStatus(inv.id, "sent");
+          } catch (emailErr) {
+            console.error(`Affiliate invitation email failed for ${inv.email}:`, emailErr);
+          }
+        }
+      }
+
       res.status(201).json({ created: created.length, invitations: created });
     } catch (error) {
       res.status(500).json({ error: "Failed to bulk create affiliate invitations" });
@@ -2355,19 +2473,31 @@ Identify which products from the catalog are most likely to appear or be feature
         return res.status(400).json({ error: "Invitation already processed" });
       }
 
-      // Create affiliate user account
+      // The invitee sets their own password (arriving via a valid invite token
+      // means the email is verified). No more hardcoded/unhashed passwords.
+      const { password } = req.body ?? {};
+      if (!password || String(password).length < 6) {
+        return res.status(400).json({ error: "A password of at least 6 characters is required" });
+      }
+      const existing = await storage.getUserByEmail(invitation.email);
+      if (existing) {
+        return res.status(409).json({ error: "An account with this email already exists — please sign in." });
+      }
+
       const affiliateUser = await storage.createUser({
-        username: `affiliate_${invitation.email.split("@")[0]}`,
-        password: "affiliate123", // In production, generate secure password or use OAuth
+        username: `affiliate_${invitation.email.split("@")[0]}_${Date.now()}`,
+        password: await hashPassword(password),
         email: invitation.email,
         displayName: invitation.affiliateName,
         role: "affiliate",
-      });
+        emailVerified: true,
+      } as any);
 
       await storage.updateAffiliateInvitationStatus(invitation.id, "accepted", affiliateUser.id);
 
-      res.json({ success: true, user: affiliateUser });
+      res.json({ success: true, user: sanitizeUser(affiliateUser) });
     } catch (error) {
+      console.error("Affiliate accept error:", error);
       res.status(500).json({ error: "Failed to accept invitation" });
     }
   });
@@ -3237,6 +3367,25 @@ Identify which products from the catalog are most likely to appear or be feature
     try {
       const updated = await storage.updateCommissionTransactionStatus(req.params.id, "approved");
       if (!updated) return res.status(404).json({ error: "Commission not found" });
+
+      // Notify the affiliate that their commission was approved (best-effort).
+      if (isEmailConfigured()) {
+        try {
+          const affiliate = await storage.getUser(updated.affiliateId);
+          if (affiliate?.email) {
+            await sendCommissionApprovedEmail({
+              affiliateName: affiliate.displayName,
+              affiliateEmail: affiliate.email,
+              commissionAmount: formatMoney(updated.commissionAmount),
+              saleAmount: formatMoney(updated.saleAmount),
+              commissionRate: updated.commissionRate,
+            });
+          }
+        } catch (emailErr) {
+          console.error("Commission approved email failed:", emailErr);
+        }
+      }
+
       res.json(updated);
     } catch (error) {
       console.error("Approve commission error:", error);
@@ -3271,6 +3420,27 @@ Identify which products from the catalog are most likely to appear or be feature
           return { id: t.id };
         },
       });
+
+      // Notify each paid affiliate (best-effort; never let email fail the payout run).
+      if (isEmailConfigured()) {
+        for (const p of summary.paid) {
+          try {
+            const affiliate = await storage.getUser(p.affiliateId);
+            if (affiliate?.email) {
+              await sendPayoutExecutedEmail({
+                affiliateName: affiliate.displayName,
+                affiliateEmail: affiliate.email,
+                amount: formatMoney(centsToAmount(p.amountCents)),
+                transferId: p.transferId,
+                payoutId: p.payoutId,
+              });
+            }
+          } catch (emailErr) {
+            console.error(`Payout executed email failed for ${p.affiliateId}:`, emailErr);
+          }
+        }
+      }
+
       res.json(summary);
     } catch (error) {
       console.error("Payout run error:", error);

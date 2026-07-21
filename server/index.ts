@@ -85,7 +85,10 @@ const apiLimiter = rateLimit({
   skip: (req) => !req.path.startsWith("/api") || req.path.startsWith("/api/webhooks"),
 });
 app.use(apiLimiter);
-app.use(["/api/auth/login", "/api/auth/register", "/api/auth/resend-verification"], authLimiter);
+app.use(
+  ["/api/auth/login", "/api/auth/register", "/api/auth/resend-verification", "/api/auth/forgot-password", "/api/auth/reset-password"],
+  authLimiter,
+);
 
 // ── CORS ─────────────────────────────────────────────────────────────────────
 const corsOrigins = process.env.CORS_ORIGINS?.split(',').map(s => s.trim()).filter(Boolean) || [];

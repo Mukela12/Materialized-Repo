@@ -1,7 +1,7 @@
 import { type Express } from "express";
 import { storage } from "./storage";
 import { hashPassword, verifyPassword } from "./auth";
-import { sendVerificationEmail, isEmailConfigured } from "./emailService";
+import { sendVerificationEmail, sendPasswordResetEmail, isEmailConfigured } from "./emailService";
 import { z } from "zod";
 import crypto from "crypto";
 
@@ -17,6 +17,21 @@ const registerSchema = z.object({
   role: z.enum(["creator", "brand", "affiliate"]).default("creator"),
   accessCode: z.string().optional(),
 });
+
+const forgotPasswordSchema = z.object({
+  email: z.string().email(),
+});
+
+const resetPasswordSchema = z.object({
+  token: z.string().min(1),
+  password: z.string().min(6),
+});
+
+// SHA-256 hash of a reset token — we store only the hash at rest so a leaked
+// database row can't be used to reset an account.
+function hashResetToken(token: string): string {
+  return crypto.createHash("sha256").update(token).digest("hex");
+}
 
 export function registerAuthRoutes(app: Express) {
   // ── Login ────────────────────────────────────────────────────────────────
@@ -212,6 +227,77 @@ export function registerAuthRoutes(app: Express) {
     }
 
     res.json({ sent: true });
+  });
+
+  // ── Forgot Password (request reset) ──────────────────────────────────────
+  app.post("/api/auth/forgot-password", async (req, res) => {
+    const parsed = forgotPasswordSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "A valid email is required" });
+    }
+
+    const { email } = parsed.data;
+    const user = await storage.getUserByEmail(email);
+
+    // Never reveal whether an account exists — always return the same response.
+    if (user) {
+      // Generate a cryptographically random token; store only its SHA-256 hash.
+      const token = crypto.randomBytes(32).toString("hex");
+      const tokenHash = hashResetToken(token);
+      const expires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+      await storage.updateUser(user.id, {
+        passwordResetTokenHash: tokenHash,
+        passwordResetExpires: expires,
+      } as any);
+
+      if (isEmailConfigured()) {
+        const origin = req.headers.origin ?? `${req.protocol}://${req.headers.host}`;
+        try {
+          await sendPasswordResetEmail({
+            email: user.email,
+            displayName: user.displayName,
+            resetUrl: `${origin}/reset-password/${token}`,
+          });
+        } catch (err) {
+          console.error("[Auth] Failed to send password reset email:", err);
+        }
+      }
+    }
+
+    res.json({ sent: true });
+  });
+
+  // ── Reset Password (perform reset) ───────────────────────────────────────
+  app.post("/api/auth/reset-password", async (req, res) => {
+    const parsed = resetPasswordSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: "Invalid or expired reset link" });
+    }
+
+    const { token, password } = parsed.data;
+    const tokenHash = hashResetToken(token);
+
+    const user = await storage.getUserByPasswordResetTokenHash(tokenHash);
+    if (!user) {
+      return res.status(400).json({ error: "Invalid or expired reset link" });
+    }
+
+    // Check expiry
+    if (user.passwordResetExpires && new Date(user.passwordResetExpires) < new Date()) {
+      return res.status(400).json({ error: "Reset link has expired. Please request a new one." });
+    }
+
+    // Hash the new password and clear the reset token (single-use).
+    const hashed = await hashPassword(password);
+    await storage.updateUser(user.id, {
+      password: hashed,
+      passwordResetTokenHash: null,
+      passwordResetExpires: null,
+    } as any);
+
+    // Do not auto-login — the user re-authenticates with the new password.
+    res.json({ success: true });
   });
 
   // ── Get Current User ─────────────────────────────────────────────────────
