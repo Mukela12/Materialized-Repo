@@ -168,6 +168,7 @@ export interface IStorage {
 
   // Payouts
   getPayouts(userId: string): Promise<AffiliatePayout[]>;
+  getAllPayouts(): Promise<AffiliatePayout[]>;
   createPayout(payout: InsertAffiliatePayout): Promise<AffiliatePayout>;
   updatePayoutStatus(id: string, status: string, stripeTransferId?: string): Promise<AffiliatePayout | undefined>;
   getCommissionsByStatus(status: string): Promise<CommissionTransaction[]>;
@@ -314,6 +315,7 @@ export interface IStorage {
   getBrandSubscription(userId: string): Promise<BrandSubscription | undefined>;
   upsertBrandSubscription(data: InsertBrandSubscription): Promise<BrandSubscription>;
   getBrandBillingRecords(userId: string, type?: string): Promise<BrandBillingRecord[]>;
+  getBrandBillingRecord(id: number): Promise<BrandBillingRecord | undefined>;
   createBrandBillingRecord(data: InsertBrandBillingRecord): Promise<BrandBillingRecord>;
   getBrandPayoutMethod(userId: string): Promise<BrandPayoutMethod | undefined>;
   upsertBrandPayoutMethod(data: InsertBrandPayoutMethod): Promise<BrandPayoutMethod>;
@@ -899,6 +901,11 @@ export class MemStorage implements IStorage {
   async getPayouts(userId: string): Promise<AffiliatePayout[]> {
     return Array.from(this.payouts.values())
       .filter((p) => p.userId === userId)
+      .sort((a, b) => new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime());
+  }
+
+  async getAllPayouts(): Promise<AffiliatePayout[]> {
+    return Array.from(this.payouts.values())
       .sort((a, b) => new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime());
   }
 
@@ -1769,6 +1776,9 @@ export class MemStorage implements IStorage {
   async getBrandBillingRecords(userId: string, type?: string): Promise<BrandBillingRecord[]> {
     return this.brandBillingRecordsList.filter(r => r.userId === userId && (!type || r.type === type));
   }
+  async getBrandBillingRecord(id: number): Promise<BrandBillingRecord | undefined> {
+    return this.brandBillingRecordsList.find(r => r.id === id);
+  }
   async createBrandBillingRecord(data: InsertBrandBillingRecord): Promise<BrandBillingRecord> {
     const record: BrandBillingRecord = { id: Date.now(), createdAt: new Date(), ...data } as any;
     this.brandBillingRecordsList.push(record);
@@ -2253,6 +2263,10 @@ export class DatabaseStorage implements IStorage {
   // Payouts
   async getPayouts(userId: string): Promise<AffiliatePayout[]> {
     return db.select().from(affiliatePayouts).where(eq(affiliatePayouts.userId, userId));
+  }
+
+  async getAllPayouts(): Promise<AffiliatePayout[]> {
+    return db.select().from(affiliatePayouts).orderBy(desc(affiliatePayouts.createdAt));
   }
 
   async createPayout(payout: InsertAffiliatePayout): Promise<AffiliatePayout> {
@@ -2826,6 +2840,10 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(brandBillingRecords)
       .where(eq(brandBillingRecords.userId, userId))
       .orderBy(desc(brandBillingRecords.createdAt));
+  }
+  async getBrandBillingRecord(id: number): Promise<BrandBillingRecord | undefined> {
+    const [record] = await db.select().from(brandBillingRecords).where(eq(brandBillingRecords.id, id));
+    return record;
   }
   async createBrandBillingRecord(data: InsertBrandBillingRecord): Promise<BrandBillingRecord> {
     const [record] = await db.insert(brandBillingRecords).values(data).returning();

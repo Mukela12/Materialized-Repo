@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { formatMoney } from "@/lib/currency";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -6,6 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Dialog,
   DialogContent,
@@ -37,6 +40,11 @@ import {
   ChevronDown,
   ChevronUp,
   AlertCircle,
+  Percent,
+  Wallet,
+  Ban,
+  XCircle,
+  DollarSign,
 } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 
@@ -150,6 +158,9 @@ interface AdminUser {
   freeAccess: boolean;
   emailVerified: boolean;
   createdAt: string | null;
+  commissionRateOverride?: string | null;
+  stripeConnectAccountId?: string | null;
+  stripeConnectOnboarded?: boolean | null;
 }
 
 function AdminOverview() {
@@ -379,6 +390,555 @@ function AdminBrands() {
   );
 }
 
+// ==================== MONEY OPS ====================
+
+interface FeeConfig {
+  marketplaceFeePct: number;
+  creatorPct: number;
+  publisherPct: number;
+}
+
+interface AdminCommission {
+  id: string;
+  affiliateId: string;
+  affiliateName: string;
+  affiliateEmail: string;
+  videoId: string;
+  saleAmount: string;
+  commissionRate: string;
+  commissionAmount: string;
+  status: string;
+  createdAt: string | null;
+}
+
+interface AdminPayout {
+  id: string;
+  userId: string;
+  affiliateName: string;
+  amount: string;
+  status: string | null;
+  stripeTransferId: string | null;
+  createdAt: string | null;
+}
+
+interface PayoutRunSummary {
+  paid: Array<{ affiliateId: string; payoutId: string; amountCents: number; transferId: string }>;
+  heldBelowThreshold: Array<{ affiliateId: string; amountCents: number }>;
+  skippedNoAccount: Array<{ affiliateId: string; amountCents: number }>;
+  failed: Array<{ affiliateId: string; payoutId?: string; amountCents: number; error: string }>;
+}
+
+const money = (v: string | number) => formatMoney(Number(v));
+const centsMoney = (c: number) => formatMoney(c / 100);
+
+function AdminMoneyOps() {
+  const [subTab, setSubTab] = useState<"payouts" | "commissions" | "rates">("payouts");
+
+  return (
+    <div>
+      {/* Money Ops sub-tabs — same underline pattern as the top-level tabs */}
+      <div className="flex gap-1 mb-6 border-b overflow-x-auto">
+        {(["payouts", "commissions", "rates"] as const).map(t => (
+          <button
+            key={t}
+            onClick={() => setSubTab(t)}
+            data-testid={`money-subtab-${t}`}
+            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px capitalize transition-colors ${
+              subTab === t
+                ? "border-[#677A67] text-foreground"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {t}
+          </button>
+        ))}
+      </div>
+
+      {subTab === "payouts" && <MoneyPayouts />}
+      {subTab === "commissions" && <MoneyCommissions />}
+      {subTab === "rates" && <MoneyRates />}
+    </div>
+  );
+}
+
+function StatChip({
+  label, count, amountCents, icon: Icon, tint,
+}: { label: string; count: number; amountCents: number; icon: any; tint: string }) {
+  return (
+    <Card className="shadow-none border">
+      <CardContent className="p-4">
+        <Icon className={`h-5 w-5 mb-2 ${tint}`} />
+        <p className="text-2xl font-bold">{count}</p>
+        <p className="text-xs text-muted-foreground">{label}</p>
+        <p className="text-xs text-muted-foreground mt-1">{centsMoney(amountCents)}</p>
+      </CardContent>
+    </Card>
+  );
+}
+
+function payoutStatusBadge(status: string | null) {
+  const s = status ?? "pending";
+  if (s === "paid") return <Badge className="bg-green-500/20 text-green-600 border-0">Paid</Badge>;
+  if (s === "processing") return <Badge className="bg-blue-500/20 text-blue-600 border-0">Processing</Badge>;
+  if (s === "failed") return <Badge className="bg-red-500/20 text-red-600 border-0">Failed</Badge>;
+  return <Badge className="bg-gray-500/20 text-gray-600 border-0 capitalize">{s}</Badge>;
+}
+
+function MoneyPayouts() {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [result, setResult] = useState<PayoutRunSummary | null>(null);
+
+  // Approved commissions preview the next run: how many affiliates, how much owed.
+  const { data: approved = [] } = useQuery<AdminCommission[]>({
+    queryKey: ["/api/admin/commissions", "approved"],
+    queryFn: () => fetch("/api/admin/commissions?status=approved", { credentials: "include" }).then(r => r.json()),
+  });
+
+  const { data: payouts = [], isLoading } = useQuery<AdminPayout[]>({
+    queryKey: ["/api/admin/payouts"],
+    queryFn: () => fetch("/api/admin/payouts", { credentials: "include" }).then(r => r.json()),
+  });
+
+  const owedCents = approved.reduce((sum, c) => sum + Math.round(Number(c.commissionAmount) * 100), 0);
+  const affiliateCount = new Set(approved.map(c => c.affiliateId)).size;
+
+  const runMutation = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/admin/payouts/run"),
+    onSuccess: async (res) => {
+      const summary: PayoutRunSummary = await res.json();
+      setResult(summary);
+      setConfirmOpen(false);
+      const paidCount = summary.paid.length;
+      toast({
+        title: paidCount > 0 ? `Paid ${paidCount} affiliate${paidCount === 1 ? "" : "s"}` : "Payout run complete",
+        description: summary.failed.length > 0 ? `${summary.failed.length} failed` : undefined,
+        variant: summary.failed.length > 0 ? "destructive" : undefined,
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/payouts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/commissions", "approved"] });
+    },
+    onError: () => toast({ title: "Payout run failed", variant: "destructive" }),
+  });
+
+  const sumCents = (rows: Array<{ amountCents: number }>) => rows.reduce((s, r) => s + r.amountCents, 0);
+
+  return (
+    <div className="space-y-6">
+      {/* Pending-run summary + action */}
+      <Card className="shadow-none border">
+        <CardContent className="p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <p className="text-sm font-medium">Next payout run</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {affiliateCount} affiliate{affiliateCount === 1 ? "" : "s"} · {money(owedCents / 100)} in approved commissions
+            </p>
+          </div>
+          <Button
+            onClick={() => setConfirmOpen(true)}
+            disabled={runMutation.isPending}
+            className="gap-2"
+            data-testid="button-run-payouts"
+          >
+            {runMutation.isPending ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}
+            Run payouts
+          </Button>
+        </CardContent>
+      </Card>
+
+      {/* Result summary from the last run */}
+      {result && (
+        <div className="space-y-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <StatChip label="Paid" count={result.paid.length} amountCents={sumCents(result.paid)} icon={CheckCircle2} tint="text-green-600" />
+            <StatChip label="Held (below min)" count={result.heldBelowThreshold.length} amountCents={sumCents(result.heldBelowThreshold)} icon={Clock} tint="text-yellow-600" />
+            <StatChip label="No Connect account" count={result.skippedNoAccount.length} amountCents={sumCents(result.skippedNoAccount)} icon={Ban} tint="text-gray-500" />
+            <StatChip label="Failed" count={result.failed.length} amountCents={sumCents(result.failed)} icon={XCircle} tint="text-red-600" />
+          </div>
+          {result.failed.length > 0 && (
+            <Card className="shadow-none border border-red-500/30">
+              <CardContent className="p-4">
+                <p className="text-sm font-medium text-red-600 mb-2 flex items-center gap-1">
+                  <AlertCircle className="h-4 w-4" /> Failed transfers
+                </p>
+                <ul className="space-y-1 text-xs text-muted-foreground">
+                  {result.failed.map((f, i) => (
+                    <li key={i} className="font-mono">
+                      {f.affiliateId.slice(0, 8)}… · {centsMoney(f.amountCents)} · {f.error}
+                    </li>
+                  ))}
+                </ul>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
+
+      {/* Payout history */}
+      <div>
+        <p className="text-sm font-medium mb-3">Payout history</p>
+        {isLoading ? (
+          <div className="flex justify-center py-12"><RefreshCw className="w-6 h-6 animate-spin text-muted-foreground" /></div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b text-left">
+                  <th className="p-3 font-medium">Affiliate</th>
+                  <th className="p-3 font-medium">Amount</th>
+                  <th className="p-3 font-medium">Status</th>
+                  <th className="p-3 font-medium">Transfer ID</th>
+                  <th className="p-3 font-medium">Date</th>
+                </tr>
+              </thead>
+              <tbody>
+                {payouts.map(p => (
+                  <tr key={p.id} className="border-b hover:bg-muted/50" data-testid={`payout-row-${p.id}`}>
+                    <td className="p-3 font-medium">{p.affiliateName}</td>
+                    <td className="p-3">{money(p.amount)}</td>
+                    <td className="p-3">{payoutStatusBadge(p.status)}</td>
+                    <td className="p-3 font-mono text-xs text-muted-foreground">{p.stripeTransferId ?? "-"}</td>
+                    <td className="p-3 text-muted-foreground text-xs">
+                      {p.createdAt ? format(new Date(p.createdAt), "MMM d, yyyy") : "-"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {payouts.length === 0 && (
+              <p className="text-center py-8 text-muted-foreground">No payouts yet</p>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Confirmation dialog */}
+      <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Run affiliate payouts?</DialogTitle>
+            <DialogDescription>
+              This transfers approved commissions to {affiliateCount} affiliate{affiliateCount === 1 ? "" : "s"} totalling {money(owedCents / 100)}.
+              The run is idempotent, only pays onboarded Connect accounts, and holds balances below the minimum.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2 mt-4">
+            <Button variant="outline" onClick={() => setConfirmOpen(false)} disabled={runMutation.isPending} data-testid="button-cancel-payouts">
+              Cancel
+            </Button>
+            <Button onClick={() => runMutation.mutate()} disabled={runMutation.isPending} className="gap-2" data-testid="button-confirm-payouts">
+              {runMutation.isPending ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Zap className="h-4 w-4" />}
+              Confirm run
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function MoneyCommissions() {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [statusFilter, setStatusFilter] = useState<"pending" | "approved">("pending");
+  const [approvingId, setApprovingId] = useState<string | null>(null);
+
+  const { data: commissions = [], isLoading } = useQuery<AdminCommission[]>({
+    queryKey: ["/api/admin/commissions", statusFilter],
+    queryFn: () => fetch(`/api/admin/commissions?status=${statusFilter}`, { credentials: "include" }).then(r => r.json()),
+  });
+
+  const approveMutation = useMutation({
+    mutationFn: (id: string) => apiRequest("POST", `/api/admin/commissions/${id}/approve`),
+    onMutate: (id: string) => setApprovingId(id),
+    onSuccess: () => {
+      toast({ title: "Commission approved" });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/commissions", "pending"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/commissions", "approved"] });
+    },
+    onError: () => toast({ title: "Failed to approve", variant: "destructive" }),
+    onSettled: () => setApprovingId(null),
+  });
+
+  return (
+    <div className="space-y-4">
+      {/* Status filter pills */}
+      <div className="flex gap-2">
+        {(["pending", "approved"] as const).map(s => (
+          <button
+            key={s}
+            onClick={() => setStatusFilter(s)}
+            data-testid={`commission-filter-${s}`}
+            className={`px-3 py-1 rounded-full text-xs font-medium border capitalize transition-colors ${
+              statusFilter === s
+                ? "border-[#677A67] bg-[#677A67]/10 text-foreground"
+                : "border-transparent bg-muted text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {s}
+          </button>
+        ))}
+      </div>
+
+      {isLoading ? (
+        <div className="flex justify-center py-12"><RefreshCw className="w-6 h-6 animate-spin text-muted-foreground" /></div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b text-left">
+                <th className="p-3 font-medium">Affiliate</th>
+                <th className="p-3 font-medium">Sale</th>
+                <th className="p-3 font-medium">Rate</th>
+                <th className="p-3 font-medium">Commission</th>
+                <th className="p-3 font-medium">Created</th>
+                <th className="p-3 font-medium">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {commissions.map(c => (
+                <tr key={c.id} className="border-b hover:bg-muted/50" data-testid={`commission-row-${c.id}`}>
+                  <td className="p-3">
+                    <div className="font-medium">{c.affiliateName}</div>
+                    <div className="text-xs text-muted-foreground">{c.affiliateEmail}</div>
+                  </td>
+                  <td className="p-3">{money(c.saleAmount)}</td>
+                  <td className="p-3 text-muted-foreground">{Number(c.commissionRate).toFixed(2)}%</td>
+                  <td className="p-3 font-medium">{money(c.commissionAmount)}</td>
+                  <td className="p-3 text-muted-foreground text-xs">
+                    {c.createdAt ? format(new Date(c.createdAt), "MMM d, yyyy") : "-"}
+                  </td>
+                  <td className="p-3">
+                    {c.status === "pending" ? (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-xs gap-1"
+                        disabled={approvingId === c.id}
+                        onClick={() => approveMutation.mutate(c.id)}
+                        data-testid={`button-approve-${c.id}`}
+                      >
+                        {approvingId === c.id ? <RefreshCw className="h-3 w-3 animate-spin" /> : <CheckCircle2 className="h-3 w-3" />}
+                        Approve
+                      </Button>
+                    ) : (
+                      <Badge className="bg-green-500/20 text-green-600 border-0 capitalize">{c.status}</Badge>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {commissions.length === 0 && (
+            <p className="text-center py-8 text-muted-foreground">No {statusFilter} commissions</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MoneyRates() {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  const { data: fees, isLoading } = useQuery<FeeConfig>({
+    queryKey: ["/api/admin/settings/fees"],
+    queryFn: () => fetch("/api/admin/settings/fees", { credentials: "include" }).then(r => r.json()),
+  });
+
+  const { data: users = [] } = useQuery<AdminUser[]>({
+    queryKey: ["/api/admin/users"],
+    queryFn: () => fetch("/api/admin/users", { credentials: "include" }).then(r => r.json()),
+  });
+
+  const [form, setForm] = useState<FeeConfig | null>(null);
+  const current = form ?? fees ?? null;
+
+  const feesMutation = useMutation({
+    mutationFn: (patch: FeeConfig) => apiRequest("PATCH", "/api/admin/settings/fees", patch),
+    onSuccess: async (res) => {
+      const saved: FeeConfig = await res.json();
+      setForm(saved);
+      toast({ title: "Fee settings saved" });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/settings/fees"] });
+    },
+    onError: () => toast({ title: "Failed to save fees", variant: "destructive" }),
+  });
+
+  const overrideMutation = useMutation({
+    mutationFn: ({ id, value }: { id: string; value: string | null }) =>
+      apiRequest("PATCH", `/api/admin/users/${id}`, { commissionRateOverride: value }),
+    onSuccess: () => {
+      toast({ title: "Override saved" });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+    },
+    onError: () => toast({ title: "Failed to save override", variant: "destructive" }),
+  });
+
+  const overAllocated = current ? current.creatorPct + current.publisherPct > current.marketplaceFeePct : false;
+  const affiliates = users.filter(u => u.role === "affiliate");
+
+  return (
+    <div className="space-y-8">
+      {/* Platform fee editor */}
+      <Card className="shadow-none border">
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Percent className="h-4 w-4 text-[#677A67]" /> Platform fee & commission split
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="p-4 pt-0">
+          {isLoading || !current ? (
+            <div className="flex justify-center py-6"><RefreshCw className="w-6 h-6 animate-spin text-muted-foreground" /></div>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                {([
+                  { key: "marketplaceFeePct", label: "Marketplace fee %" },
+                  { key: "creatorPct", label: "Creator %" },
+                  { key: "publisherPct", label: "Publisher %" },
+                ] as const).map(({ key, label }) => (
+                  <div key={key}>
+                    <Label htmlFor={`fee-${key}`} className="text-xs text-muted-foreground">{label}</Label>
+                    <Input
+                      id={`fee-${key}`}
+                      type="number"
+                      min={0}
+                      max={100}
+                      step={0.1}
+                      value={current[key]}
+                      onChange={e => setForm({ ...current, [key]: Number(e.target.value) })}
+                      className="mt-1"
+                      data-testid={`input-${key}`}
+                    />
+                  </div>
+                ))}
+              </div>
+
+              {overAllocated && (
+                <div className="mt-4 flex items-start gap-2 rounded-md bg-amber-500/10 border border-amber-500/30 p-3 text-xs text-amber-700 dark:text-amber-500">
+                  <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
+                  <span>
+                    Creator ({current.creatorPct}%) + publisher ({current.publisherPct}%) exceeds the marketplace fee
+                    ({current.marketplaceFeePct}%). Payouts will be capped at the fee.
+                  </span>
+                </div>
+              )}
+
+              <div className="mt-4">
+                <Button
+                  onClick={() => feesMutation.mutate(current)}
+                  disabled={feesMutation.isPending}
+                  className="gap-2"
+                  data-testid="button-save-fees"
+                >
+                  {feesMutation.isPending ? <RefreshCw className="h-4 w-4 animate-spin" /> : <DollarSign className="h-4 w-4" />}
+                  Save fees
+                </Button>
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Per-affiliate commission overrides */}
+      <div>
+        <p className="text-sm font-medium mb-3 flex items-center gap-2">
+          <Wallet className="h-4 w-4 text-[#677A67]" /> Per-affiliate commission overrides
+        </p>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b text-left">
+                <th className="p-3 font-medium">Affiliate</th>
+                <th className="p-3 font-medium">Connect status</th>
+                <th className="p-3 font-medium">Override %</th>
+                <th className="p-3 font-medium">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {affiliates.map(u => (
+                <OverrideRow
+                  key={u.id}
+                  user={u}
+                  saving={overrideMutation.isPending}
+                  onSave={(value) => overrideMutation.mutate({ id: u.id, value })}
+                />
+              ))}
+            </tbody>
+          </table>
+          {affiliates.length === 0 && (
+            <p className="text-center py-8 text-muted-foreground">No affiliates yet</p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function OverrideRow({
+  user, saving, onSave,
+}: { user: AdminUser; saving: boolean; onSave: (value: string | null) => void }) {
+  const [value, setValue] = useState<string>(user.commissionRateOverride ?? "");
+
+  return (
+    <tr className="border-b hover:bg-muted/50" data-testid={`override-row-${user.id}`}>
+      <td className="p-3">
+        <div className="font-medium">{user.displayName}</div>
+        <div className="text-xs text-muted-foreground">{user.email}</div>
+      </td>
+      <td className="p-3">
+        {user.stripeConnectOnboarded ? (
+          <Badge className="bg-green-500/20 text-green-600 border-0">Onboarded</Badge>
+        ) : (
+          <Badge className="bg-yellow-500/20 text-yellow-600 border-0">Not onboarded</Badge>
+        )}
+      </td>
+      <td className="p-3">
+        <Input
+          type="number"
+          min={0}
+          max={100}
+          step={0.1}
+          value={value}
+          placeholder="uses default"
+          onChange={e => setValue(e.target.value)}
+          className="h-8 w-32"
+          data-testid={`input-override-${user.id}`}
+        />
+      </td>
+      <td className="p-3">
+        <div className="flex gap-1">
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 text-xs gap-1"
+            disabled={saving}
+            onClick={() => onSave(value === "" ? null : value)}
+            data-testid={`button-save-override-${user.id}`}
+          >
+            Save
+          </Button>
+          {value !== "" && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 text-xs"
+              disabled={saving}
+              onClick={() => { setValue(""); onSave(null); }}
+              data-testid={`button-clear-override-${user.id}`}
+            >
+              Clear
+            </Button>
+          )}
+        </div>
+      </td>
+    </tr>
+  );
+}
+
 export default function AdminPipeline() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -387,7 +947,7 @@ export default function AdminPipeline() {
   const [selectedFollowUp, setSelectedFollowUp] = useState<string>("");
   const [notesValues, setNotesValues] = useState<Record<string, string>>({});
   const [filterStage, setFilterStage] = useState<string>("all");
-  const [activeTab, setActiveTab] = useState<"overview" | "users" | "videos" | "brands" | "pipeline">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "users" | "videos" | "brands" | "pipeline" | "money">("overview");
 
   const { data: pipeline = [], isLoading, refetch } = useQuery<PipelineEntry[]>({
     queryKey: ["/api/admin/pipeline"],
@@ -468,18 +1028,19 @@ export default function AdminPipeline() {
         </div>
 
         {/* Tab Navigation */}
-        <div className="flex gap-1 mb-6 border-b">
-          {(["overview", "users", "videos", "brands", "pipeline"] as const).map(tab => (
+        <div className="flex gap-1 mb-6 border-b overflow-x-auto">
+          {(["overview", "users", "videos", "brands", "pipeline", "money"] as const).map(tab => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
+              data-testid={`tab-${tab}`}
               className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px capitalize transition-colors ${
                 activeTab === tab
                   ? "border-[#677A67] text-foreground"
                   : "border-transparent text-muted-foreground hover:text-foreground"
               }`}
             >
-              {tab}
+              {tab === "money" ? "Money Ops" : tab}
             </button>
           ))}
         </div>
@@ -488,6 +1049,7 @@ export default function AdminPipeline() {
         {activeTab === "users" && <AdminUsers />}
         {activeTab === "videos" && <AdminVideos />}
         {activeTab === "brands" && <AdminBrands />}
+        {activeTab === "money" && <AdminMoneyOps />}
         {activeTab === "pipeline" && (
         <div>
         {/* Header */}

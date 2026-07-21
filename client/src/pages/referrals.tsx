@@ -1,17 +1,31 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ReferralsTable } from "@/components/ReferralsTable";
 import { Send, CheckCircle, Clock, XCircle, Plus, TrendingUp } from "lucide-react";
 import { useLocation } from "wouter";
+import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import type { BrandReferral } from "@shared/schema";
 
 export default function Referrals() {
   const [, navigate] = useLocation();
+  const { toast } = useToast();
   const { data: referrals = [], isLoading } = useQuery<BrandReferral[]>({
     queryKey: ["/api/referrals"],
+  });
+
+  const resendMutation = useMutation({
+    mutationFn: (id: string) => apiRequest("POST", `/api/referrals/${id}/resend`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/referrals"] });
+      toast({ title: "Referral resent" });
+    },
+    onError: (err: any) => {
+      toast({ title: "Couldn't resend referral", description: err?.message ?? "Please try again.", variant: "destructive" });
+    },
   });
 
   const statusCounts = {
@@ -95,7 +109,12 @@ export default function Referrals() {
         </Card>
       </div>
 
-      <ReferralsTable referrals={referrals} isLoading={isLoading} />
+      <ReferralsTable
+        referrals={referrals}
+        isLoading={isLoading}
+        onResend={(r) => resendMutation.mutate(r.id)}
+        resendingId={resendMutation.isPending ? (resendMutation.variables as string) : undefined}
+      />
     </div>
   );
 }

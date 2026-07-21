@@ -16,9 +16,11 @@ import type { BrandReferral } from "@shared/schema";
 interface ReferralsTableProps {
   referrals: BrandReferral[];
   isLoading?: boolean;
+  onResend?: (referral: BrandReferral) => void;
+  resendingId?: string;
 }
 
-export function ReferralsTable({ referrals, isLoading }: ReferralsTableProps) {
+export function ReferralsTable({ referrals, isLoading, onResend, resendingId }: ReferralsTableProps) {
   const statusConfig = {
     pending: {
       icon: Clock,
@@ -134,9 +136,16 @@ export function ReferralsTable({ referrals, isLoading }: ReferralsTableProps) {
                     </TableCell>
                     <TableCell className="text-right">
                       {referral.status === "pending" && (
-                        <Button variant="ghost" size="sm" className="gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="gap-1"
+                          disabled={resendingId === referral.id}
+                          onClick={() => onResend?.(referral)}
+                          data-testid={`button-resend-referral-${referral.id}`}
+                        >
                           <Send className="h-3 w-3" />
-                          Resend
+                          {resendingId === referral.id ? "Sending…" : "Resend"}
                         </Button>
                       )}
                     </TableCell>
