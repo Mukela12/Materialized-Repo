@@ -103,6 +103,8 @@ export interface IStorage {
   getProducts(brandId?: string): Promise<Product[]>;
   getProduct(id: string): Promise<Product | undefined>;
   createProduct(product: InsertProduct): Promise<Product>;
+  updateProduct(id: string, data: Partial<InsertProduct>): Promise<Product | undefined>;
+  deleteProduct(id: string): Promise<void>;
   
   // Videos
   getVideos(creatorId?: string): Promise<Video[]>;
@@ -513,6 +515,18 @@ export class MemStorage implements IStorage {
     };
     this.products.set(id, newProduct);
     return newProduct;
+  }
+
+  async updateProduct(id: string, data: Partial<InsertProduct>): Promise<Product | undefined> {
+    const existing = this.products.get(id);
+    if (!existing) return undefined;
+    const updated = { ...existing, ...data } as Product;
+    this.products.set(id, updated);
+    return updated;
+  }
+
+  async deleteProduct(id: string): Promise<void> {
+    this.products.delete(id);
   }
 
   // Videos
@@ -1809,6 +1823,15 @@ export class DatabaseStorage implements IStorage {
     return newProduct;
   }
 
+  async updateProduct(id: string, data: Partial<InsertProduct>): Promise<Product | undefined> {
+    const [updated] = await db.update(products).set(data).where(eq(products.id, id)).returning();
+    return updated;
+  }
+
+  async deleteProduct(id: string): Promise<void> {
+    await db.delete(products).where(eq(products.id, id));
+  }
+
   // Videos
   async getVideos(creatorId?: string): Promise<Video[]> {
     if (creatorId) {
@@ -1950,7 +1973,31 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getVideoStats(creatorId: string): Promise<{ totalViews: number; totalClicks: number; totalRevenue: number; averageCTR: number }> {
-    return { totalViews: 0, totalClicks: 0, totalRevenue: 0, averageCTR: 0 };
+    // Aggregate real analytics events across all of the creator's videos.
+    const creatorVideos = await db.select({ id: videos.id }).from(videos).where(eq(videos.creatorId, creatorId));
+    const ids = creatorVideos.map((v) => v.id);
+    if (ids.length === 0) return { totalViews: 0, totalClicks: 0, totalRevenue: 0, averageCTR: 0 };
+
+    const rows = await db
+      .select({
+        eventType: analyticsEvents.eventType,
+        count: sql<number>`count(*)::int`,
+        revenue: sql<number>`coalesce(sum(${analyticsEvents.revenue}), 0)::float`,
+      })
+      .from(analyticsEvents)
+      .where(inArray(analyticsEvents.videoId, ids))
+      .groupBy(analyticsEvents.eventType);
+
+    let totalViews = 0;
+    let totalClicks = 0;
+    let totalRevenue = 0;
+    for (const r of rows) {
+      if (r.eventType === "view") totalViews = Number(r.count) || 0;
+      else if (r.eventType === "click") totalClicks = Number(r.count) || 0;
+      totalRevenue += Number(r.revenue) || 0;
+    }
+    const averageCTR = totalViews > 0 ? Math.round((totalClicks / totalViews) * 10000) / 100 : 0;
+    return { totalViews, totalClicks, totalRevenue: Math.round(totalRevenue * 100) / 100, averageCTR };
   }
 
   // Payouts
