@@ -11,6 +11,7 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
+    setupFiles: ['./tests/setup.ts'],
     include: ['tests/unit/**/*.test.ts', 'tests/api/**/*.test.ts'],
     timeout: 15_000,
   },

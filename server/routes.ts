@@ -2,6 +2,7 @@ import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { sanitizeUser } from "./serializers";
+import { canAccessUserResource } from "./authz";
 import { recordSaleCommissions } from "./commissions";
 import { appendUtm } from "./embedUtils";
 import { resolveFeeConfig, userRateOr, centsToAmount } from "./feeConfig";
@@ -992,7 +993,7 @@ export async function registerRoutes(
   });
 
   // Get commission transactions for an affiliate
-  app.get("/api/commissions/:affiliateId", async (req, res) => {
+  app.get("/api/commissions/:affiliateId", requireSelfOrAdmin("affiliateId"), async (req, res) => {
     try {
       const transactions = await storage.getCommissionTransactions(req.params.affiliateId);
       res.json(transactions);
@@ -1002,7 +1003,7 @@ export async function registerRoutes(
   });
 
   // Get affiliate earnings computed from the commission transactions ledger
-  app.get("/api/commissions/:affiliateId/earnings", async (req, res) => {
+  app.get("/api/commissions/:affiliateId/earnings", requireSelfOrAdmin("affiliateId"), async (req, res) => {
     try {
       const earnings = await storage.getAffiliateEarningsFromLedger(req.params.affiliateId);
       res.json(earnings);
@@ -1012,7 +1013,7 @@ export async function registerRoutes(
   });
 
   // List an affiliate's payouts
-  app.get("/api/payouts/:userId", async (req, res) => {
+  app.get("/api/payouts/:userId", requireSelfOrAdmin("userId"), async (req, res) => {
     try {
       res.json(await storage.getPayouts(req.params.userId));
     } catch (error) {
@@ -2954,6 +2955,23 @@ Identify which products from the catalog are most likely to appear or be feature
     if (!user.isAdmin) return res.status(403).json({ error: "Admin access required" });
     req.user = user;
     next();
+  }
+
+  // Guard user-scoped resources (payouts, commission ledgers): the caller must be
+  // authenticated and either the owner (session user === the :param user id) or an
+  // admin. `paramName` is the route param holding the target user/affiliate id.
+  function requireSelfOrAdmin(paramName: string) {
+    return async (req: any, res: any, next: any) => {
+      const userId = req.session?.userId;
+      if (!userId) return res.status(401).json({ error: "Authentication required" });
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(401).json({ error: "User not found" });
+      if (!canAccessUserResource(user, req.params[paramName])) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+      req.user = user;
+      next();
+    };
   }
 
   // ==================== MAILBOX ====================
