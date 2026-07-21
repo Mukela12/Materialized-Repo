@@ -161,3 +161,67 @@ describe('recordSaleCommissions', () => {
     expect(publisher.commissionAmount).toBe('0.67'); // round(3333 * 0.02) = 67c
   });
 });
+
+describe('recordSaleCommissions — DB unique-violation idempotency', () => {
+  // Simulate the (external_order_id, affiliate_id) partial unique index rejecting a
+  // concurrent retry: createCommissionTransaction throws SQLSTATE 23505.
+  function makeDedupStore(failFor: Set<string>) {
+    const commissions: any[] = [];
+    const statUpdates: any[] = [];
+    const store: CommissionStore = {
+      async createCommissionTransaction(tx) {
+        if (failFor.has(tx.affiliateId)) {
+          const err: any = new Error('duplicate key value violates unique constraint');
+          err.code = '23505';
+          throw err;
+        }
+        const row = { id: `c${commissions.length + 1}`, ...tx };
+        commissions.push(row);
+        return row;
+      },
+      async getCampaignAffiliates() { return []; },
+      async updateCampaignAffiliateStats(id, stats) { statUpdates.push({ id, stats }); return stats; },
+    };
+    return { store, commissions, statUpdates };
+  }
+
+  it('swallows a 23505 on the creator row and flags deduped', async () => {
+    const { store, commissions } = makeDedupStore(new Set(['creator1']));
+    const r = await recordSaleCommissions(store, '100.00', {
+      videoId: 'v1', creatorId: 'creator1', affiliateId: null,
+      campaignAffiliateId: null, resolvedCommissionRate: null,
+      externalOrderId: 'order-1',
+    });
+    expect(commissions).toHaveLength(0);
+    expect(r.deduped).toBe(true);
+    expect(r.creatorCommissionId).toBeUndefined();
+  });
+
+  it('swallows a 23505 on the publisher row and does NOT bump campaign stats', async () => {
+    const ca = { id: 'ca1', totalConversions: 2, totalRevenue: '50.00', totalEarnings: '1.00' };
+    const { store, commissions, statUpdates } = makeDedupStore(new Set(['pub1']));
+    // Re-point getCampaignAffiliates to return our ca.
+    (store as any).getCampaignAffiliates = async () => [ca];
+    const r = await recordSaleCommissions(store, '100.00', {
+      videoId: 'v1', creatorId: 'creator1', affiliateId: 'pub1',
+      campaignAffiliateId: 'ca1', resolvedCommissionRate: null,
+      externalOrderId: 'order-2',
+    });
+    // Creator row still lands; publisher is deduped and stats untouched.
+    expect(commissions.map((c) => c.affiliateId)).toEqual(['creator1']);
+    expect(r.deduped).toBe(true);
+    expect(statUpdates).toHaveLength(0);
+  });
+
+  it('re-throws non-unique errors', async () => {
+    const store: CommissionStore = {
+      async createCommissionTransaction() { throw new Error('connection reset'); },
+      async getCampaignAffiliates() { return []; },
+      async updateCampaignAffiliateStats(_id, s) { return s; },
+    };
+    await expect(recordSaleCommissions(store, '100.00', {
+      videoId: 'v1', creatorId: 'creator1', affiliateId: null,
+      campaignAffiliateId: null, resolvedCommissionRate: null, externalOrderId: 'order-3',
+    })).rejects.toThrow(/connection reset/);
+  });
+});
