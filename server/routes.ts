@@ -1,6 +1,7 @@
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
+import { sanitizeUser } from "./serializers";
 import { recordSaleCommissions } from "./commissions";
 import { appendUtm } from "./embedUtils";
 import { resolveFeeConfig, userRateOr, centsToAmount } from "./feeConfig";
@@ -75,7 +76,7 @@ export async function registerRoutes(
       if (!user) {
         return res.status(404).json({ error: "User not found" });
       }
-      res.json(user);
+      res.json(sanitizeUser(user));
     } catch (error) {
       res.status(500).json({ error: "Failed to get user" });
     }
@@ -3193,7 +3194,7 @@ Identify which products from the catalog are most likely to appear or be feature
       }
       const updated = await storage.updateUser(id, patch as any);
       if (!updated) return res.status(404).json({ error: "User not found" });
-      res.json(updated);
+      res.json(sanitizeUser(updated));
     } catch (error) {
       res.status(500).json({ error: "Failed to update user" });
     }
