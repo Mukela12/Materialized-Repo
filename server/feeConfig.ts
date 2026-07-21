@@ -47,6 +47,16 @@ export function getFeeConfig(): FeeConfig {
   };
 }
 
+/**
+ * ISO currency code used for all Stripe charges, subscriptions, and payouts.
+ * Must match the platform Stripe account's currency (e.g. a US account settles in
+ * USD, so transferring EUR fails with "insufficient funds"). Defaults to USD;
+ * set PLATFORM_CURRENCY=eur for a EUR account.
+ */
+export function getPlatformCurrency(): string {
+  return (process.env.PLATFORM_CURRENCY || "usd").toLowerCase();
+}
+
 /** Admin-editable platform settings row (all optional; null → fall back to defaults). */
 export interface PlatformFeeSettings {
   marketplaceFeePct?: number | string | null;
