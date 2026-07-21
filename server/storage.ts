@@ -153,6 +153,7 @@ export interface IStorage {
   updatePayoutStatus(id: string, status: string, stripeTransferId?: string): Promise<AffiliatePayout | undefined>;
   getCommissionsByStatus(status: string): Promise<CommissionTransaction[]>;
   markCommissionsPaid(commissionIds: string[], payoutId: string): Promise<void>;
+  hasCommissionForExternalOrder(externalOrderId: string): Promise<boolean>;
   
   // Campaigns
   getCampaigns(brandId: string): Promise<Campaign[]>;
@@ -1513,6 +1514,7 @@ export class MemStorage implements IStorage {
       campaignAffiliateId: transaction.campaignAffiliateId ?? null,
       licensePurchaseId: transaction.licensePurchaseId ?? null,
       payoutId: transaction.payoutId ?? null,
+      externalOrderId: transaction.externalOrderId ?? null,
       createdAt: new Date(),
     };
     this.commissionTransactionsMap.set(id, newTx);
@@ -1529,6 +1531,10 @@ export class MemStorage implements IStorage {
 
   async getCommissionsByStatus(status: string): Promise<CommissionTransaction[]> {
     return Array.from(this.commissionTransactionsMap.values()).filter(t => t.status === status);
+  }
+
+  async hasCommissionForExternalOrder(externalOrderId: string): Promise<boolean> {
+    return Array.from(this.commissionTransactionsMap.values()).some(t => t.externalOrderId === externalOrderId);
   }
 
   async markCommissionsPaid(commissionIds: string[], payoutId: string): Promise<void> {
@@ -2359,6 +2365,12 @@ export class DatabaseStorage implements IStorage {
   async getCommissionsByStatus(status: string): Promise<CommissionTransaction[]> {
     return db.select().from(commissionTransactions)
       .where(eq(commissionTransactions.status, status as "pending" | "approved" | "paid" | "rejected"));
+  }
+
+  async hasCommissionForExternalOrder(externalOrderId: string): Promise<boolean> {
+    const [row] = await db.select({ id: commissionTransactions.id }).from(commissionTransactions)
+      .where(eq(commissionTransactions.externalOrderId, externalOrderId)).limit(1);
+    return !!row;
   }
 
   async markCommissionsPaid(commissionIds: string[], payoutId: string): Promise<void> {

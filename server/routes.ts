@@ -5,6 +5,7 @@ import { recordSaleCommissions } from "./commissions";
 import { appendUtm } from "./embedUtils";
 import { resolveFeeConfig, userRateOr, centsToAmount } from "./feeConfig";
 import { executePayouts } from "./payouts";
+import { verifyStoreHmac, extractShopifyAttribution, extractWooAttribution, type OrderAttribution } from "./storeWebhooks";
 import { 
   insertVideoSchema, 
   insertBrandReferralSchema, 
@@ -1316,6 +1317,76 @@ export async function registerRoutes(
       res.status(500).json({ error: "Failed to sync products" });
     }
   });
+
+  // Signed store order webhook — the automated verified-sales path. The store signs
+  // the order with HMAC over the raw body; we verify it, then record the commission
+  // split via the same trusted helper as /api/sales (idempotent per order id).
+  const handleStoreOrderWebhook = async (
+    req: any,
+    res: any,
+    platform: "shopify" | "woocommerce",
+    hmacHeader: string,
+    extract: (order: any) => OrderAttribution,
+  ) => {
+    try {
+      const { db } = await import("./db");
+      const { storeConnections } = await import("@shared/schema");
+      const { eq } = await import("drizzle-orm");
+      const [connection] = await db.select().from(storeConnections).where(eq(storeConnections.id, req.params.connectionId));
+      if (!connection || connection.platform !== platform) {
+        return res.status(404).json({ error: "Store connection not found" });
+      }
+
+      const secret = connection.webhookSecret
+        || (platform === "shopify" ? process.env.SHOPIFY_WEBHOOK_SECRET : process.env.WC_WEBHOOK_SECRET);
+      if (!verifyStoreHmac(req.rawBody, req.get(hmacHeader) || undefined, secret || undefined)) {
+        return res.status(401).json({ error: "Invalid signature" });
+      }
+
+      const attribution = extract(req.body);
+      if (!attribution.externalOrderId) return res.status(400).json({ error: "Missing order id" });
+
+      // Idempotency — stores retry webhooks.
+      if (await storage.hasCommissionForExternalOrder(attribution.externalOrderId)) {
+        return res.json({ ok: true, deduped: true });
+      }
+
+      // Resolve the attribution ref to an affiliate/video; unattributed orders are acked, not paid.
+      if (!attribution.ref) return res.json({ ok: true, unattributed: true });
+      const resolved = await storage.resolveUtmToAffiliate(attribution.ref);
+      if (!resolved) return res.json({ ok: true, unattributed: true });
+      const video = await storage.getVideo(resolved.videoId);
+      if (!video) return res.json({ ok: true, unattributed: true });
+
+      const cfg = resolveFeeConfig(await storage.getPlatformSettings());
+      const creatorUser = video.creatorId ? await storage.getUser(video.creatorId) : null;
+      const publisherUser = resolved.affiliateId ? await storage.getUser(resolved.affiliateId) : null;
+
+      const result = await recordSaleCommissions(storage, attribution.amount, {
+        videoId: resolved.videoId,
+        creatorId: video.creatorId ?? null,
+        affiliateId: resolved.affiliateId,
+        campaignAffiliateId: resolved.campaignAffiliateId,
+        resolvedCommissionRate: resolved.commissionRate,
+        externalOrderId: attribution.externalOrderId,
+      }, null, {
+        marketplaceFeePct: cfg.marketplaceFeePct,
+        creatorPct: userRateOr(creatorUser?.commissionRateOverride, cfg.creatorPct),
+        publisherPct: userRateOr(publisherUser?.commissionRateOverride, cfg.publisherPct),
+      });
+
+      res.json({ ok: true, split: result.split });
+    } catch (error) {
+      console.error(`${platform} webhook error:`, error);
+      res.status(500).json({ error: "Webhook processing failed" });
+    }
+  };
+
+  app.post("/api/webhooks/shopify/:connectionId", (req, res) =>
+    handleStoreOrderWebhook(req, res, "shopify", "X-Shopify-Hmac-Sha256", extractShopifyAttribution));
+
+  app.post("/api/webhooks/woocommerce/:connectionId", (req, res) =>
+    handleStoreOrderWebhook(req, res, "woocommerce", "X-WC-Webhook-Signature", extractWooAttribution));
 
   // Delete a store connection
   app.delete("/api/integrations/stores/:id", async (req, res) => {
