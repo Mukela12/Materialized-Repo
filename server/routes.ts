@@ -276,8 +276,52 @@ export async function registerRoutes(
     }
   });
 
+  // Update a product (owner brand or admin only)
+  app.patch("/api/products/:id", async (req, res) => {
+    try {
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ error: "Authentication required" });
+      const product = await storage.getProduct(req.params.id);
+      if (!product) return res.status(404).json({ error: "Product not found" });
+      const actor = await storage.getUser(sessionUserId);
+      const brand = (await storage.getBrands()).find((b) => b.id === product.brandId);
+      if (!actor?.isAdmin && brand?.ownerId !== sessionUserId) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+      const editable = ["name", "description", "price", "imageUrl", "productUrl", "sku", "category", "isActive"];
+      const patch: Record<string, any> = {};
+      for (const k of editable) if (k in req.body) patch[k] = req.body[k];
+      if (patch.price !== undefined && patch.price !== null) patch.price = String(patch.price);
+      const updated = await storage.updateProduct(req.params.id, patch);
+      res.json(updated);
+    } catch (error) {
+      console.error("Update product error:", error);
+      res.status(500).json({ error: "Failed to update product" });
+    }
+  });
+
+  // Delete a product (owner brand or admin only)
+  app.delete("/api/products/:id", async (req, res) => {
+    try {
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ error: "Authentication required" });
+      const product = await storage.getProduct(req.params.id);
+      if (!product) return res.status(404).json({ error: "Product not found" });
+      const actor = await storage.getUser(sessionUserId);
+      const brand = (await storage.getBrands()).find((b) => b.id === product.brandId);
+      if (!actor?.isAdmin && brand?.ownerId !== sessionUserId) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+      await storage.deleteProduct(req.params.id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Delete product error:", error);
+      res.status(500).json({ error: "Failed to delete product" });
+    }
+  });
+
   // ==================== VIDEO ROUTES ====================
-  
+
   // Get videos for current user
   app.get("/api/videos", async (req, res) => {
     try {
@@ -461,6 +505,25 @@ export async function registerRoutes(
         return res.status(400).json({ error: error.errors });
       }
       res.status(500).json({ error: "Failed to create referral" });
+    }
+  });
+
+  // Submit a brand referral from the brand dashboard (same store as /api/referrals)
+  app.post("/api/brand-referrals", async (req, res) => {
+    try {
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ error: "Authentication required" });
+      const user = await storage.getUser(sessionUserId);
+      if (!user) return res.status(401).json({ error: "User not found" });
+      const data = insertBrandReferralSchema.parse({ ...req.body, creatorId: user.id });
+      const referral = await storage.createReferral(data);
+      res.status(201).json(referral);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ error: error.errors });
+      }
+      console.error("Create brand referral error:", error);
+      res.status(500).json({ error: "Failed to create brand referral" });
     }
   });
 
