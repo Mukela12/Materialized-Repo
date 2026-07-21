@@ -1,7 +1,7 @@
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { computeSaleSplit, toCents, centsToAmount } from "./feeConfig";
+import { recordSaleCommissions } from "./commissions";
 import { 
   insertVideoSchema, 
   insertBrandReferralSchema, 
@@ -915,65 +915,11 @@ export async function registerRoutes(
         }
       }
 
-      if (data.eventType === "purchase" && data.revenue) {
-        // Split the sale across brand / creator / publisher / platform in integer
-        // cents (see server/feeConfig.ts). The video's creator always earns; a
-        // distinct attributed affiliate is treated as the reposting publisher.
-        const saleCents = toCents(data.revenue);
-        const video = await storage.getVideo(data.videoId);
-        const creatorId = video?.creatorId ?? null;
-        const publisherId = affiliateId && affiliateId !== creatorId ? affiliateId : null;
-
-        // A per-repost publisher rate set by admin (on the campaign affiliate)
-        // overrides the platform default; otherwise the default publisher rate applies.
-        const publisherOverridePct = publisherId && resolvedCommissionRate != null
-          ? parseFloat(resolvedCommissionRate)
-          : undefined;
-
-        const split = computeSaleSplit(saleCents, {
-          hasPublisher: !!publisherId,
-          publisherPct: publisherOverridePct,
-        });
-
-        // Creator commission (video owner always earns their share)
-        if (creatorId && split.creatorCents > 0) {
-          await storage.createCommissionTransaction({
-            affiliateId: creatorId,
-            analyticsEventId: event.id,
-            videoId: data.videoId,
-            productId: data.productId || null,
-            saleAmount: data.revenue,
-            commissionRate: split.effectiveRates.creatorPct.toFixed(2),
-            commissionAmount: centsToAmount(split.creatorCents),
-            campaignAffiliateId: null,
-          });
-        }
-
-        // Publisher commission (only when a distinct publisher is attributed)
-        if (publisherId && split.publisherCents > 0) {
-          await storage.createCommissionTransaction({
-            affiliateId: publisherId,
-            analyticsEventId: event.id,
-            videoId: data.videoId,
-            productId: data.productId || null,
-            saleAmount: data.revenue,
-            commissionRate: split.effectiveRates.publisherPct.toFixed(2),
-            commissionAmount: centsToAmount(split.publisherCents),
-            campaignAffiliateId,
-          });
-
-          if (campaignAffiliateId) {
-            const ca = (await storage.getCampaignAffiliates(data.videoId)).find(c => c.id === campaignAffiliateId);
-            if (ca) {
-              await storage.updateCampaignAffiliateStats(campaignAffiliateId, {
-                totalConversions: (ca.totalConversions || 0) + 1,
-                totalRevenue: centsToAmount(toCents(ca.totalRevenue || "0") + saleCents),
-                totalEarnings: centsToAmount(toCents(ca.totalEarnings || "0") + split.publisherCents),
-              });
-            }
-          }
-        }
-      }
+      // Purchase events are recorded above for funnel analytics, but they do NOT
+      // move money: the sale amount here is client-supplied and unverified, so
+      // trusting it would let anyone mint commissions for any affiliate. Commissions
+      // are created only from *verified* sales via the authenticated POST /api/sales
+      // endpoint (reconciliation / signed store webhook). See server/commissions.ts.
 
       if (data.eventType === "click" && campaignAffiliateId) {
         const ca = (await storage.getCampaignAffiliates(data.videoId)).find(c => c.id === campaignAffiliateId);
@@ -1057,6 +1003,57 @@ export async function registerRoutes(
       res.json(earnings);
     } catch (error) {
       res.status(500).json({ error: "Failed to get affiliate earnings" });
+    }
+  });
+
+  // Record a VERIFIED sale and create the commission split. Trusted path only:
+  // requires an authenticated brand or admin (reconciliation from a store export,
+  // or a future signed store webhook). This is the ONLY route that mints
+  // commissions — the public analytics endpoint deliberately does not.
+  app.post("/api/sales", async (req, res) => {
+    try {
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ error: "Authentication required" });
+      const actor = await storage.getUser(sessionUserId);
+      if (!actor) return res.status(401).json({ error: "User not found" });
+      if (!actor.isAdmin && actor.role !== "brand") {
+        return res.status(403).json({ error: "Only a brand or admin can record verified sales" });
+      }
+
+      const { videoId, revenue, utmCode, productId } = req.body ?? {};
+      const revenueNum = Number(revenue);
+      if (!videoId || !Number.isFinite(revenueNum) || revenueNum <= 0) {
+        return res.status(400).json({ error: "videoId and a positive revenue are required" });
+      }
+
+      const video = await storage.getVideo(videoId);
+      if (!video) return res.status(404).json({ error: "Video not found" });
+
+      let affiliateId: string | null = null;
+      let campaignAffiliateId: string | null = null;
+      let resolvedCommissionRate: string | null = null;
+      if (utmCode) {
+        const resolved = await storage.resolveUtmToAffiliate(utmCode);
+        if (resolved) {
+          affiliateId = resolved.affiliateId;
+          campaignAffiliateId = resolved.campaignAffiliateId;
+          resolvedCommissionRate = resolved.commissionRate;
+        }
+      }
+
+      const result = await recordSaleCommissions(storage, revenueNum.toFixed(2), {
+        videoId,
+        creatorId: video.creatorId ?? null,
+        affiliateId,
+        campaignAffiliateId,
+        resolvedCommissionRate,
+        productId: productId ?? null,
+      });
+
+      res.json({ ok: true, split: result.split });
+    } catch (error) {
+      console.error("Record sale error:", error);
+      res.status(500).json({ error: "Failed to record sale" });
     }
   });
 
