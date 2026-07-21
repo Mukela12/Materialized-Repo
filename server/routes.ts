@@ -3,7 +3,8 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { recordSaleCommissions } from "./commissions";
 import { appendUtm } from "./embedUtils";
-import { resolveFeeConfig, userRateOr } from "./feeConfig";
+import { resolveFeeConfig, userRateOr, centsToAmount } from "./feeConfig";
+import { executePayouts } from "./payouts";
 import { 
   insertVideoSchema, 
   insertBrandReferralSchema, 
@@ -1005,6 +1006,15 @@ export async function registerRoutes(
       res.json(earnings);
     } catch (error) {
       res.status(500).json({ error: "Failed to get affiliate earnings" });
+    }
+  });
+
+  // List an affiliate's payouts
+  app.get("/api/payouts/:userId", async (req, res) => {
+    try {
+      res.json(await storage.getPayouts(req.params.userId));
+    } catch (error) {
+      res.status(500).json({ error: "Failed to get payouts" });
     }
   });
 
@@ -3044,6 +3054,52 @@ Identify which products from the catalog are most likely to appear or be feature
     } catch (error) {
       console.error("Update fee settings error:", error);
       res.status(500).json({ error: "Failed to update fee settings" });
+    }
+  });
+
+  // Admin: approve a pending commission (makes it eligible for payout)
+  app.post("/api/admin/commissions/:id/approve", requireAdmin, async (req, res) => {
+    try {
+      const updated = await storage.updateCommissionTransactionStatus(req.params.id, "approved");
+      if (!updated) return res.status(404).json({ error: "Commission not found" });
+      res.json(updated);
+    } catch (error) {
+      console.error("Approve commission error:", error);
+      res.status(500).json({ error: "Failed to approve commission" });
+    }
+  });
+
+  // Admin: run affiliate payouts — batch approved commissions per affiliate and
+  // transfer to their Stripe Connect account (idempotent, min €0.50, onboarded only).
+  app.post("/api/admin/payouts/run", requireAdmin, async (_req, res) => {
+    try {
+      const summary = await executePayouts({
+        getApprovedCommissions: async () =>
+          (await storage.getCommissionsByStatus("approved")).map(c => ({
+            id: c.id,
+            affiliateId: c.affiliateId,
+            commissionAmount: c.commissionAmount,
+            status: c.status ?? "approved",
+          })),
+        getConnectAccount: async (affiliateId) => {
+          const u = await storage.getUser(affiliateId);
+          return { accountId: u?.stripeConnectAccountId ?? null, onboarded: !!u?.stripeConnectOnboarded };
+        },
+        createPayout: async (affiliateId, amountCents) =>
+          storage.createPayout({ userId: affiliateId, amount: centsToAmount(amountCents), status: "pending" }),
+        updatePayoutStatus: async (id, status, stripeTransferId) => {
+          await storage.updatePayoutStatus(id, status, stripeTransferId);
+        },
+        markCommissionsPaid: (ids, payoutId) => storage.markCommissionsPaid(ids, payoutId),
+        transfer: async (amountCents, dest, idempotencyKey, metadata) => {
+          const t = await stripeService.createTransferCents(amountCents, dest, idempotencyKey, metadata);
+          return { id: t.id };
+        },
+      });
+      res.json(summary);
+    } catch (error) {
+      console.error("Payout run error:", error);
+      res.status(500).json({ error: "Failed to run payouts" });
     }
   });
 

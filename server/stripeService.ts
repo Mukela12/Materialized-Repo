@@ -143,6 +143,29 @@ export class StripeService {
     });
   }
 
+  /**
+   * Transfer an exact integer-cents amount to a connected account. The
+   * idempotencyKey (e.g. the payout id) makes a retried run safe — Stripe returns
+   * the original transfer instead of creating a duplicate.
+   */
+  async createTransferCents(
+    amountCents: number,
+    destinationAccountId: string,
+    idempotencyKey: string,
+    metadata?: Record<string, string>,
+  ) {
+    const stripe = await getUncachableStripeClient();
+    return await stripe.transfers.create(
+      {
+        amount: Math.round(amountCents),
+        currency: 'eur',
+        destination: destinationAccountId,
+        metadata,
+      },
+      { idempotencyKey },
+    );
+  }
+
   async getConnectAccount(accountId: string) {
     const stripe = await getUncachableStripeClient();
     return await stripe.accounts.retrieve(accountId);
