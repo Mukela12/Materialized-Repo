@@ -2,6 +2,8 @@ import express, { type Request, Response, NextFunction } from "express";
 import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
 import cors from "cors";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
 import { registerRoutes } from "./routes";
 import { registerAuthRoutes, seedAdminAccount } from "./authRoutes";
 import { serveStatic } from "./static";
@@ -37,6 +39,53 @@ const httpServer = createServer(app);
 
 // Trust proxy (Railway is behind a reverse proxy, and Vercel proxies API calls)
 app.set("trust proxy", 1);
+
+// ── Security headers ─────────────────────────────────────────────────────────
+// CSP/frameguard/COEP are disabled because the app serves its own SPA and, more
+// importantly, a shoppable video player + widget.js that are meant to be embedded
+// on third-party sites cross-origin. Everything else (HSTS, nosniff, referrer
+// policy, etc.) is applied.
+app.use(
+  helmet({
+    contentSecurityPolicy: false,
+    crossOriginEmbedderPolicy: false,
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+    frameguard: false,
+  }),
+);
+
+// ── Rate limiting ────────────────────────────────────────────────────────────
+// Key on the originating client IP (leftmost X-Forwarded-For) so that traffic
+// proxied through Vercel/Railway isn't all bucketed under one proxy IP.
+const clientIp = (req: Request) => {
+  const xff = req.headers["x-forwarded-for"];
+  const first = Array.isArray(xff) ? xff[0] : (xff || "").split(",")[0].trim();
+  return first || req.ip || "unknown";
+};
+const rlValidate = { trustProxy: false, xForwardedForHeader: false } as const;
+
+// Tight limit on auth to blunt credential-stuffing / brute force.
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 50,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: clientIp,
+  validate: rlValidate,
+  message: { error: "Too many attempts. Please try again in a few minutes." },
+});
+// Generous global API limit — a floor against floods, never trips for real use.
+const apiLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 600,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: clientIp,
+  validate: rlValidate,
+  skip: (req) => !req.path.startsWith("/api") || req.path.startsWith("/api/webhooks"),
+});
+app.use(apiLimiter);
+app.use(["/api/auth/login", "/api/auth/register", "/api/auth/resend-verification"], authLimiter);
 
 // ── CORS ─────────────────────────────────────────────────────────────────────
 const corsOrigins = process.env.CORS_ORIGINS?.split(',').map(s => s.trim()).filter(Boolean) || [];
@@ -161,26 +210,13 @@ export function log(message: string, source = "express") {
 app.use((req, res, next) => {
   const start = Date.now();
   const path = req.path;
-  let capturedJsonResponse: Record<string, any> | undefined = undefined;
-
-  const originalResJson = res.json;
-  res.json = function (bodyJson, ...args) {
-    capturedJsonResponse = bodyJson;
-    return originalResJson.apply(res, [bodyJson, ...args]);
-  };
-
+  // Log method/path/status/duration only — never response bodies (they contain
+  // PII, tokens, and secrets).
   res.on("finish", () => {
-    const duration = Date.now() - start;
     if (path.startsWith("/api")) {
-      let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
-      }
-
-      log(logLine);
+      log(`${req.method} ${path} ${res.statusCode} in ${Date.now() - start}ms`);
     }
   });
-
   next();
 });
 
@@ -192,9 +228,11 @@ app.use((req, res, next) => {
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
-
-    res.status(status).json({ message });
-    throw err;
+    // Log server-side and respond — do NOT re-throw (that crashed the request).
+    console.error(`[error] ${status} ${message}`);
+    if (!res.headersSent) {
+      res.status(status).json({ message });
+    }
   });
 
   if (process.env.NODE_ENV === "production") {

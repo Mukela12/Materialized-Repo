@@ -3,6 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { sanitizeUser } from "./serializers";
 import { canAccessUserResource } from "./authz";
+import { encryptSecret, decryptSecret } from "./crypto";
 import { recordSaleCommissions } from "./commissions";
 import { appendUtm } from "./embedUtils";
 import { resolveFeeConfig, userRateOr, centsToAmount } from "./feeConfig";
@@ -1209,7 +1210,7 @@ export async function registerRoutes(
         userId: sessionUserId,
         platform: "shopify",
         storeDomain,
-        accessToken,
+        accessToken: encryptSecret(accessToken),
         isActive: true,
       }).returning();
 
@@ -1244,7 +1245,7 @@ export async function registerRoutes(
         userId: sessionUserId,
         platform: "woocommerce",
         storeDomain: storeUrl,
-        accessToken: `${consumerKey}:${consumerSecret}`,
+        accessToken: encryptSecret(`${consumerKey}:${consumerSecret}`),
         isActive: true,
       }).returning();
 
@@ -1272,6 +1273,7 @@ export async function registerRoutes(
       if (!connection.accessToken || !connection.storeDomain) {
         return res.status(400).json({ error: "Store credentials incomplete" });
       }
+      const storeToken = decryptSecret(connection.accessToken);
 
       // Get user's brand
       const userBrands = await storage.getBrands();
@@ -1282,11 +1284,11 @@ export async function registerRoutes(
 
       if (connection.platform === "shopify") {
         const { fetchShopifyProducts, mapShopifyToLocalProducts } = await import("./integrations/shopifyService");
-        const shopifyProducts = await fetchShopifyProducts(connection.storeDomain, connection.accessToken);
+        const shopifyProducts = await fetchShopifyProducts(connection.storeDomain, storeToken);
         importedProducts = mapShopifyToLocalProducts(shopifyProducts, userBrand.id, connection.storeDomain);
       } else if (connection.platform === "woocommerce") {
         const { fetchWooCommerceProducts, mapWooToLocalProducts } = await import("./integrations/woocommerceService");
-        const [consumerKey, consumerSecret] = connection.accessToken.split(":");
+        const [consumerKey, consumerSecret] = storeToken.split(":");
         const wooProducts = await fetchWooCommerceProducts(connection.storeDomain, consumerKey, consumerSecret);
         importedProducts = mapWooToLocalProducts(wooProducts, userBrand.id);
       }
