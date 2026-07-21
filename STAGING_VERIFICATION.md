@@ -1,4 +1,4 @@
-# Staging Verification Runbook — Money Pipeline (PRs #1–#5)
+# Staging Verification Runbook — Money Pipeline (PRs #1–#6)
 
 Run this before the launch. It verifies the fee split → verified sale → commission → payout chain end-to-end in **Stripe test mode**. Nothing here should touch live money.
 
@@ -15,7 +15,7 @@ Run this before the launch. It verifies the fee split → verified sale → comm
 
 ## Step 1 — Merge the stack (oldest first)
 Merge on GitHub in order; each auto-retargets to `main` as the prior merges:
-- [ ] #1 marketplace-fee-split → #2 secure-purchase-attribution → #3 inventory-utm-attribution → #4 admin-adjustable-rates → #5 payout-execution
+- [ ] #1 marketplace-fee-split → #2 secure-purchase-attribution → #3 inventory-utm-attribution → #4 admin-adjustable-rates → #5 payout-execution → #6 store-order-webhook
 - [ ] Railway auto-deploys `main`; confirm the deploy is green.
 
 ## Step 2 — Apply the schema (CRITICAL GATE)
@@ -24,7 +24,7 @@ PRs #4 and #5 add columns/a table. Nothing money-related will work until this ru
 # from the repo with the Railway DATABASE_URL in env:
 npm run db:push
 ```
-- [ ] Confirms new objects: `platform_settings` table, `users.commission_rate_override`, `commission_transactions.payout_id`, `affiliate_payouts.stripe_transfer_id`.
+- [ ] Confirms new objects: `platform_settings` table, `users.commission_rate_override`, `commission_transactions.payout_id`, `commission_transactions.external_order_id`, `affiliate_payouts.stripe_transfer_id`, `store_connections.webhook_secret`.
 
 ---
 
@@ -65,6 +65,34 @@ curl -s -X PATCH "$API/api/admin/settings/fees" -b admin.txt -H 'Content-Type: a
 
 ---
 
+### 3f. Signed store order webhook (#6) — automated verified sales
+Setup:
+- [ ] Save the store's webhook signing secret on the connection (`store_connections.webhook_secret`) **or** set `SHOPIFY_WEBHOOK_SECRET` / `WC_WEBHOOK_SECRET`.
+- [ ] In Shopify/Woo, register an **order created/paid** webhook → `$API/api/webhooks/shopify/<connectionId>` (or `/woocommerce/<connectionId>`).
+
+Compute a valid signature for a curl test:
+```bash
+SECRET='<the connection webhook secret>'
+BODY='{"id":9001,"total_price":"100.00","landing_site":"/p/x?mtrlzd_ref=<realUtm>"}'
+SIG=$(printf '%s' "$BODY" | openssl dgst -sha256 -hmac "$SECRET" -binary | base64)
+```
+
+Tests:
+- [ ] **Bad signature rejected:**
+  ```bash
+  curl -s -o /dev/null -w '%{http_code}\n' -X POST "$API/api/webhooks/shopify/<connId>" \
+    -H 'Content-Type: application/json' -H 'X-Shopify-Hmac-Sha256: wrong' -d "$BODY"   # → 401
+  ```
+- [ ] **Valid signed order → commissions:**
+  ```bash
+  curl -s -X POST "$API/api/webhooks/shopify/<connId>" \
+    -H 'Content-Type: application/json' -H "X-Shopify-Hmac-Sha256: $SIG" -d "$BODY"
+  ```
+  → `{ok:true, split:{…}}`; creator + publisher `commission_transactions` created for the resolved affiliate, `external_order_id = 9001`.
+- [ ] **Idempotency:** re-send the exact same request → `{ok:true, deduped:true}`, **no** second commission.
+- [ ] **Unattributed order** (drop `mtrlzd_ref` from the body, re-sign, resend) → `{ok:true, unattributed:true}`, no commission.
+- [ ] Those commissions now flow through **Step 4** (approve → payout run) like any other.
+
 ## Step 4 — Payout dry-run (Stripe TEST mode)
 This is the piece I couldn't run locally — verify it carefully.
 - [ ] Onboard a **test** Connect account for an affiliate (`/api/stripe/connect/*`); complete KYC with Stripe test data so `payouts_enabled`.
@@ -86,4 +114,4 @@ curl -s -X POST "$API/api/admin/payouts/run" -b admin.txt
 - [ ] Step 4 passes in test mode → payouts move money safely and idempotently.
 - [ ] Only then flip Stripe to live keys (after Stripe's account review clears) for the real event.
 
-**If anything fails, capture the request + response and I'll debug/fix it.** The last remaining SOW item — the signed Shopify/Woo order webhook (auto verified-sales) — is intentionally still to build; until then, log real event sales via `POST /api/sales` (reconciled from the store export).
+**If anything fails, capture the request + response and I'll debug/fix it.** The full SOW money flow is now built (PRs #1–#6): signed store webhook → verified split → approved commission → idempotent Connect payout. For the event itself you can still fall back to `POST /api/sales` (reconciled from the store export) if a store's webhook isn't wired in time. Minor refinements still open: explicit 60-day attribution-window enforcement and `transfer.reversed` handling.
