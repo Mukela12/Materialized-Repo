@@ -1,10 +1,11 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { resolveFeeConfig, userRateOr, numOr } from '../../server/feeConfig';
+import { resolveFeeConfig, userRateOr, numOr, getPlatformCurrency } from '../../server/feeConfig';
 
 beforeEach(() => {
   delete process.env.MARKETPLACE_FEE_PCT;
   delete process.env.CREATOR_COMMISSION_PCT;
   delete process.env.PUBLISHER_COMMISSION_PCT;
+  delete process.env.PLATFORM_CURRENCY;
 });
 
 describe('numOr', () => {
@@ -44,5 +45,15 @@ describe('userRateOr', () => {
     expect(userRateOr(null, 8)).toBe(8);
     expect(userRateOr(undefined, 8)).toBe(8);
     expect(userRateOr('', 8)).toBe(8);
+  });
+});
+
+describe('getPlatformCurrency', () => {
+  it('defaults to usd', () => {
+    expect(getPlatformCurrency()).toBe('usd');
+  });
+  it('reads and lowercases the env override', () => {
+    process.env.PLATFORM_CURRENCY = 'EUR';
+    expect(getPlatformCurrency()).toBe('eur');
   });
 });

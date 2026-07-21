@@ -1,4 +1,5 @@
 import { getUncachableStripeClient } from './stripeClient';
+import { getPlatformCurrency } from './feeConfig';
 
 const PLAN_CONFIG = {
   starter: { name: 'Materialized Starter Plan', amount: 24900 },
@@ -21,14 +22,14 @@ export class StripeService {
     }
 
     const prices = await stripe.prices.list({ product: product.id, active: true, limit: 10 });
-    const existing = prices.data.find(p => p.recurring?.interval === 'month' && p.unit_amount === config.amount && p.currency === 'eur');
+    const existing = prices.data.find(p => p.recurring?.interval === 'month' && p.unit_amount === config.amount && p.currency === getPlatformCurrency());
 
     if (existing) return existing.id;
 
     const newPrice = await stripe.prices.create({
       product: product.id,
       unit_amount: config.amount,
-      currency: 'eur',
+      currency: getPlatformCurrency(),
       recurring: { interval: 'month' },
       metadata: { plan },
     });
@@ -54,12 +55,12 @@ export class StripeService {
     });
   }
 
-  async createSurplusInvoice(customerId: string, amountEuros: number, description: string) {
+  async createSurplusInvoice(customerId: string, amount: number, description: string) {
     const stripe = await getUncachableStripeClient();
     await stripe.invoiceItems.create({
       customer: customerId,
-      amount: Math.round(amountEuros * 100),
-      currency: 'eur',
+      amount: Math.round(amount * 100),
+      currency: getPlatformCurrency(),
       description,
     });
     const invoice = await stripe.invoices.create({
@@ -102,7 +103,7 @@ export class StripeService {
     });
   }
 
-  async createPaymentIntent(amount: number, currency: string = 'eur', metadata?: Record<string, string>) {
+  async createPaymentIntent(amount: number, currency: string = getPlatformCurrency(), metadata?: Record<string, string>) {
     const stripe = await getUncachableStripeClient();
     return await stripe.paymentIntents.create({
       amount: Math.round(amount * 100),
@@ -137,7 +138,7 @@ export class StripeService {
     const stripe = await getUncachableStripeClient();
     return await stripe.transfers.create({
       amount: Math.round(amount * 100),
-      currency: 'eur',
+      currency: getPlatformCurrency(),
       destination: destinationAccountId,
       metadata,
     });
@@ -158,7 +159,7 @@ export class StripeService {
     return await stripe.transfers.create(
       {
         amount: Math.round(amountCents),
-        currency: 'eur',
+        currency: getPlatformCurrency(),
         destination: destinationAccountId,
         metadata,
       },

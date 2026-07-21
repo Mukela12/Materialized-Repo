@@ -36,6 +36,7 @@ const mockStripe = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  process.env.PLATFORM_CURRENCY = 'usd';
   (getUncachableStripeClient as ReturnType<typeof vi.fn>).mockResolvedValue(mockStripe);
 });
 
@@ -51,7 +52,7 @@ describe('StripeService.findOrCreateSubscriptionPrice', () => {
         {
           id: 'price_existing_starter',
           unit_amount: 24900,
-          currency: 'eur',
+          currency: 'usd',
           recurring: { interval: 'month' },
         },
       ],
@@ -73,7 +74,7 @@ describe('StripeService.findOrCreateSubscriptionPrice', () => {
         {
           id: 'price_existing_pro',
           unit_amount: 49900,
-          currency: 'eur',
+          currency: 'usd',
           recurring: { interval: 'month' },
         },
       ],
@@ -106,13 +107,13 @@ describe('StripeService.findOrCreateSubscriptionPrice', () => {
     expect(mockStripe.prices.create).toHaveBeenCalledWith({
       product: 'prod_new_starter',
       unit_amount: 24900,
-      currency: 'eur',
+      currency: 'usd',
       recurring: { interval: 'month' },
       metadata: { plan: 'starter' },
     });
   });
 
-  it('creates a new pro product and price with correct amount (49900 EUR cents)', async () => {
+  it('creates a new pro product and price with correct amount (49900 cents)', async () => {
     mockStripe.products.list.mockResolvedValue({ data: [] });
     mockStripe.products.create.mockResolvedValue({
       id: 'prod_new_pro',
@@ -133,7 +134,7 @@ describe('StripeService.findOrCreateSubscriptionPrice', () => {
     expect(mockStripe.prices.create).toHaveBeenCalledWith({
       product: 'prod_new_pro',
       unit_amount: 49900,
-      currency: 'eur',
+      currency: 'usd',
       recurring: { interval: 'month' },
       metadata: { plan: 'pro' },
     });
@@ -148,7 +149,7 @@ describe('StripeService.findOrCreateSubscriptionPrice', () => {
         {
           id: 'price_wrong_amount',
           unit_amount: 9900,
-          currency: 'eur',
+          currency: 'usd',
           recurring: { interval: 'month' },
         },
       ],
@@ -163,27 +164,27 @@ describe('StripeService.findOrCreateSubscriptionPrice', () => {
     );
   });
 
-  it('skips wrong-currency prices and creates a new EUR one', async () => {
+  it('skips a wrong-currency price and creates a new one in the platform currency', async () => {
     mockStripe.products.list.mockResolvedValue({
       data: [{ id: 'prod_starter', metadata: { plan: 'starter' } }],
     });
     mockStripe.prices.list.mockResolvedValue({
       data: [
         {
-          id: 'price_usd',
+          id: 'price_wrong_ccy',
           unit_amount: 24900,
-          currency: 'usd',
+          currency: 'gbp',
           recurring: { interval: 'month' },
         },
       ],
     });
-    mockStripe.prices.create.mockResolvedValue({ id: 'price_eur_starter' });
+    mockStripe.prices.create.mockResolvedValue({ id: 'price_new_usd' });
 
     const priceId = await service.findOrCreateSubscriptionPrice('starter');
 
-    expect(priceId).toBe('price_eur_starter');
+    expect(priceId).toBe('price_new_usd');
     expect(mockStripe.prices.create).toHaveBeenCalledWith(
-      expect.objectContaining({ currency: 'eur' })
+      expect.objectContaining({ currency: 'usd' })
     );
   });
 
@@ -210,7 +211,7 @@ describe('StripeService.createSubscriptionCheckout', () => {
       data: [{ id: 'prod_starter', metadata: { plan: 'starter' } }],
     });
     mockStripe.prices.list.mockResolvedValue({
-      data: [{ id: 'price_starter', unit_amount: 24900, currency: 'eur', recurring: { interval: 'month' } }],
+      data: [{ id: 'price_starter', unit_amount: 24900, currency: 'usd', recurring: { interval: 'month' } }],
     });
     mockStripe.checkout.sessions.create.mockResolvedValue({
       id: 'cs_test',
@@ -242,7 +243,7 @@ describe('StripeService.createSubscriptionCheckout', () => {
       data: [{ id: 'prod_pro', metadata: { plan: 'pro' } }],
     });
     mockStripe.prices.list.mockResolvedValue({
-      data: [{ id: 'price_pro', unit_amount: 49900, currency: 'eur', recurring: { interval: 'month' } }],
+      data: [{ id: 'price_pro', unit_amount: 49900, currency: 'usd', recurring: { interval: 'month' } }],
     });
     mockStripe.checkout.sessions.create.mockResolvedValue({
       id: 'cs_pro_test',
@@ -318,11 +319,11 @@ describe('mapStripeStatus — imported from webhookHandlers', () => {
 });
 
 describe('PLAN_AMOUNT_FALLBACK — imported from webhookHandlers', () => {
-  it('maps 24900 cents → starter (€249/mo)', () => {
+  it('maps 24900 cents → starter ($249/mo)', () => {
     expect(PLAN_AMOUNT_FALLBACK[24900]).toBe('starter');
   });
 
-  it('maps 49900 cents → pro (€499/mo)', () => {
+  it('maps 49900 cents → pro ($499/mo)', () => {
     expect(PLAN_AMOUNT_FALLBACK[49900]).toBe('pro');
   });
 
