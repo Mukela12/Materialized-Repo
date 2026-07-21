@@ -484,6 +484,16 @@ function payoutStatusBadge(status: string | null) {
   return <Badge className="bg-gray-500/20 text-gray-600 border-0 capitalize">{s}</Badge>;
 }
 
+function commissionStatusBadge(status: string | null) {
+  const s = status ?? "pending";
+  if (s === "pending") return <Badge className="bg-amber-500/20 text-amber-600 border-0 capitalize">{s}</Badge>;
+  if (s === "approved") return <Badge className="bg-blue-500/20 text-blue-600 border-0 capitalize">{s}</Badge>;
+  if (s === "paid") return <Badge className="bg-green-500/20 text-green-600 border-0 capitalize">{s}</Badge>;
+  if (s === "reversed") return <Badge className="bg-red-500/20 text-red-600 border-0 capitalize">{s}</Badge>;
+  if (s === "rejected") return <Badge className="bg-gray-500/20 text-gray-600 border-0 capitalize">{s}</Badge>;
+  return <Badge className="bg-gray-500/20 text-gray-600 border-0 capitalize">{s}</Badge>;
+}
+
 function MoneyPayouts() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -641,7 +651,7 @@ function MoneyPayouts() {
 function MoneyCommissions() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const [statusFilter, setStatusFilter] = useState<"pending" | "approved">("pending");
+  const [statusFilter, setStatusFilter] = useState<"pending" | "approved" | "paid" | "reversed" | "rejected">("pending");
   const [approvingId, setApprovingId] = useState<string | null>(null);
 
   const { data: commissions = [], isLoading } = useQuery<AdminCommission[]>({
@@ -665,7 +675,7 @@ function MoneyCommissions() {
     <div className="space-y-4">
       {/* Status filter pills */}
       <div className="flex gap-2">
-        {(["pending", "approved"] as const).map(s => (
+        {(["pending", "approved", "paid", "reversed", "rejected"] as const).map(s => (
           <button
             key={s}
             onClick={() => setStatusFilter(s)}
@@ -723,7 +733,7 @@ function MoneyCommissions() {
                         Approve
                       </Button>
                     ) : (
-                      <Badge className="bg-green-500/20 text-green-600 border-0 capitalize">{c.status}</Badge>
+                      commissionStatusBadge(c.status)
                     )}
                   </td>
                 </tr>

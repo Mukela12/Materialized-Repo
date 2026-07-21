@@ -130,6 +130,45 @@ export async function registerWooOrderWebhook(
   return { id: data.id };
 }
 
+/**
+ * Register the `order.refunded` webhook against our refund receiver so refunds flow in
+ * automatically and claw back the commission. Signed with the same secret as
+ * order.created, so verifyStoreHmac works unchanged. Its payload is the order object, so
+ * `order.id` equals the id we stored on the sale. Throws on any non-2xx.
+ */
+export async function registerWooRefundWebhook(
+  storeUrl: string,
+  consumerKey: string,
+  consumerSecret: string,
+  address: string,
+  secret: string,
+): Promise<{ id: number }> {
+  const domain = storeUrl.replace(/^https?:\/\//, "").replace(/\/$/, "");
+  const auth = Buffer.from(`${consumerKey}:${consumerSecret}`).toString("base64");
+  const response = await fetch(`https://${domain}/wp-json/wc/v3/webhooks`, {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${auth}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      name: "Materialized refunds",
+      topic: "order.refunded",
+      delivery_url: address,
+      secret,
+      status: "active",
+    }),
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`WooCommerce refund webhook registration error (${response.status}): ${text}`);
+  }
+
+  const data = await response.json();
+  return { id: data.id };
+}
+
 export function mapWooToLocalProducts(products: WooProduct[], brandId: string) {
   return products.map(p => mapWooProduct(p, brandId));
 }

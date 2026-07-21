@@ -6,7 +6,7 @@ import { canAccessUserResource } from "./authz";
 import { randomBytes } from "crypto";
 import { encryptSecret, decryptSecret } from "./crypto";
 import { hashPassword } from "./auth";
-import { recordSaleCommissions } from "./commissions";
+import { recordSaleCommissions, clawbackSaleCommissions } from "./commissions";
 import { appendUtm } from "./embedUtils";
 import { resolveFeeConfig, userRateOr, centsToAmount, formatMoney } from "./feeConfig";
 import { executePayouts } from "./payouts";
@@ -1264,6 +1264,10 @@ export async function registerRoutes(
   const receiverUrl = (req: any, platform: "shopify" | "woocommerce", connectionId: string): string =>
     `${webhookBaseUrl(req)}/api/webhooks/${platform}/${connectionId}`;
 
+  // The receiver address for refund deliveries (order refunded → commission clawback).
+  const refundReceiverUrl = (req: any, platform: "shopify" | "woocommerce", connectionId: string): string =>
+    `${receiverUrl(req, platform, connectionId)}/refund`;
+
   /**
    * Auto-register the orders/create webhook for a freshly-connected store.
    * Never throws — on any failure it returns a "manual" status so the connect
@@ -1278,15 +1282,28 @@ export async function registerRoutes(
   ): Promise<{ status: "registered" | "manual"; url: string; secret: string; error?: string }> => {
     const platform = connection.platform as "shopify" | "woocommerce";
     const url = receiverUrl(req, platform, connection.id);
+    const refundUrl = refundReceiverUrl(req, platform, connection.id);
     try {
       if (!connection.storeDomain) throw new Error("Store domain missing");
       if (platform === "shopify") {
-        const { registerShopifyOrderWebhook } = await import("./integrations/shopifyService");
+        const { registerShopifyOrderWebhook, registerShopifyRefundWebhook } = await import("./integrations/shopifyService");
         await registerShopifyOrderWebhook(connection.storeDomain, rawToken, url);
+        // Refund topic is additional best-effort — a failure here must not fail the connect
+        // or downgrade the sale-webhook status, so we swallow it separately.
+        try {
+          await registerShopifyRefundWebhook(connection.storeDomain, rawToken, refundUrl);
+        } catch (refundErr: any) {
+          console.error(`${platform} refund webhook registration failed:`, refundErr?.message || refundErr);
+        }
       } else {
-        const { registerWooOrderWebhook } = await import("./integrations/woocommerceService");
+        const { registerWooOrderWebhook, registerWooRefundWebhook } = await import("./integrations/woocommerceService");
         const [consumerKey, consumerSecret] = rawToken.split(":");
         await registerWooOrderWebhook(connection.storeDomain, consumerKey, consumerSecret, url, rawSecret);
+        try {
+          await registerWooRefundWebhook(connection.storeDomain, consumerKey, consumerSecret, refundUrl, rawSecret);
+        } catch (refundErr: any) {
+          console.error(`${platform} refund webhook registration failed:`, refundErr?.message || refundErr);
+        }
       }
       return { status: "registered", url, secret: rawSecret };
     } catch (err: any) {
@@ -1573,8 +1590,9 @@ export async function registerRoutes(
       const attribution = extract(req.body);
       if (!attribution.externalOrderId) return res.status(400).json({ error: "Missing order id" });
 
-      // Idempotency — stores retry webhooks.
-      if (await storage.hasCommissionForExternalOrder(attribution.externalOrderId)) {
+      // Idempotency — stores retry webhooks. Scoped to this store connection, since order
+      // ids collide across stores.
+      if (await storage.hasCommissionForExternalOrder(attribution.externalOrderId, connection.id)) {
         return res.json({ ok: true, deduped: true });
       }
 
@@ -1596,6 +1614,7 @@ export async function registerRoutes(
         campaignAffiliateId: resolved.campaignAffiliateId,
         resolvedCommissionRate: resolved.commissionRate,
         externalOrderId: attribution.externalOrderId,
+        storeConnectionId: connection.id,
       }, null, {
         marketplaceFeePct: cfg.marketplaceFeePct,
         creatorPct: userRateOr(creatorUser?.commissionRateOverride, cfg.creatorPct),
@@ -1614,6 +1633,56 @@ export async function registerRoutes(
 
   app.post("/api/webhooks/woocommerce/:connectionId", (req, res) =>
     handleStoreOrderWebhook(req, res, "woocommerce", "X-WC-Webhook-Signature", extractWooAttribution));
+
+  // Signed store REFUND webhook — the automated commission-clawback path. When a store
+  // reports an order was refunded (Shopify `orders/refunded`, Woo `order.refunded`), we
+  // verify the same HMAC as the order webhook, then reverse the commission rows recorded
+  // for that order id so the affiliate's earnings ledger stops counting them and the
+  // payout engine (which pays only "approved" rows) skips them. Idempotent: a retried
+  // refund delivery, or a refund for an order we never attributed, is acked as a no-op.
+  const handleStoreRefundWebhook = async (
+    req: any,
+    res: any,
+    platform: "shopify" | "woocommerce",
+    hmacHeader: string,
+    extract: (order: any) => OrderAttribution,
+  ) => {
+    try {
+      const { db } = await import("./db");
+      const { storeConnections } = await import("@shared/schema");
+      const { eq } = await import("drizzle-orm");
+      const [connection] = await db.select().from(storeConnections).where(eq(storeConnections.id, req.params.connectionId));
+      if (!connection || connection.platform !== platform) {
+        return res.status(404).json({ error: "Store connection not found" });
+      }
+
+      // Same per-store secret + verification as the order webhook (see handleStoreOrderWebhook).
+      const secret = connection.webhookSecret
+        ? decryptSecret(connection.webhookSecret)
+        : (platform === "shopify" ? process.env.SHOPIFY_WEBHOOK_SECRET : process.env.WC_WEBHOOK_SECRET);
+      if (!verifyStoreHmac(req.rawBody, req.get(hmacHeader) || undefined, secret || undefined)) {
+        return res.status(401).json({ error: "Invalid signature" });
+      }
+
+      // Both refund payloads are full order objects, so the same extractor yields the
+      // order id we stored on the sale. We only need externalOrderId here (ref/amount
+      // are irrelevant to a clawback).
+      const attribution = extract(req.body);
+      if (!attribution.externalOrderId) return res.status(400).json({ error: "Missing order id" });
+
+      const result = await clawbackSaleCommissions(storage, attribution.externalOrderId, connection.id);
+      res.json({ ok: true, reversed: result.reversed, alreadyReversed: result.alreadyReversed });
+    } catch (error) {
+      console.error(`${platform} refund webhook error:`, error);
+      res.status(500).json({ error: "Refund webhook processing failed" });
+    }
+  };
+
+  app.post("/api/webhooks/shopify/:connectionId/refund", (req, res) =>
+    handleStoreRefundWebhook(req, res, "shopify", "X-Shopify-Hmac-Sha256", extractShopifyAttribution));
+
+  app.post("/api/webhooks/woocommerce/:connectionId/refund", (req, res) =>
+    handleStoreRefundWebhook(req, res, "woocommerce", "X-WC-Webhook-Signature", extractWooAttribution));
 
   // Delete a store connection
   app.delete("/api/integrations/stores/:id", async (req, res) => {
@@ -3154,7 +3223,9 @@ Identify which products from the catalog are most likely to appear or be feature
       }
 
       const account = await stripeService.getConnectAccount(user.stripeConnectAccountId);
-      const isOnboarded = account.charges_enabled && account.payouts_enabled;
+      // Same 3-condition gate as the account.updated webhook (handleAccountUpdated) so the
+      // status endpoint and the webhook agree on when an account is onboarded.
+      const isOnboarded = account.charges_enabled && account.payouts_enabled && account.details_submitted;
 
       if (isOnboarded && !user.stripeConnectOnboarded) {
         await storage.updateUser(user.id, { stripeConnectOnboarded: true } as any);
@@ -3490,6 +3561,14 @@ Identify which products from the catalog are most likely to appear or be feature
   // Admin: approve a pending commission (makes it eligible for payout)
   app.post("/api/admin/commissions/:id/approve", requireAdmin, async (req, res) => {
     try {
+      // Only pending -> approved is allowed. Without this guard a reversed/paid/rejected row
+      // could be flipped back to approved and re-paid by the payout engine.
+      const existing = await storage.getCommissionTransaction(req.params.id);
+      if (!existing) return res.status(404).json({ error: "Commission not found" });
+      if (existing.status !== "pending") {
+        return res.status(409).json({ error: `Commission is ${existing.status} and cannot be approved` });
+      }
+
       const updated = await storage.updateCommissionTransactionStatus(req.params.id, "approved");
       if (!updated) return res.status(404).json({ error: "Commission not found" });
 
