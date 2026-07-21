@@ -13,6 +13,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { UserCircle, MapPin, Upload, Save, X, Loader2, Image as ImageIcon, Video } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useUpload } from "@/hooks/use-upload";
 import { COUNTRIES } from "@shared/schema";
 import type { UserProfile, User } from "@shared/schema";
 
@@ -28,6 +29,7 @@ type ProfileFormData = z.infer<typeof profileFormSchema>;
 
 export default function ProfilePage() {
   const { toast } = useToast();
+  const { uploadFile: doUpload } = useUpload();
   const [bioLength, setBioLength]       = useState(0);
   const [isDragging, setIsDragging]     = useState(false);
   const [mediaPreview, setMediaPreview] = useState<string | null>(null);
@@ -114,19 +116,8 @@ export default function ProfilePage() {
     setIsUploading(true);
 
     try {
-      const urlRes = await apiRequest("POST", "/api/uploads/request-url", {
-        name: file.name,
-        size: file.size,
-        contentType: file.type,
-      });
-      const { uploadURL, objectPath } = await urlRes.json();
-      await fetch(uploadURL, {
-        method: "PUT",
-        body: file,
-        headers: { "Content-Type": file.type },
-      });
-      const publicUrl = `/objects/${objectPath.replace(/^\//, "")}`;
-      form.setValue("profileMediaUrl", publicUrl);
+      const { objectUrl } = await doUpload(file);
+      form.setValue("profileMediaUrl", objectUrl);
       form.setValue("profileMediaType", isVideo ? "video" : "image");
     } catch {
       toast({ title: "Upload failed", description: "Could not upload the file. Please try again.", variant: "destructive" });

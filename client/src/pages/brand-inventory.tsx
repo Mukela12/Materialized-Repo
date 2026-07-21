@@ -25,6 +25,7 @@ import { Package, Link2, Plus, RefreshCw, Code2, UploadCloud, X, AlertTriangle, 
 import { SiShopify, SiWoocommerce, SiBigcommerce, SiMagento, SiGoogledrive, SiDropbox } from "react-icons/si";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useUpload } from "@/hooks/use-upload";
 import type { Product, Brand } from "@shared/schema";
 
 const PLATFORMS = [
@@ -59,6 +60,7 @@ function AddProductSheet({
   brandId?: string;
 }) {
   const { toast } = useToast();
+  const { uploadFile } = useUpload();
 
   // Form fields
   const [title, setTitle] = useState("");
@@ -107,14 +109,8 @@ function AddProductSheet({
       if (thumbSource === "computer" && thumbFile) {
         setIsUploading(true);
         try {
-          const urlRes = await apiRequest("POST", "/api/uploads/request-url", {
-            name: thumbFile.name,
-            size: thumbFile.size,
-            contentType: thumbFile.type,
-          });
-          const { uploadURL, objectPath } = await urlRes.json();
-          await fetch(uploadURL, { method: "PUT", body: thumbFile, headers: { "Content-Type": thumbFile.type } });
-          imageUrl = `/objects/${objectPath.replace(/^\//, "")}`;
+          const { objectUrl } = await uploadFile(thumbFile);
+          imageUrl = objectUrl;
         } finally {
           setIsUploading(false);
         }
