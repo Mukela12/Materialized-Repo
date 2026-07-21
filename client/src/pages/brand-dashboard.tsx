@@ -11,7 +11,7 @@ import { Eye, DollarSign, MousePointer, Users, Package, Link2, TrendingUp, Zap, 
 import { Slider } from "@/components/ui/slider";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import type { Brand, User, Product } from "@shared/schema";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -40,6 +40,7 @@ type ConnectCreatorForm = z.infer<typeof connectCreatorSchema>;
 
 export default function BrandDashboard() {
   const [activeTab, setActiveTab] = useState("stats");
+  const [, navigate] = useLocation();
   const [apiKeyInput, setApiKeyInput] = useState("");
   const [isApiConnected, setIsApiConnected] = useState(false);
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
@@ -192,6 +193,7 @@ export default function BrandDashboard() {
             variant="outline"
             className="rounded-full gap-2 flex-1 sm:flex-none"
             data-testid="button-add-product"
+            onClick={() => navigate("/brand/inventory")}
           >
             <Package className="h-4 w-4" />
             Add Product
@@ -614,7 +616,7 @@ export default function BrandDashboard() {
 
       {activeTab === "quick-actions" && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Card className="hover-elevate cursor-pointer">
+          <Card className="hover-elevate cursor-pointer" onClick={() => navigate("/brand/inventory")}>
             <CardContent className="pt-6">
               <div className="flex items-center gap-4">
                 <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
@@ -627,7 +629,7 @@ export default function BrandDashboard() {
               </div>
             </CardContent>
           </Card>
-          <Card className="hover-elevate cursor-pointer">
+          <Card className="hover-elevate cursor-pointer" onClick={() => navigate("/brand/creators")}>
             <CardContent className="pt-6">
               <div className="flex items-center gap-4">
                 <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
@@ -640,7 +642,7 @@ export default function BrandDashboard() {
               </div>
             </CardContent>
           </Card>
-          <Card className="hover-elevate cursor-pointer">
+          <Card className="hover-elevate cursor-pointer" onClick={() => navigate("/brand/inventory")}>
             <CardContent className="pt-6">
               <div className="flex items-center gap-4">
                 <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
@@ -653,7 +655,7 @@ export default function BrandDashboard() {
               </div>
             </CardContent>
           </Card>
-          <Card className="hover-elevate cursor-pointer">
+          <Card className="hover-elevate cursor-pointer" onClick={() => navigate("/brand/settings")}>
             <CardContent className="pt-6">
               <div className="flex items-center gap-4">
                 <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
@@ -682,7 +684,7 @@ export default function BrandDashboard() {
               <Zap className="h-12 w-12 mx-auto mb-3 opacity-50" />
               <p>No active campaigns</p>
               <p className="text-sm">Create your first campaign to boost product visibility</p>
-              <Button className="rounded-full mt-4" data-testid="button-create-campaign">
+              <Button className="rounded-full mt-4" data-testid="button-create-campaign" onClick={() => navigate("/brand/campaigns/new")}>
                 Create Campaign
               </Button>
             </div>

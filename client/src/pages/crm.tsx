@@ -110,7 +110,7 @@ export default function CRMAnalytics() {
 
   const referralMutation = useMutation({
     mutationFn: async (data: ReferralFormValues) => {
-      const res = await apiRequest("/api/referrals", "POST", data);
+      const res = await apiRequest("POST", "/api/referrals", data);
       return res.json();
     },
     onSuccess: () => {
