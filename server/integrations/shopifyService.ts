@@ -58,19 +58,23 @@ export async function validateShopifyCredentials(
   }
 }
 
-export function mapShopifyToLocalProducts(products: ShopifyProduct[], brandId: string) {
-  return products.map(p => mapShopifyProduct(p, brandId));
+export function mapShopifyToLocalProducts(products: ShopifyProduct[], brandId: string, storeDomain?: string) {
+  return products.map(p => mapShopifyProduct(p, brandId, storeDomain));
 }
 
-export function mapShopifyProduct(product: ShopifyProduct, brandId: string) {
+export function mapShopifyProduct(product: ShopifyProduct, brandId: string, storeDomain?: string) {
   const variant = product.variants[0];
   const image = product.images[0];
+  const cleanDomain = storeDomain?.replace(/^https?:\/\//, "").replace(/\/$/, "");
+  const productUrl = cleanDomain && product.handle
+    ? `https://${cleanDomain}/products/${product.handle}`
+    : null;
   return {
     name: product.title,
     description: product.body_html?.replace(/<[^>]*>/g, "").substring(0, 500) || null,
     price: variant?.price || "0.00",
     imageUrl: image?.src || null,
-    productUrl: null,
+    productUrl,
     sku: variant?.sku || null,
     category: product.product_type || null,
     productType: "Physical",
