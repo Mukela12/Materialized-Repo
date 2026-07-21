@@ -28,22 +28,45 @@ export async function fetchWooCommerceProducts(
   const auth = consumerSecret
     ? Buffer.from(`${consumerKey}:${consumerSecret}`).toString("base64")
     : Buffer.from(`${consumerKey}:`).toString("base64");
+  const headers = {
+    Authorization: `Basic ${auth}`,
+    "Content-Type": "application/json",
+  };
 
-  const url = `https://${domain}/wp-json/wc/v3/products?per_page=${limit}`;
+  const products: WooProduct[] = [];
+  // Safety ceiling: 500 pages * 100 = 50k products. Guards against a runaway loop
+  // if a store ever reports a bogus X-WP-TotalPages count.
+  const MAX_PAGES = 500;
 
-  const response = await fetch(url, {
-    headers: {
-      Authorization: `Basic ${auth}`,
-      "Content-Type": "application/json",
-    },
-  });
+  // WooCommerce (wc/v3) paginates with 1-indexed `page` + `per_page` (max 100).
+  // The total page count is reported in the X-WP-TotalPages response header on the
+  // first request; we loop page=1..N, concatenating each page's array.
+  let totalPages = 1;
 
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`WooCommerce API error (${response.status}): ${text}`);
+  for (let page = 1; page <= totalPages && page <= MAX_PAGES; page++) {
+    const url = `https://${domain}/wp-json/wc/v3/products?per_page=${limit}&page=${page}`;
+    const response = await fetch(url, { headers });
+
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(`WooCommerce API error (${response.status}): ${text}`);
+    }
+
+    if (page === 1) {
+      const totalHeader = response.headers.get("x-wp-totalpages");
+      const parsed = totalHeader ? parseInt(totalHeader, 10) : NaN;
+      if (Number.isFinite(parsed) && parsed > 0) totalPages = parsed;
+    }
+
+    const pageProducts = await response.json();
+    if (Array.isArray(pageProducts)) {
+      // An empty page means we've run past the real data — stop early.
+      if (pageProducts.length === 0) break;
+      products.push(...pageProducts);
+    }
   }
 
-  return response.json();
+  return products;
 }
 
 export async function validateWooCommerceCredentials(
@@ -65,6 +88,46 @@ export async function validateWooCommerceCredentials(
   } catch (err: any) {
     return { valid: false, error: err.message };
   }
+}
+
+/**
+ * Register the `order.created` webhook against our receiver so verified sales flow
+ * in automatically. WooCommerce is fully zero-touch: WE choose the `secret`, and Woo
+ * signs each delivery as base64 HMAC-SHA256 of the raw payload with that exact secret
+ * (X-WC-Webhook-Signature) — an exact match for verifyStoreHmac. Throws on any non-2xx
+ * so the caller can fall back to self-serve.
+ */
+export async function registerWooOrderWebhook(
+  storeUrl: string,
+  consumerKey: string,
+  consumerSecret: string,
+  address: string,
+  secret: string,
+): Promise<{ id: number }> {
+  const domain = storeUrl.replace(/^https?:\/\//, "").replace(/\/$/, "");
+  const auth = Buffer.from(`${consumerKey}:${consumerSecret}`).toString("base64");
+  const response = await fetch(`https://${domain}/wp-json/wc/v3/webhooks`, {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${auth}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      name: "Materialized orders",
+      topic: "order.created",
+      delivery_url: address,
+      secret,
+      status: "active",
+    }),
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`WooCommerce webhook registration error (${response.status}): ${text}`);
+  }
+
+  const data = await response.json();
+  return { id: data.id };
 }
 
 export function mapWooToLocalProducts(products: WooProduct[], brandId: string) {

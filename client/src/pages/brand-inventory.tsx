@@ -29,11 +29,11 @@ import { useUpload } from "@/hooks/use-upload";
 import type { Product, Brand } from "@shared/schema";
 
 const PLATFORMS = [
-  { id: "shopify",     label: "Shopify",      placeholder: "shpat_xxxxxxxxxxxxxxxxxxxx",        Icon: SiShopify,     color: "#96bf48" },
-  { id: "woocommerce", label: "WooCommerce",  placeholder: "ck_xxxxxxxxxxxxxxxxxxxxxxxx",       Icon: SiWoocommerce, color: "#7f54b3" },
-  { id: "bigcommerce", label: "BigCommerce",  placeholder: "your BigCommerce API key",          Icon: SiBigcommerce, color: "#121118" },
-  { id: "magento",     label: "Magento",      placeholder: "your Magento integration token",    Icon: SiMagento,     color: "#ee672f" },
-  { id: "custom",      label: "Custom API",   placeholder: "your custom API key or token",      Icon: Code2,         color: "#677A67" },
+  { id: "shopify",     label: "Shopify",      placeholder: "shpat_xxxxxxxxxxxxxxxxxxxx",        Icon: SiShopify,     color: "#96bf48", supported: true  },
+  { id: "woocommerce", label: "WooCommerce",  placeholder: "ck_xxxxxxxxxxxxxxxxxxxxxxxx",       Icon: SiWoocommerce, color: "#7f54b3", supported: true  },
+  { id: "bigcommerce", label: "BigCommerce",  placeholder: "your BigCommerce API key",          Icon: SiBigcommerce, color: "#121118", supported: false },
+  { id: "magento",     label: "Magento",      placeholder: "your Magento integration token",    Icon: SiMagento,     color: "#ee672f", supported: false },
+  { id: "custom",      label: "Custom API",   placeholder: "your custom API key or token",      Icon: Code2,         color: "#677A67", supported: false },
 ] as const;
 
 type PlatformId = (typeof PLATFORMS)[number]["id"];
@@ -405,15 +405,22 @@ interface StoreConnection {
   lastSyncAt: string | null;
   productCount: number;
   isActive: boolean;
+  hasWebhookSecret?: boolean;
+  webhookUrl?: string | null;
 }
 
 export default function BrandInventory() {
   const [apiKeyInput, setApiKeyInput] = useState("");
   const [storeUrlInput, setStoreUrlInput] = useState("");
   const [secretInput, setSecretInput] = useState("");
+  const [shopifyWebhookSecretInput, setShopifyWebhookSecretInput] = useState("");
   const [selectedPlatform, setSelectedPlatform] = useState<PlatformId | null>(null);
   const [addProductOpen, setAddProductOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  // One-time webhook setup details returned by the connect call (URL + secret to paste).
+  const [webhookSetup, setWebhookSetup] = useState<
+    { status: string; url: string; secret: string; error?: string } | null
+  >(null);
   const { toast } = useToast();
 
   const activePlatform = PLATFORMS.find((p) => p.id === selectedPlatform);
@@ -443,6 +450,7 @@ export default function BrandInventory() {
         return apiRequest("POST", "/api/integrations/shopify/connect", {
           storeDomain: storeUrlInput || apiKeyInput.split("@")[1] || "",
           accessToken: apiKeyInput,
+          webhookSecret: shopifyWebhookSecretInput || undefined,
         });
       } else if (selectedPlatform === "woocommerce") {
         return apiRequest("POST", "/api/integrations/woocommerce/connect", {
@@ -451,17 +459,24 @@ export default function BrandInventory() {
           consumerSecret: secretInput,
         });
       }
-      throw new Error("Platform not supported yet");
+      throw new Error(`${activePlatform?.label ?? "This platform"} isn't supported yet — coming soon.`);
     },
-    onSuccess: () => {
+    onSuccess: async (res) => {
+      const data = await res.json().catch(() => ({}));
       queryClient.invalidateQueries({ queryKey: ["/api/integrations/stores"] });
+      // Surface the receiver URL + one-time secret so the brand can finish setup
+      // manually if auto-registration wasn't possible (Shopify token flow, API blocked).
+      if (data?.webhookRegistration) setWebhookSetup(data.webhookRegistration);
       toast({
         title: `${activePlatform?.label ?? "Store"} Connected!`,
-        description: "Your product inventory is ready to sync.",
+        description: data?.webhookRegistration?.status === "registered"
+          ? "Verified-sales webhook registered. Your inventory is ready to sync."
+          : "Store connected. Finish webhook setup below to enable verified sales.",
       });
       setApiKeyInput("");
       setStoreUrlInput("");
       setSecretInput("");
+      setShopifyWebhookSecretInput("");
     },
     onError: (err: any) => {
       toast({
@@ -492,6 +507,50 @@ export default function BrandInventory() {
         description: err?.message || "Could not sync products.",
         variant: "destructive",
       });
+    },
+  });
+
+  const testWebhookMutation = useMutation({
+    mutationFn: async () => {
+      if (!activeConnection) throw new Error("No store connected");
+      return apiRequest("POST", `/api/integrations/stores/${activeConnection.id}/webhook-test`);
+    },
+    onSuccess: async (res) => {
+      const data = await res.json().catch(() => ({}));
+      if (data?.ok) {
+        toast({ title: "Webhook verified", description: "The receiver accepted a signed test order." });
+      } else {
+        toast({
+          title: "Webhook test failed",
+          description: data?.receiver?.error || `Receiver responded ${data?.status ?? "?"}.`,
+          variant: "destructive",
+        });
+      }
+    },
+    onError: (err: any) => {
+      toast({ title: "Webhook test failed", description: err?.message ?? "Please try again.", variant: "destructive" });
+    },
+  });
+
+  const reRegisterMutation = useMutation({
+    mutationFn: async () => {
+      if (!activeConnection) throw new Error("No store connected");
+      return apiRequest("POST", `/api/integrations/stores/${activeConnection.id}/register-webhook`);
+    },
+    onSuccess: async (res) => {
+      const data = await res.json().catch(() => ({}));
+      setWebhookSetup(data);
+      queryClient.invalidateQueries({ queryKey: ["/api/integrations/stores"] });
+      toast({
+        title: data?.status === "registered" ? "Webhook re-registered" : "Manual setup required",
+        description: data?.status === "registered"
+          ? "The verified-sales webhook is active."
+          : "We couldn't auto-register. Use the URL + secret below to set it up manually.",
+        variant: data?.status === "registered" ? undefined : "destructive",
+      });
+    },
+    onError: (err: any) => {
+      toast({ title: "Re-register failed", description: err?.message ?? "Please try again.", variant: "destructive" });
     },
   });
 
@@ -578,20 +637,33 @@ export default function BrandInventory() {
                       <button
                         key={p.id}
                         type="button"
-                        onClick={() => setSelectedPlatform(p.id)}
+                        onClick={() => p.supported && setSelectedPlatform(p.id)}
+                        disabled={!p.supported}
+                        aria-disabled={!p.supported}
                         data-testid={`button-platform-${p.id}`}
-                        title={p.label}
-                        className={`flex flex-col items-center gap-1.5 w-28 py-2.5 px-1 rounded-xl border-2 transition-all ${
-                          isSelected
-                            ? "border-primary bg-primary/5 shadow-sm"
-                            : "border-border bg-card hover:border-muted-foreground/40 hover:bg-muted/50"
+                        title={p.supported ? p.label : `${p.label} — coming soon`}
+                        className={`relative flex flex-col items-center gap-1.5 w-28 py-2.5 px-1 rounded-xl border-2 transition-all ${
+                          !p.supported
+                            ? "border-border bg-card opacity-50 cursor-not-allowed"
+                            : isSelected
+                              ? "border-primary bg-primary/5 shadow-sm"
+                              : "border-border bg-card hover:border-muted-foreground/40 hover:bg-muted/50"
                         }`}
                       >
+                        {!p.supported && (
+                          <Badge
+                            variant="secondary"
+                            className="absolute -top-2 -right-2 px-1.5 py-0 text-[9px] font-medium leading-tight pointer-events-none"
+                            data-testid={`badge-coming-soon-${p.id}`}
+                          >
+                            Soon
+                          </Badge>
+                        )}
                         <p.Icon
-                          style={{ color: isSelected ? p.color : undefined }}
-                          className={`h-7 w-7 transition-colors ${!isSelected ? "text-muted-foreground" : ""}`}
+                          style={{ color: p.supported ? (isSelected ? p.color : undefined) : p.color }}
+                          className={`h-7 w-7 transition-colors ${p.supported && !isSelected ? "text-muted-foreground" : ""}`}
                         />
-                        <span className={`text-[10px] font-medium leading-tight text-center ${isSelected ? "text-foreground" : "text-muted-foreground"}`}>
+                        <span className={`text-[10px] font-medium leading-tight text-center ${isSelected && p.supported ? "text-foreground" : "text-muted-foreground"}`}>
                           {p.label}
                         </span>
                       </button>
@@ -635,6 +707,23 @@ export default function BrandInventory() {
                   />
                 </div>
               )}
+              {selectedPlatform === "shopify" && (
+                <div className="space-y-2">
+                  <Label htmlFor="shopify-webhook-secret">Webhook Signing Secret (optional)</Label>
+                  <Input
+                    id="shopify-webhook-secret"
+                    type="password"
+                    placeholder="Your Shopify app's API secret key"
+                    value={shopifyWebhookSecretInput}
+                    onChange={(e) => setShopifyWebhookSecretInput(e.target.value)}
+                    data-testid="input-shopify-webhook-secret"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Shopify signs order webhooks with your app's API secret key. Paste it to enable
+                    verified-sales commissions. Leave blank to use the platform default.
+                  </p>
+                </div>
+              )}
               <Button
                 onClick={handleConnectApi}
                 className="rounded-full"
@@ -645,19 +734,94 @@ export default function BrandInventory() {
               </Button>
             </>
           ) : (
-            <div className="flex items-center justify-between p-4 bg-green-50 dark:bg-green-950/30 rounded-lg">
-              <div className="flex items-center gap-3">
-                <div className="h-3 w-3 bg-green-500 rounded-full animate-pulse" />
-                <div>
-                  <p className="font-medium text-green-700 dark:text-green-400">
-                    {activeConnection?.platform === "shopify" ? "Shopify" : activeConnection?.platform === "woocommerce" ? "WooCommerce" : "Store"} Connected
-                  </p>
-                  <p className="text-sm text-green-600 dark:text-green-500">
-                    {activeConnection?.storeDomain || "Store connected"} — {activeConnection?.productCount ?? 0} products
-                    {activeConnection?.lastSyncAt && ` — Last synced ${new Date(activeConnection.lastSyncAt).toLocaleDateString()}`}
-                  </p>
+            <div className="space-y-4">
+              <div className="flex items-center justify-between p-4 bg-green-50 dark:bg-green-950/30 rounded-lg">
+                <div className="flex items-center gap-3">
+                  <div className="h-3 w-3 bg-green-500 rounded-full animate-pulse" />
+                  <div>
+                    <p className="font-medium text-green-700 dark:text-green-400">
+                      {activeConnection?.platform === "shopify" ? "Shopify" : activeConnection?.platform === "woocommerce" ? "WooCommerce" : "Store"} Connected
+                    </p>
+                    <p className="text-sm text-green-600 dark:text-green-500">
+                      {activeConnection?.storeDomain || "Store connected"} — {activeConnection?.productCount ?? 0} products
+                      {activeConnection?.lastSyncAt && ` — Last synced ${new Date(activeConnection.lastSyncAt).toLocaleDateString()}`}
+                    </p>
+                  </div>
                 </div>
               </div>
+
+              {activeConnection?.webhookUrl && (
+                <div className="p-4 border rounded-lg space-y-3" data-testid="webhook-settings">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <Code2 className="h-4 w-4 text-muted-foreground" />
+                      <span className="font-medium text-sm">Verified-Sales Webhook</span>
+                      <Badge variant={activeConnection.hasWebhookSecret ? "secondary" : "outline"} className="text-xs">
+                        {activeConnection.hasWebhookSecret ? "Secret set" : "No secret"}
+                      </Badge>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="rounded-full"
+                        onClick={() => testWebhookMutation.mutate()}
+                        disabled={testWebhookMutation.isPending || !activeConnection.hasWebhookSecret}
+                        data-testid="button-test-webhook"
+                      >
+                        {testWebhookMutation.isPending ? "Testing..." : "Test webhook"}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="rounded-full"
+                        onClick={() => reRegisterMutation.mutate()}
+                        disabled={reRegisterMutation.isPending}
+                        data-testid="button-reregister-webhook"
+                      >
+                        {reRegisterMutation.isPending ? "Registering..." : "Re-register"}
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Receiver URL (orders/create)</Label>
+                    <code className="block text-xs bg-muted rounded px-2 py-1.5 break-all" data-testid="text-webhook-url">
+                      {activeConnection.webhookUrl}
+                    </code>
+                  </div>
+                  {!activeConnection.hasWebhookSecret && (
+                    <p className="text-xs text-amber-600 dark:text-amber-500 flex items-center gap-1">
+                      <AlertTriangle className="h-3 w-3" />
+                      No signing secret is set for this connection — verified-sales commissions won't be recorded until one is configured.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {webhookSetup && (
+                <div className="p-4 border rounded-lg space-y-3 bg-muted/40" data-testid="webhook-setup-details">
+                  <p className="text-sm font-medium">
+                    {webhookSetup.status === "registered"
+                      ? "Webhook registered automatically."
+                      : "Manual webhook setup — copy these into your store once."}
+                  </p>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Receiver URL</Label>
+                    <code className="block text-xs bg-background border rounded px-2 py-1.5 break-all">
+                      {webhookSetup.url}
+                    </code>
+                  </div>
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground">Signing secret (shown once)</Label>
+                    <code className="block text-xs bg-background border rounded px-2 py-1.5 break-all" data-testid="text-webhook-secret">
+                      {webhookSetup.secret || "(uses platform default secret)"}
+                    </code>
+                  </div>
+                  {webhookSetup.error && (
+                    <p className="text-xs text-muted-foreground">Auto-registration note: {webhookSetup.error}</p>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </CardContent>

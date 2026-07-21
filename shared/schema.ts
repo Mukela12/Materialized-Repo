@@ -1,5 +1,5 @@
 import { sql, relations } from "drizzle-orm";
-import { pgTable, text, varchar, integer, decimal, numeric, serial, timestamp, boolean, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, decimal, numeric, serial, timestamp, boolean, pgEnum, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -452,7 +452,15 @@ export const commissionTransactions = pgTable("commission_transactions", {
   payoutId: varchar("payout_id").references(() => affiliatePayouts.id),
   externalOrderId: text("external_order_id"),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
-});
+}, (t) => ({
+  // Prevent concurrent duplicate commissions for the same store order. A single sale
+  // writes at most TWO rows (creator + publisher), which always have distinct
+  // affiliate_ids, so the index is on (external_order_id, affiliate_id). The partial
+  // predicate leaves the internal /api/sales path (externalOrderId NULL) unconstrained.
+  extOrderAffiliateUniq: uniqueIndex("commission_tx_ext_order_affiliate_uniq")
+    .on(t.externalOrderId, t.affiliateId)
+    .where(sql`${t.externalOrderId} IS NOT NULL`),
+}));
 
 // Admin-editable platform fee/commission defaults (single "singleton" row).
 // Null columns fall back to the env/code defaults (15 / 8 / 2).

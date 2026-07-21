@@ -26,6 +26,14 @@ export interface RecordedCommissions {
   split: SaleSplit;
   creatorCommissionId?: string;
   publisherCommissionId?: string;
+  /** True when the DB unique constraint rejected a duplicate (concurrent retry). */
+  deduped?: boolean;
+}
+
+/** True for a Postgres unique-violation (SQLSTATE 23505) from a duplicate order row. */
+function isUniqueViolation(err: unknown): boolean {
+  const code = (err as any)?.code ?? (err as any)?.cause?.code;
+  return code === "23505";
 }
 
 /** Minimal storage surface — keeps this unit-testable without a database. */
@@ -83,38 +91,54 @@ export async function recordSaleCommissions(
 
   const result: RecordedCommissions = { split };
 
-  // Creator commission (video owner always earns their share)
+  // Creator commission (video owner always earns their share). A concurrent retry of
+  // the same store order trips the (external_order_id, affiliate_id) unique index; we
+  // swallow that as an idempotent no-op rather than surfacing a 500.
   if (creatorId && split.creatorCents > 0) {
-    const tx = await store.createCommissionTransaction({
-      affiliateId: creatorId,
-      analyticsEventId,
-      videoId,
-      productId,
-      saleAmount: saleRevenue,
-      commissionRate: split.effectiveRates.creatorPct.toFixed(2),
-      commissionAmount: centsToAmount(split.creatorCents),
-      campaignAffiliateId: null,
-      externalOrderId,
-    });
-    result.creatorCommissionId = tx.id;
+    try {
+      const tx = await store.createCommissionTransaction({
+        affiliateId: creatorId,
+        analyticsEventId,
+        videoId,
+        productId,
+        saleAmount: saleRevenue,
+        commissionRate: split.effectiveRates.creatorPct.toFixed(2),
+        commissionAmount: centsToAmount(split.creatorCents),
+        campaignAffiliateId: null,
+        externalOrderId,
+      });
+      result.creatorCommissionId = tx.id;
+    } catch (err) {
+      if (!isUniqueViolation(err)) throw err;
+      result.deduped = true;
+    }
   }
 
   // Publisher commission (only when a distinct publisher is attributed)
   if (publisherId && split.publisherCents > 0) {
-    const tx = await store.createCommissionTransaction({
-      affiliateId: publisherId,
-      analyticsEventId,
-      videoId,
-      productId,
-      saleAmount: saleRevenue,
-      commissionRate: split.effectiveRates.publisherPct.toFixed(2),
-      commissionAmount: centsToAmount(split.publisherCents),
-      campaignAffiliateId,
-      externalOrderId,
-    });
-    result.publisherCommissionId = tx.id;
+    let publisherInserted = false;
+    try {
+      const tx = await store.createCommissionTransaction({
+        affiliateId: publisherId,
+        analyticsEventId,
+        videoId,
+        productId,
+        saleAmount: saleRevenue,
+        commissionRate: split.effectiveRates.publisherPct.toFixed(2),
+        commissionAmount: centsToAmount(split.publisherCents),
+        campaignAffiliateId,
+        externalOrderId,
+      });
+      result.publisherCommissionId = tx.id;
+      publisherInserted = true;
+    } catch (err) {
+      if (!isUniqueViolation(err)) throw err;
+      result.deduped = true;
+    }
 
-    if (campaignAffiliateId) {
+    // Only bump campaign stats when we actually inserted a new publisher row, so a
+    // deduped retry doesn't double-count conversions/revenue/earnings.
+    if (publisherInserted && campaignAffiliateId) {
       const ca = (await store.getCampaignAffiliates(videoId)).find((c) => c.id === campaignAffiliateId);
       if (ca) {
         await store.updateCampaignAffiliateStats(campaignAffiliateId, {

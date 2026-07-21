@@ -3,6 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { sanitizeUser } from "./serializers";
 import { canAccessUserResource } from "./authz";
+import { randomBytes } from "crypto";
 import { encryptSecret, decryptSecret } from "./crypto";
 import { hashPassword } from "./auth";
 import { recordSaleCommissions } from "./commissions";
@@ -1236,11 +1237,63 @@ export async function registerRoutes(
       const { storeConnections } = await import("@shared/schema");
       const { eq } = await import("drizzle-orm");
       const connections = await db.select().from(storeConnections).where(eq(storeConnections.userId, sessionUserId));
-      res.json(connections);
+      // Expose the exact receiver URL + whether a per-store secret is set (for the
+      // self-serve UI) without ever returning the secret itself after creation.
+      const enriched = connections.map((c) => {
+        const { webhookSecret, accessToken, ...safe } = c as any;
+        return {
+          ...safe,
+          hasWebhookSecret: !!webhookSecret,
+          webhookUrl: (c.platform === "shopify" || c.platform === "woocommerce")
+            ? receiverUrl(req, c.platform as "shopify" | "woocommerce", c.id)
+            : null,
+        };
+      });
+      res.json(enriched);
     } catch (error) {
       res.status(500).json({ error: "Failed to load store connections" });
     }
   });
+
+  // Build the public base URL for outbound webhook registration. Same convention
+  // used elsewhere in this file (APP_URL wins, then Origin, then the request host).
+  const webhookBaseUrl = (req: any): string =>
+    process.env.APP_URL || req.headers.origin || `${req.protocol}://${req.headers.host}`;
+
+  // The exact receiver address the store should sign + POST orders to.
+  const receiverUrl = (req: any, platform: "shopify" | "woocommerce", connectionId: string): string =>
+    `${webhookBaseUrl(req)}/api/webhooks/${platform}/${connectionId}`;
+
+  /**
+   * Auto-register the orders/create webhook for a freshly-connected store.
+   * Never throws — on any failure it returns a "manual" status so the connect
+   * response can surface the receiver URL + secret for self-serve setup, and the
+   * connect itself still succeeds. `rawSecret`/`rawToken` are the DECRYPTED values.
+   */
+  const registerStoreWebhook = async (
+    req: any,
+    connection: { id: string; platform: string; storeDomain: string | null },
+    rawToken: string,
+    rawSecret: string,
+  ): Promise<{ status: "registered" | "manual"; url: string; secret: string; error?: string }> => {
+    const platform = connection.platform as "shopify" | "woocommerce";
+    const url = receiverUrl(req, platform, connection.id);
+    try {
+      if (!connection.storeDomain) throw new Error("Store domain missing");
+      if (platform === "shopify") {
+        const { registerShopifyOrderWebhook } = await import("./integrations/shopifyService");
+        await registerShopifyOrderWebhook(connection.storeDomain, rawToken, url);
+      } else {
+        const { registerWooOrderWebhook } = await import("./integrations/woocommerceService");
+        const [consumerKey, consumerSecret] = rawToken.split(":");
+        await registerWooOrderWebhook(connection.storeDomain, consumerKey, consumerSecret, url, rawSecret);
+      }
+      return { status: "registered", url, secret: rawSecret };
+    } catch (err: any) {
+      console.error(`${platform} webhook registration failed:`, err?.message || err);
+      return { status: "manual", url, secret: rawSecret, error: err?.message || String(err) };
+    }
+  };
 
   // Connect a Shopify store
   app.post("/api/integrations/shopify/connect", async (req, res) => {
@@ -1248,7 +1301,7 @@ export async function registerRoutes(
       const sessionUserId = (req.session as any)?.userId;
       if (!sessionUserId) return res.status(401).json({ error: "Authentication required" });
 
-      const { storeDomain, accessToken } = req.body;
+      const { storeDomain, accessToken, webhookSecret } = req.body;
       if (!storeDomain || !accessToken) {
         return res.status(400).json({ error: "Store domain and access token are required" });
       }
@@ -1259,6 +1312,12 @@ export async function registerRoutes(
         return res.status(400).json({ error: `Invalid Shopify credentials: ${validation.error}` });
       }
 
+      // Shopify signs orders/create with the app's API secret key, which is NOT
+      // settable per-webhook via REST. The brand supplies it here so verification
+      // passes; if omitted we leave webhookSecret NULL and the receiver falls back
+      // to the app-level SHOPIFY_WEBHOOK_SECRET env var.
+      const rawShopifySecret = typeof webhookSecret === "string" ? webhookSecret.trim() : "";
+
       const { db } = await import("./db");
       const { storeConnections } = await import("@shared/schema");
       const [connection] = await db.insert(storeConnections).values({
@@ -1266,10 +1325,14 @@ export async function registerRoutes(
         platform: "shopify",
         storeDomain,
         accessToken: encryptSecret(accessToken),
+        webhookSecret: rawShopifySecret ? encryptSecret(rawShopifySecret) : null,
         isActive: true,
       }).returning();
 
-      res.json({ ...connection, shopName: validation.shopName });
+      // Auto-register the receiver endpoint (best-effort — never fails the connect).
+      const registration = await registerStoreWebhook(req, connection, accessToken, rawShopifySecret);
+
+      res.json({ ...connection, shopName: validation.shopName, webhookRegistration: registration });
     } catch (error) {
       console.error("Shopify connect error:", error);
       res.status(500).json({ error: "Failed to connect Shopify store" });
@@ -1293,6 +1356,10 @@ export async function registerRoutes(
         return res.status(400).json({ error: `Invalid WooCommerce credentials: ${validation.error}` });
       }
 
+      // Woo is fully zero-touch: WE choose the secret and hand it to Woo at registration.
+      // Woo then signs every delivery with it, so this is exactly what verifyStoreHmac checks.
+      const rawSecret = randomBytes(32).toString("hex");
+
       const { db } = await import("./db");
       const { storeConnections } = await import("@shared/schema");
       // Store combined key:secret as accessToken
@@ -1301,10 +1368,16 @@ export async function registerRoutes(
         platform: "woocommerce",
         storeDomain: storeUrl,
         accessToken: encryptSecret(`${consumerKey}:${consumerSecret}`),
+        webhookSecret: encryptSecret(rawSecret),
         isActive: true,
       }).returning();
 
-      res.json({ ...connection, storeName: validation.storeName });
+      // Auto-register the receiver endpoint (best-effort — never fails the connect).
+      const registration = await registerStoreWebhook(
+        req, connection, `${consumerKey}:${consumerSecret}`, rawSecret,
+      );
+
+      res.json({ ...connection, storeName: validation.storeName, webhookRegistration: registration });
     } catch (error) {
       console.error("WooCommerce connect error:", error);
       res.status(500).json({ error: "Failed to connect WooCommerce store" });
@@ -1377,6 +1450,96 @@ export async function registerRoutes(
     }
   });
 
+  // Re-register the orders/create webhook for an existing connection (self-serve
+  // "reconnect webhook" affordance). Idempotent: reuses the stored per-store secret
+  // when present, otherwise provisions one (Woo) and persists it encrypted.
+  app.post("/api/integrations/stores/:id/register-webhook", async (req, res) => {
+    try {
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ error: "Authentication required" });
+
+      const { db } = await import("./db");
+      const { storeConnections } = await import("@shared/schema");
+      const { eq, and } = await import("drizzle-orm");
+      const [connection] = await db.select().from(storeConnections)
+        .where(and(eq(storeConnections.id, req.params.id), eq(storeConnections.userId, sessionUserId)));
+      if (!connection) return res.status(404).json({ error: "Store connection not found" });
+      if (connection.platform !== "shopify" && connection.platform !== "woocommerce") {
+        return res.status(400).json({ error: "Webhooks are only supported for Shopify and WooCommerce" });
+      }
+      if (!connection.accessToken || !connection.storeDomain) {
+        return res.status(400).json({ error: "Store credentials incomplete" });
+      }
+
+      const rawToken = decryptSecret(connection.accessToken);
+      // Reuse the stored secret if we have one; for Woo without one, provision now.
+      let rawSecret = connection.webhookSecret ? decryptSecret(connection.webhookSecret) : "";
+      if (!rawSecret && connection.platform === "woocommerce") {
+        rawSecret = randomBytes(32).toString("hex");
+        await db.update(storeConnections)
+          .set({ webhookSecret: encryptSecret(rawSecret) })
+          .where(eq(storeConnections.id, connection.id));
+      }
+
+      const registration = await registerStoreWebhook(req, connection, rawToken, rawSecret);
+      res.json(registration);
+    } catch (error) {
+      console.error("Webhook re-register error:", error);
+      res.status(500).json({ error: "Failed to register webhook" });
+    }
+  });
+
+  // "Test webhook" affordance — sign a synthetic minimal order with the connection's
+  // stored secret and POST it to the connection's own receiver URL, so the brand can
+  // confirm the exact verify path end-to-end without waiting for a real sale.
+  app.post("/api/integrations/stores/:id/webhook-test", async (req, res) => {
+    try {
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ error: "Authentication required" });
+
+      const { db } = await import("./db");
+      const { storeConnections } = await import("@shared/schema");
+      const { eq, and } = await import("drizzle-orm");
+      const [connection] = await db.select().from(storeConnections)
+        .where(and(eq(storeConnections.id, req.params.id), eq(storeConnections.userId, sessionUserId)));
+      if (!connection) return res.status(404).json({ error: "Store connection not found" });
+      if (connection.platform !== "shopify" && connection.platform !== "woocommerce") {
+        return res.status(400).json({ error: "Webhooks are only supported for Shopify and WooCommerce" });
+      }
+
+      const platform = connection.platform as "shopify" | "woocommerce";
+      const secret = connection.webhookSecret
+        ? decryptSecret(connection.webhookSecret)
+        : (platform === "shopify" ? process.env.SHOPIFY_WEBHOOK_SECRET : process.env.WC_WEBHOOK_SECRET);
+      if (!secret) {
+        return res.status(400).json({ error: "No webhook secret configured for this connection" });
+      }
+
+      // A minimal, unattributed order body — the receiver will verify the signature and
+      // ack it as `unattributed` (no fake commission is created).
+      const { computeHmac } = await import("./storeWebhooks");
+      const orderId = `test-${Date.now()}`;
+      const bodyObj = platform === "shopify"
+        ? { id: orderId, total_price: "0.00" }
+        : { id: orderId, total: "0.00" };
+      const rawBody = JSON.stringify(bodyObj);
+      const signature = computeHmac(rawBody, secret);
+      const hmacHeader = platform === "shopify" ? "X-Shopify-Hmac-Sha256" : "X-WC-Webhook-Signature";
+      const url = receiverUrl(req, platform, connection.id);
+
+      const response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", [hmacHeader]: signature },
+        body: rawBody,
+      });
+      const receiverBody = await response.json().catch(() => ({}));
+      res.json({ url, status: response.status, ok: response.ok, receiver: receiverBody });
+    } catch (error) {
+      console.error("Webhook test error:", error);
+      res.status(500).json({ error: "Failed to run webhook test" });
+    }
+  });
+
   // Signed store order webhook — the automated verified-sales path. The store signs
   // the order with HMAC over the raw body; we verify it, then record the commission
   // split via the same trusted helper as /api/sales (idempotent per order id).
@@ -1396,8 +1559,13 @@ export async function registerRoutes(
         return res.status(404).json({ error: "Store connection not found" });
       }
 
+      // The per-store secret is stored ENCRYPTED (see the connect handlers) — decrypt
+      // it before comparing. decryptSecret() returns legacy plaintext unchanged, so
+      // any pre-existing plaintext rows keep working. Falls back to the app-level env
+      // secret when no per-store secret is set (e.g. Shopify without a supplied secret).
       const secret = connection.webhookSecret
-        || (platform === "shopify" ? process.env.SHOPIFY_WEBHOOK_SECRET : process.env.WC_WEBHOOK_SECRET);
+        ? decryptSecret(connection.webhookSecret)
+        : (platform === "shopify" ? process.env.SHOPIFY_WEBHOOK_SECRET : process.env.WC_WEBHOOK_SECRET);
       if (!verifyStoreHmac(req.rawBody, req.get(hmacHeader) || undefined, secret || undefined)) {
         return res.status(401).json({ error: "Invalid signature" });
       }
