@@ -18,6 +18,8 @@ export interface SaleAttribution {
   /** Admin per-repost publisher rate override (from the campaign affiliate). */
   resolvedCommissionRate: string | null;
   productId?: string | null;
+  /** Store order id — persisted for idempotency + reconciliation. */
+  externalOrderId?: string | null;
 }
 
 export interface RecordedCommissions {
@@ -37,6 +39,7 @@ export interface CommissionStore {
     commissionRate: string;
     commissionAmount: string;
     campaignAffiliateId: string | null;
+    externalOrderId?: string | null;
   }): Promise<{ id: string }>;
   getCampaignAffiliates(videoId: string): Promise<Array<{
     id: string;
@@ -62,6 +65,7 @@ export async function recordSaleCommissions(
 ): Promise<RecordedCommissions> {
   const { videoId, creatorId, affiliateId, campaignAffiliateId, resolvedCommissionRate } = attribution;
   const productId = attribution.productId ?? null;
+  const externalOrderId = attribution.externalOrderId ?? null;
   const saleCents = toCents(saleRevenue);
 
   const publisherId = affiliateId && affiliateId !== creatorId ? affiliateId : null;
@@ -90,6 +94,7 @@ export async function recordSaleCommissions(
       commissionRate: split.effectiveRates.creatorPct.toFixed(2),
       commissionAmount: centsToAmount(split.creatorCents),
       campaignAffiliateId: null,
+      externalOrderId,
     });
     result.creatorCommissionId = tx.id;
   }
@@ -105,6 +110,7 @@ export async function recordSaleCommissions(
       commissionRate: split.effectiveRates.publisherPct.toFixed(2),
       commissionAmount: centsToAmount(split.publisherCents),
       campaignAffiliateId,
+      externalOrderId,
     });
     result.publisherCommissionId = tx.id;
 

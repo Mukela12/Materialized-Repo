@@ -448,6 +448,7 @@ export const commissionTransactions = pgTable("commission_transactions", {
   campaignAffiliateId: varchar("campaign_affiliate_id").references(() => campaignAffiliates.id),
   licensePurchaseId: varchar("license_purchase_id").references(() => videoLicensePurchases.id),
   payoutId: varchar("payout_id").references(() => affiliatePayouts.id),
+  externalOrderId: text("external_order_id"),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
 });
 
@@ -922,6 +923,7 @@ export const storeConnections = pgTable("store_connections", {
   platform: storePlatformEnum("platform").notNull(),
   storeDomain: text("store_domain"),
   accessToken: text("access_token"),
+  webhookSecret: text("webhook_secret"),
   lastSyncAt: timestamp("last_sync_at"),
   productCount: integer("product_count").default(0),
   isActive: boolean("is_active").default(true),
