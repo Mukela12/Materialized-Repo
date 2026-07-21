@@ -47,6 +47,37 @@ export function getFeeConfig(): FeeConfig {
   };
 }
 
+/** Admin-editable platform settings row (all optional; null → fall back to defaults). */
+export interface PlatformFeeSettings {
+  marketplaceFeePct?: number | string | null;
+  creatorPct?: number | string | null;
+  publisherPct?: number | string | null;
+}
+
+/** Coerce a value to a non-negative number, else return the fallback. */
+export function numOr(value: unknown, fallback: number): number {
+  const n = typeof value === "string" ? parseFloat(value) : typeof value === "number" ? value : NaN;
+  return Number.isFinite(n) && n >= 0 ? n : fallback;
+}
+
+/**
+ * Effective platform rates: admin-set DB values layered over the env defaults.
+ * A null/blank setting falls back to the default, so partial config is safe.
+ */
+export function resolveFeeConfig(settings?: PlatformFeeSettings | null): FeeConfig {
+  const env = getFeeConfig();
+  return {
+    marketplaceFeePct: numOr(settings?.marketplaceFeePct, env.marketplaceFeePct),
+    creatorPct: numOr(settings?.creatorPct, env.creatorPct),
+    publisherPct: numOr(settings?.publisherPct, env.publisherPct),
+  };
+}
+
+/** A user's per-account rate override (users.commissionRateOverride) or the default. */
+export function userRateOr(override: string | number | null | undefined, fallback: number): number {
+  return numOr(override, fallback);
+}
+
 /** Round a decimal money value (string or number) to integer cents. */
 export function toCents(amount: string | number): number {
   const n = typeof amount === "string" ? parseFloat(amount) : amount;

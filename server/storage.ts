@@ -78,6 +78,9 @@ import {
   wishlists,
   type Wishlist,
   type InsertWishlist,
+  platformSettings,
+  type PlatformSettings,
+  type InsertPlatformSettings,
 } from "@shared/schema";
 
 export interface IStorage {
@@ -269,6 +272,10 @@ export interface IStorage {
   
   // UTM Resolution
   resolveUtmToAffiliate(utmCode: string): Promise<{ affiliateId: string; campaignAffiliateId: string | null; videoId: string; commissionRate: string } | null>;
+
+  // Platform fee/commission settings (admin-adjustable defaults)
+  getPlatformSettings(): Promise<PlatformSettings | undefined>;
+  updatePlatformSettings(data: Partial<InsertPlatformSettings>): Promise<PlatformSettings>;
 
   // Publisher Notifications
   getPublisherNotifications(affiliateId: string): Promise<PublisherNotification[]>;
@@ -1545,6 +1552,19 @@ export class MemStorage implements IStorage {
     return null;
   }
 
+  // Platform fee/commission settings — MemStorage
+  private platformSettingsRow: PlatformSettings | undefined;
+  async getPlatformSettings(): Promise<PlatformSettings | undefined> {
+    return this.platformSettingsRow;
+  }
+  async updatePlatformSettings(data: Partial<InsertPlatformSettings>): Promise<PlatformSettings> {
+    const base: PlatformSettings = this.platformSettingsRow ?? {
+      id: "singleton", marketplaceFeePct: null, creatorPct: null, publisherPct: null, updatedAt: new Date(),
+    };
+    this.platformSettingsRow = { ...base, ...data, id: "singleton", updatedAt: new Date() } as PlatformSettings;
+    return this.platformSettingsRow;
+  }
+
   // Publisher Notifications & Publisher Management — MemStorage stubs
   private publisherNotificationsList: PublisherNotification[] = [];
   async getPublisherNotifications(affiliateId: string): Promise<PublisherNotification[]> {
@@ -2349,6 +2369,26 @@ export class DatabaseStorage implements IStorage {
     }
 
     return null;
+  }
+
+  // Platform fee/commission settings — DatabaseStorage (singleton row)
+  async getPlatformSettings(): Promise<PlatformSettings | undefined> {
+    const [row] = await db.select().from(platformSettings).where(eq(platformSettings.id, "singleton"));
+    return row;
+  }
+  async updatePlatformSettings(data: Partial<InsertPlatformSettings>): Promise<PlatformSettings> {
+    const [existing] = await db.select().from(platformSettings).where(eq(platformSettings.id, "singleton"));
+    if (existing) {
+      const [updated] = await db.update(platformSettings)
+        .set({ ...data, updatedAt: new Date() })
+        .where(eq(platformSettings.id, "singleton"))
+        .returning();
+      return updated;
+    }
+    const [created] = await db.insert(platformSettings)
+      .values({ ...data, id: "singleton" })
+      .returning();
+    return created;
   }
 
   // Publisher Notifications — DatabaseStorage implementations

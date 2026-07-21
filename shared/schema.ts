@@ -60,6 +60,7 @@ export const users = pgTable("users", {
   affiliateTrackingId: text("affiliate_tracking_id").default(sql`gen_random_uuid()`),
   referralCode: text("referral_code").default(sql`'REF_' || substr(gen_random_uuid()::text, 1, 8)`),
   commissionRate: decimal("commission_rate", { precision: 5, scale: 2 }).default("15.00"),
+  commissionRateOverride: decimal("commission_rate_override", { precision: 5, scale: 2 }),
   charityContribution: decimal("charity_contribution", { precision: 5, scale: 2 }).default("0.00"),
   stripeCustomerId: text("stripe_customer_id"),
   stripeConnectAccountId: text("stripe_connect_account_id"),
@@ -447,6 +448,18 @@ export const commissionTransactions = pgTable("commission_transactions", {
   licensePurchaseId: varchar("license_purchase_id").references(() => videoLicensePurchases.id),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
 });
+
+// Admin-editable platform fee/commission defaults (single "singleton" row).
+// Null columns fall back to the env/code defaults (15 / 8 / 2).
+export const platformSettings = pgTable("platform_settings", {
+  id: varchar("id").primaryKey().default("singleton"),
+  marketplaceFeePct: decimal("marketplace_fee_pct", { precision: 5, scale: 2 }),
+  creatorPct: decimal("creator_pct", { precision: 5, scale: 2 }),
+  publisherPct: decimal("publisher_pct", { precision: 5, scale: 2 }),
+  updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`),
+});
+export type PlatformSettings = typeof platformSettings.$inferSelect;
+export type InsertPlatformSettings = typeof platformSettings.$inferInsert;
 
 // Relations
 export const usersRelations = relations(users, ({ many, one }) => ({
