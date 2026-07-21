@@ -3,6 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { recordSaleCommissions } from "./commissions";
 import { appendUtm } from "./embedUtils";
+import { resolveFeeConfig, userRateOr } from "./feeConfig";
 import { 
   insertVideoSchema, 
   insertBrandReferralSchema, 
@@ -1042,6 +1043,13 @@ export async function registerRoutes(
         }
       }
 
+      // Resolve effective rates: admin platform settings over env defaults, plus
+      // each party's per-user override. (A per-repost publisher override on the
+      // campaign affiliate still wins inside recordSaleCommissions.)
+      const cfg = resolveFeeConfig(await storage.getPlatformSettings());
+      const creatorUser = video.creatorId ? await storage.getUser(video.creatorId) : null;
+      const publisherUser = affiliateId ? await storage.getUser(affiliateId) : null;
+
       const result = await recordSaleCommissions(storage, revenueNum.toFixed(2), {
         videoId,
         creatorId: video.creatorId ?? null,
@@ -1049,6 +1057,10 @@ export async function registerRoutes(
         campaignAffiliateId,
         resolvedCommissionRate,
         productId: productId ?? null,
+      }, null, {
+        marketplaceFeePct: cfg.marketplaceFeePct,
+        creatorPct: userRateOr(creatorUser?.commissionRateOverride, cfg.creatorPct),
+        publisherPct: userRateOr(publisherUser?.commissionRateOverride, cfg.publisherPct),
       });
 
       res.json({ ok: true, split: result.split });
@@ -3004,12 +3016,55 @@ Identify which products from the catalog are most likely to appear or be feature
     }
   });
 
+  // Admin: view/adjust platform fee & commission defaults
+  app.get("/api/admin/settings/fees", requireAdmin, async (_req, res) => {
+    try {
+      res.json(resolveFeeConfig(await storage.getPlatformSettings()));
+    } catch (error) {
+      console.error("Get fee settings error:", error);
+      res.status(500).json({ error: "Failed to load fee settings" });
+    }
+  });
+
+  app.patch("/api/admin/settings/fees", requireAdmin, async (req, res) => {
+    try {
+      const patch: Record<string, string | null> = {};
+      for (const key of ["marketplaceFeePct", "creatorPct", "publisherPct"] as const) {
+        if (!(key in (req.body ?? {}))) continue;
+        const raw = req.body[key];
+        if (raw === null || raw === "") { patch[key] = null; continue; }
+        const n = Number(raw);
+        if (!Number.isFinite(n) || n < 0 || n > 100) {
+          return res.status(400).json({ error: `Invalid ${key}: must be 0–100` });
+        }
+        patch[key] = n.toFixed(2);
+      }
+      const saved = await storage.updatePlatformSettings(patch);
+      res.json(resolveFeeConfig(saved));
+    } catch (error) {
+      console.error("Update fee settings error:", error);
+      res.status(500).json({ error: "Failed to update fee settings" });
+    }
+  });
+
   // Admin update user
   app.patch("/api/admin/users/:id", requireAdmin, async (req, res) => {
     try {
       const { id } = req.params;
-      const { role, isAdmin, freeAccess } = req.body;
-      const updated = await storage.updateUser(id, { role, isAdmin, freeAccess } as any);
+      const { role, isAdmin, freeAccess, commissionRateOverride } = req.body;
+      const patch: any = { role, isAdmin, freeAccess };
+      if ("commissionRateOverride" in (req.body ?? {})) {
+        if (commissionRateOverride === null || commissionRateOverride === "") {
+          patch.commissionRateOverride = null;
+        } else {
+          const n = Number(commissionRateOverride);
+          if (!Number.isFinite(n) || n < 0 || n > 100) {
+            return res.status(400).json({ error: "Invalid commissionRateOverride: must be 0–100" });
+          }
+          patch.commissionRateOverride = n.toFixed(2);
+        }
+      }
+      const updated = await storage.updateUser(id, patch as any);
       if (!updated) return res.status(404).json({ error: "User not found" });
       res.json(updated);
     } catch (error) {

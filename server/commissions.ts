@@ -58,6 +58,7 @@ export async function recordSaleCommissions(
   saleRevenue: string,
   attribution: SaleAttribution,
   analyticsEventId: string | null = null,
+  rates?: { marketplaceFeePct?: number; creatorPct?: number; publisherPct?: number },
 ): Promise<RecordedCommissions> {
   const { videoId, creatorId, affiliateId, campaignAffiliateId, resolvedCommissionRate } = attribution;
   const productId = attribution.productId ?? null;
@@ -70,7 +71,10 @@ export async function recordSaleCommissions(
 
   const split = computeSaleSplit(saleCents, {
     hasPublisher: !!publisherId,
-    publisherPct: publisherOverridePct,
+    marketplaceFeePct: rates?.marketplaceFeePct,
+    creatorPct: rates?.creatorPct,
+    // A per-repost admin override wins; otherwise the resolved publisher default.
+    publisherPct: publisherOverridePct ?? rates?.publisherPct,
   });
 
   const result: RecordedCommissions = { split };

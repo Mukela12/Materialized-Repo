@@ -122,6 +122,30 @@ describe('recordSaleCommissions', () => {
     expect(commissions[0].affiliateId).toBe('pub1');
   });
 
+  it('applies resolved rates (admin/settings) passed by the caller', async () => {
+    const { store, commissions } = makeStore();
+    await recordSaleCommissions(
+      store, '100.00',
+      { videoId: 'v1', creatorId: 'creator1', affiliateId: 'pub1', campaignAffiliateId: null, resolvedCommissionRate: null },
+      null,
+      { marketplaceFeePct: 20, creatorPct: 10, publisherPct: 3 },
+    );
+    expect(commissions.find((c) => c.affiliateId === 'creator1').commissionAmount).toBe('10.00');
+    expect(commissions.find((c) => c.affiliateId === 'pub1').commissionAmount).toBe('3.00');
+  });
+
+  it('lets a per-repost publisher override win over the resolved publisher rate', async () => {
+    const { store, commissions } = makeStore();
+    await recordSaleCommissions(
+      store, '100.00',
+      { videoId: 'v1', creatorId: 'creator1', affiliateId: 'pub1', campaignAffiliateId: 'ca1', resolvedCommissionRate: '6.00' },
+      null,
+      { marketplaceFeePct: 20, creatorPct: 10, publisherPct: 3 },
+    );
+    // per-repost 6% beats the resolved 3% default
+    expect(commissions.find((c) => c.affiliateId === 'pub1').commissionAmount).toBe('6.00');
+  });
+
   it('rounds correctly on a fractional sale (€33.33)', async () => {
     const { store, commissions } = makeStore();
     await recordSaleCommissions(store, '33.33', {
