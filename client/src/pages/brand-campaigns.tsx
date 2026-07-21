@@ -21,10 +21,12 @@ const PERIODS = [
 ] as const;
 type PeriodLabel = typeof PERIODS[number]["label"];
 
+// USD is the base (rate 1) — campaign revenue is stored/charged in the platform
+// currency (USD). Other currencies are display-only estimates.
 const CURRENCIES = [
-  { symbol: "€", code: "EUR", rate: 1 },
-  { symbol: "$", code: "USD", rate: 1.08 },
-  { symbol: "£", code: "GBP", rate: 0.85 },
+  { symbol: "$", code: "USD", rate: 1 },
+  { symbol: "€", code: "EUR", rate: 0.92 },
+  { symbol: "£", code: "GBP", rate: 0.79 },
 ] as const;
 type CurrencyCode = typeof CURRENCIES[number]["code"];
 
