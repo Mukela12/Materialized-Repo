@@ -11,12 +11,13 @@ import { format } from "date-fns";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { BrandSubscription } from "@shared/schema";
+import { CURRENCY_SYMBOL, PLATFORM_CURRENCY_CODE } from "@/lib/currency";
 
 const PLANS = [
   {
     id: "starter" as const,
     label: "Starter",
-    price: "€249",
+    price: `${CURRENCY_SYMBOL}249`,
     period: "/ month",
     description: "For creators monetising their first campaigns",
     features: [
@@ -30,7 +31,7 @@ const PLANS = [
   {
     id: "pro" as const,
     label: "Pro",
-    price: "€499",
+    price: `${CURRENCY_SYMBOL}499`,
     period: "/ month",
     description: "For scaling creators with unlimited reach",
     popular: true,
@@ -254,7 +255,7 @@ export default function CreatorSettingsSubscription() {
                   <p className="text-sm font-medium">Estimate overage charges</p>
                 </div>
                 <p className="text-xs text-muted-foreground -mt-3">
-                  Usage beyond plan limits is billed at <strong>€0.05 / view</strong> and <strong>€0.15 / minute</strong>, multiplied by active publishers.
+                  Usage beyond plan limits is billed at <strong>{CURRENCY_SYMBOL}0.05 / view</strong> and <strong>{CURRENCY_SYMBOL}0.15 / minute</strong>, multiplied by active publishers.
                 </p>
 
                 <div className="space-y-2">
@@ -264,7 +265,7 @@ export default function CreatorSettingsSubscription() {
                   </div>
                   <Slider min={0} max={100000} step={500} value={[views]} onValueChange={([v]) => setViews(v)} data-testid="slider-views" />
                   <p className="text-xs text-muted-foreground text-right">
-                    {views.toLocaleString()} × €{RATE_PER_VIEW.toFixed(2)} × {publishers} pub = <span className="font-semibold text-foreground">€{fmt(viewsCost)}</span>
+                    {views.toLocaleString()} × {CURRENCY_SYMBOL}{RATE_PER_VIEW.toFixed(2)} × {publishers} pub = <span className="font-semibold text-foreground">{CURRENCY_SYMBOL}{fmt(viewsCost)}</span>
                   </p>
                 </div>
 
@@ -275,7 +276,7 @@ export default function CreatorSettingsSubscription() {
                   </div>
                   <Slider min={0} max={5000} step={10} value={[minutes]} onValueChange={([v]) => setMinutes(v)} data-testid="slider-minutes" />
                   <p className="text-xs text-muted-foreground text-right">
-                    {minutes.toLocaleString()} × €{RATE_PER_MINUTE.toFixed(2)} × {publishers} pub = <span className="font-semibold text-foreground">€{fmt(minutesCost)}</span>
+                    {minutes.toLocaleString()} × {CURRENCY_SYMBOL}{RATE_PER_MINUTE.toFixed(2)} × {publishers} pub = <span className="font-semibold text-foreground">{CURRENCY_SYMBOL}{fmt(minutesCost)}</span>
                   </p>
                 </div>
 
@@ -291,7 +292,7 @@ export default function CreatorSettingsSubscription() {
                   <div>
                     <p className="text-sm font-medium">Estimated overage</p>
                     <p className="text-xl font-bold tabular-nums" data-testid="text-total-surplus">
-                      €{fmt(totalSurplus)}
+                      {CURRENCY_SYMBOL}{fmt(totalSurplus)}
                       <span className="text-xs font-normal text-muted-foreground ml-1">/ mo</span>
                     </p>
                   </div>
@@ -391,7 +392,7 @@ export default function CreatorSettingsSubscription() {
           </div>
 
           <p className="text-[11px] text-muted-foreground text-center pt-1">
-            Secure checkout via Stripe · Cancel anytime · EUR pricing
+            Secure checkout via Stripe · Cancel anytime · {PLATFORM_CURRENCY_CODE} pricing
           </p>
         </DialogContent>
       </Dialog>

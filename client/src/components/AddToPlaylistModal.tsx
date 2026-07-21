@@ -1,3 +1,4 @@
+import { CURRENCY_SYMBOL } from "@/lib/currency";
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -175,15 +176,15 @@ export function AddToPlaylistModal({ open, onClose, selectedListingIds }: Props)
                 <div className="flex justify-between">
                   <span className="text-muted-foreground flex items-center gap-1.5">
                     <Film className="h-3.5 w-3.5" />
-                    {selectedListingIds.length} video{selectedListingIds.length !== 1 ? "s" : ""} × €{LICENSE_FEE}
+                    {selectedListingIds.length} video{selectedListingIds.length !== 1 ? "s" : ""} × {CURRENCY_SYMBOL}{LICENSE_FEE}
                   </span>
-                  <span>€{paymentTotal}</span>
+                  <span>{CURRENCY_SYMBOL}{paymentTotal}</span>
                 </div>
               </div>
               <Separator />
               <div className="flex justify-between font-semibold">
                 <span>Total due</span>
-                <span className="text-primary text-lg">€{paymentTotal}</span>
+                <span className="text-primary text-lg">{CURRENCY_SYMBOL}{paymentTotal}</span>
               </div>
             </div>
 
@@ -209,7 +210,7 @@ export function AddToPlaylistModal({ open, onClose, selectedListingIds }: Props)
                 {confirmPaymentMutation.isPending
                   ? <Loader2 className="h-4 w-4 animate-spin mr-2" />
                   : <CreditCard className="h-4 w-4 mr-2" />}
-                Pay €{paymentTotal}
+                Pay {CURRENCY_SYMBOL}{paymentTotal}
               </Button>
             </div>
           </div>
@@ -337,9 +338,9 @@ export function AddToPlaylistModal({ open, onClose, selectedListingIds }: Props)
                 </div>
                 <div className="flex justify-between items-center text-sm">
                   <span className="text-muted-foreground">
-                    {selectedListingIds.length} video{selectedListingIds.length !== 1 ? "s" : ""} × €{LICENSE_FEE}
+                    {selectedListingIds.length} video{selectedListingIds.length !== 1 ? "s" : ""} × {CURRENCY_SYMBOL}{LICENSE_FEE}
                   </span>
-                  <span className="font-bold text-base">€{totalFee}</span>
+                  <span className="font-bold text-base">{CURRENCY_SYMBOL}{totalFee}</span>
                 </div>
                 <p className="text-xs text-muted-foreground">
                   Required before embed code is issued. Save as draft to pay later.
@@ -369,7 +370,7 @@ export function AddToPlaylistModal({ open, onClose, selectedListingIds }: Props)
                 {checkoutMutation.isPending
                   ? <Loader2 className="h-4 w-4 animate-spin mr-2" />
                   : <CreditCard className="h-4 w-4 mr-2" />}
-                Pay €{totalFee} & Publish
+                Pay {CURRENCY_SYMBOL}{totalFee} & Publish
               </Button>
             </DialogFooter>
           </>

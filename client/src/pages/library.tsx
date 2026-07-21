@@ -1,3 +1,4 @@
+import { CURRENCY_SYMBOL } from "@/lib/currency";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -192,7 +193,7 @@ export default function Library() {
                     <CardDescription>by {listing.creator?.displayName ?? "Unknown Creator"}</CardDescription>
                   </CardHeader>
                   <CardFooter className="pt-0 text-xs text-muted-foreground">
-                    {listing.totalLicenses} licenses · €{listing.licenseFee}
+                    {listing.totalLicenses} licenses · {CURRENCY_SYMBOL}{listing.licenseFee}
                   </CardFooter>
                 </Card>
                 <WishlistHeart listingId={listing.id} wishlisted={wishlistedIds.has(listing.id)} />

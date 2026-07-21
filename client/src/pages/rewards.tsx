@@ -1,3 +1,4 @@
+import { CURRENCY_SYMBOL } from "@/lib/currency";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -68,7 +69,7 @@ export default function RewardsPage() {
               {isLoading ? "..." : summary?.availableCredits || 0}
             </div>
             <p className="text-xs text-muted-foreground">
-              Worth {isLoading ? "..." : `€${summary?.euroValue || 0}`}
+              Worth {isLoading ? "..." : `${CURRENCY_SYMBOL}${summary?.euroValue || 0}`}
             </p>
           </CardContent>
         </Card>
@@ -108,7 +109,7 @@ export default function RewardsPage() {
         <CardHeader>
           <CardTitle>Rewards History</CardTitle>
           <CardDescription>
-            Earn 45 credits (€45 value) each time a brand you refer subscribes to a paid account. 
+            Earn 45 credits ({CURRENCY_SYMBOL}45 value) each time a brand you refer subscribes to a paid account. 
             Use credits to list videos in the Global Video Library.
           </CardDescription>
         </CardHeader>
@@ -123,7 +124,7 @@ export default function RewardsPage() {
               <h3 className="text-lg font-semibold mb-2">No Rewards Yet</h3>
               <p className="text-muted-foreground max-w-md mx-auto">
                 Start referring brands to earn credits. Each brand that subscribes to a paid account 
-                earns you 45 credits (€45) that can be used to list videos in the Global Video Library.
+                earns you 45 credits ({CURRENCY_SYMBOL}45) that can be used to list videos in the Global Video Library.
               </p>
             </div>
           ) : (

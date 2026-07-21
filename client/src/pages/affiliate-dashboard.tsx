@@ -1,3 +1,4 @@
+import { CURRENCY_SYMBOL } from "@/lib/currency";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -89,7 +90,7 @@ export default function AffiliateDashboard() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           title="Total Earnings"
-          value={`€${totalEarnings.toFixed(2)}`}
+          value={`${CURRENCY_SYMBOL}${totalEarnings.toFixed(2)}`}
           subtitle="Lifetime earnings"
           icon={DollarSign}
           trend={totalEarnings > 0 ? { value: 15, isPositive: true } : undefined}
@@ -207,7 +208,7 @@ export default function AffiliateDashboard() {
                       <div>
                         <p className="font-medium text-sm line-clamp-1">{item.title}</p>
                         <p className="text-xs text-muted-foreground">
-                          €{item.listingFee} · {item.totalLicenses} licensed
+                          {CURRENCY_SYMBOL}{item.listingFee} · {item.totalLicenses} licensed
                         </p>
                       </div>
                     </div>

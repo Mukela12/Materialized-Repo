@@ -1,3 +1,4 @@
+import { CURRENCY_SYMBOL } from "@/lib/currency";
 import { useRef, useState, useEffect } from "react";
 import { X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -67,7 +68,7 @@ function GimberCard({ side }: { side: "bottom-right" | "bottom-left" }) {
                   Gimber Original
                 </div>
                 <div className="text-white font-bold text-sm leading-tight">
-                  €27.95
+                  {CURRENCY_SYMBOL}27.95
                 </div>
               </div>
               <div
@@ -133,7 +134,7 @@ function ForbúriCard() {
                   Solstice Set
                 </div>
                 <div className="text-white font-bold text-sm leading-tight">
-                  €348
+                  {CURRENCY_SYMBOL}348
                 </div>
               </div>
               <div

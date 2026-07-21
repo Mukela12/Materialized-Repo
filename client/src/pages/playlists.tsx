@@ -1,3 +1,4 @@
+import { CURRENCY_SYMBOL } from "@/lib/currency";
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -222,7 +223,7 @@ export default function PlaylistsPage() {
                   {pl.licenseFeeTotal && (
                     <>
                       <span>·</span>
-                      <span className="font-medium text-foreground">€{pl.licenseFeeTotal}</span>
+                      <span className="font-medium text-foreground">{CURRENCY_SYMBOL}{pl.licenseFeeTotal}</span>
                     </>
                   )}
                 </div>
@@ -284,7 +285,7 @@ export default function PlaylistsPage() {
                     <span className="font-semibold text-sm">License to Publish</span>
                   </div>
                   {detail?.licenseFeeTotal && (
-                    <span className="font-bold text-lg">€{detail.licenseFeeTotal}</span>
+                    <span className="font-bold text-lg">{CURRENCY_SYMBOL}{detail.licenseFeeTotal}</span>
                   )}
                 </div>
 
@@ -292,7 +293,7 @@ export default function PlaylistsPage() {
                 {currentStatus === "pending_payment" && (detail?.licenseFeeTotal || checkoutTotal) && (
                   <>
                     <p className="text-sm text-muted-foreground">
-                      Payment pending for {detail?.itemCount ?? checkoutCount} video{(detail?.itemCount ?? checkoutCount) !== 1 ? "s" : ""} at €45 each.
+                      Payment pending for {detail?.itemCount ?? checkoutCount} video{(detail?.itemCount ?? checkoutCount) !== 1 ? "s" : ""} at {CURRENCY_SYMBOL}45 each.
                     </p>
                     <Button
                       className="w-full"
@@ -303,7 +304,7 @@ export default function PlaylistsPage() {
                       {confirmPaymentMutation.isPending
                         ? <Loader2 className="h-4 w-4 animate-spin mr-2" />
                         : <CreditCard className="h-4 w-4 mr-2" />}
-                      Pay €{detail?.licenseFeeTotal ?? checkoutTotal} & Publish
+                      Pay {CURRENCY_SYMBOL}{detail?.licenseFeeTotal ?? checkoutTotal} & Publish
                     </Button>
                   </>
                 )}
@@ -312,7 +313,7 @@ export default function PlaylistsPage() {
                 {currentStatus === "draft" && !checkoutTotal && (
                   <>
                     <p className="text-sm text-muted-foreground">
-                      License fee: €45 per video × {detail?.itemCount ?? 0} videos = <strong>€{(detail?.itemCount ?? 0) * 45}</strong>
+                      License fee: {CURRENCY_SYMBOL}45 per video × {detail?.itemCount ?? 0} videos = <strong>{CURRENCY_SYMBOL}{(detail?.itemCount ?? 0) * 45}</strong>
                     </p>
                     <Button
                       className="w-full"
@@ -323,7 +324,7 @@ export default function PlaylistsPage() {
                       {checkoutMutation.isPending
                         ? <Loader2 className="h-4 w-4 animate-spin mr-2" />
                         : <CreditCard className="h-4 w-4 mr-2" />}
-                      Pay €{(detail?.itemCount ?? 0) * 45} to Publish
+                      Pay {CURRENCY_SYMBOL}{(detail?.itemCount ?? 0) * 45} to Publish
                     </Button>
                   </>
                 )}
@@ -339,7 +340,7 @@ export default function PlaylistsPage() {
                     {confirmPaymentMutation.isPending
                       ? <Loader2 className="h-4 w-4 animate-spin mr-2" />
                       : <CreditCard className="h-4 w-4 mr-2" />}
-                    Confirm Payment — Pay €{checkoutTotal}
+                    Confirm Payment — Pay {CURRENCY_SYMBOL}{checkoutTotal}
                   </Button>
                 )}
               </div>

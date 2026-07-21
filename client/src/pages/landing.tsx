@@ -1,3 +1,4 @@
+import { CURRENCY_SYMBOL } from "@/lib/currency";
 import { useState, useEffect, useRef } from "react";
 import { motion, useScroll, useTransform, AnimatePresence } from "framer-motion";
 import { useForm } from "react-hook-form";
@@ -462,7 +463,7 @@ function VideoOrientationSection() {
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="text-white/70 text-[7px] leading-tight truncate">Metallic Chain Bag</div>
-                            <div className="text-white font-bold text-[10px] leading-tight">€720</div>
+                            <div className="text-white font-bold text-[10px] leading-tight">{CURRENCY_SYMBOL}720</div>
                           </div>
                           <button className="bg-white/90 text-[#43484D] text-[6.5px] font-black tracking-wide px-1.5 py-1 rounded flex-shrink-0">
                             BUY NOW
@@ -616,7 +617,7 @@ function VideoOfTheWeekSection() {
       id: 0,
       name: "Aesop",
       detail: "Hand & Body Wash",
-      price: "€33",
+      price: `${CURRENCY_SYMBOL}33`,
       cta: "BUY NOW",
       href: null,
       color: "#c8a97e",
@@ -636,7 +637,7 @@ function VideoOfTheWeekSection() {
       id: 2,
       name: "GHD Air Wrap",
       detail: "Professional Styler",
-      price: "€649",
+      price: `${CURRENCY_SYMBOL}649`,
       cta: "BUY NOW",
       href: null,
       color: "#8a7090",
@@ -1498,7 +1499,7 @@ export default function Landing() {
                   <div className="space-y-0.5">
                     <div className="text-white/45 text-[7.5px] uppercase tracking-widest font-medium">MIRO MISLJEN</div>
                     <div className="text-white text-[11px] font-semibold leading-tight">Deconstructed Patchwork Dress</div>
-                    <div className="text-white font-bold text-base leading-tight">€1,129</div>
+                    <div className="text-white font-bold text-base leading-tight">{CURRENCY_SYMBOL}1,129</div>
                   </div>
                   <div
                     className="w-full text-center text-[8.5px] font-black tracking-widest text-[#1a1a1a] py-2 rounded-xl"

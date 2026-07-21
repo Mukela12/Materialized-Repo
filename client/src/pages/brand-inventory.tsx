@@ -1,3 +1,4 @@
+import { CURRENCY_SYMBOL } from "@/lib/currency";
 import { useState, useRef, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -320,7 +321,7 @@ function AddProductSheet({
           <div className="space-y-1.5">
             <Label className="text-muted-foreground text-xs font-medium">Product Price *</Label>
             <div className="relative">
-              <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground text-sm font-medium">€</span>
+              <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground text-sm font-medium">{CURRENCY_SYMBOL}</span>
               <Input
                 data-testid="input-product-price"
                 type="number"
@@ -656,7 +657,7 @@ export default function BrandInventory() {
                     <p className="font-medium truncate">{product.name}</p>
                     <p className="text-sm text-muted-foreground truncate">{product.description}</p>
                     <div className="flex items-center gap-2 mt-1">
-                      <span className="font-semibold text-primary">€{product.price}</span>
+                      <span className="font-semibold text-primary">{CURRENCY_SYMBOL}{product.price}</span>
                       {(product as any).productType && (
                         <Badge variant="outline" className="text-xs">{(product as any).productType}</Badge>
                       )}

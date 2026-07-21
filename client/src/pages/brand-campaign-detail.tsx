@@ -1,3 +1,4 @@
+import { CURRENCY_SYMBOL } from "@/lib/currency";
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation, useRoute } from "wouter";
@@ -171,9 +172,9 @@ export default function BrandCampaignDetail() {
 
         {/* Financial summary */}
         <div className="border-t border-border pt-3 grid grid-cols-3 gap-2">
-          <FinTile label="Gross Value" value={`€${gross.toFixed(2)}`} />
-          <FinTile label="Affiliate Fees" value={`€${fees.toFixed(2)}`} color="text-red-500 dark:text-red-400" />
-          <FinTile label="Net Earned" value={`€${net.toFixed(2)}`} color="text-emerald-600 dark:text-emerald-400" />
+          <FinTile label="Gross Value" value={`${CURRENCY_SYMBOL}${gross.toFixed(2)}`} />
+          <FinTile label="Affiliate Fees" value={`${CURRENCY_SYMBOL}${fees.toFixed(2)}`} color="text-red-500 dark:text-red-400" />
+          <FinTile label="Net Earned" value={`${CURRENCY_SYMBOL}${net.toFixed(2)}`} color="text-emerald-600 dark:text-emerald-400" />
         </div>
       </div>
 
@@ -235,8 +236,8 @@ export default function BrandCampaignDetail() {
                   <div className="grid grid-cols-4 gap-2 mb-3">
                     <PubStat label="Clicks" value={aff.totalClicks ?? 0} />
                     <PubStat label="Conv." value={aff.totalConversions ?? 0} />
-                    <PubStat label="Revenue" value={`€${parseFloat(aff.totalRevenue ?? "0").toFixed(0)}`} />
-                    <PubStat label="Earnings" value={`€${parseFloat(aff.totalEarnings ?? "0").toFixed(0)}`} />
+                    <PubStat label="Revenue" value={`${CURRENCY_SYMBOL}${parseFloat(aff.totalRevenue ?? "0").toFixed(0)}`} />
+                    <PubStat label="Earnings" value={`${CURRENCY_SYMBOL}${parseFloat(aff.totalEarnings ?? "0").toFixed(0)}`} />
                   </div>
 
                   {/* UTM code */}
