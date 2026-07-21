@@ -200,6 +200,37 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+// Like AuthGuard, but additionally requires the user to be an admin. Unauthenticated
+// visitors go to /login; signed-in non-admins are sent to their own dashboard. The
+// admin UI is never rendered for either, so /admin can't be viewed without admin rights.
+function AdminGuard({ children }: { children: React.ReactNode }) {
+  const { data: user, isLoading } = useCurrentUser();
+  const [, navigate] = useLocation();
+
+  useEffect(() => {
+    if (isLoading) return;
+    if (user === null) {
+      navigate("/login");
+    } else if (!user.isAdmin) {
+      const home =
+        user.role === "brand" ? "/brand" : user.role === "affiliate" ? "/affiliate" : "/creator";
+      navigate(home);
+    }
+  }, [isLoading, user, navigate]);
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-background">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+      </div>
+    );
+  }
+
+  if (!user || !user.isAdmin) return null;
+
+  return <>{children}</>;
+}
+
 function AppContent() {
   const [location] = useLocation();
   const { data: user } = useCurrentUser();
@@ -232,9 +263,11 @@ function AppContent() {
 
   if (isAdminRoute) {
     return (
-      <Switch>
-        <Route path="/admin" component={AdminPipeline} />
-      </Switch>
+      <AdminGuard>
+        <Switch>
+          <Route path="/admin" component={AdminPipeline} />
+        </Switch>
+      </AdminGuard>
     );
   }
 
