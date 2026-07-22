@@ -123,6 +123,38 @@ export async function registerShopifyOrderWebhook(
   return { id: data.webhook?.id };
 }
 
+/**
+ * Register the `orders/refunded` webhook against our refund receiver so refunds flow in
+ * automatically and claw back the commission. Signed with the same app secret as
+ * orders/create, so verifyStoreHmac works unchanged. Its payload is a full order object,
+ * so `order.id` equals the id we stored on the sale. Throws on any non-2xx.
+ */
+export async function registerShopifyRefundWebhook(
+  storeDomain: string,
+  accessToken: string,
+  address: string,
+): Promise<{ id: number }> {
+  const domain = storeDomain.replace(/^https?:\/\//, "").replace(/\/$/, "");
+  const response = await fetch(`https://${domain}/admin/api/2024-01/webhooks.json`, {
+    method: "POST",
+    headers: {
+      "X-Shopify-Access-Token": accessToken,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      webhook: { topic: "orders/refunded", address, format: "json" },
+    }),
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Shopify refund webhook registration error (${response.status}): ${text}`);
+  }
+
+  const data = await response.json();
+  return { id: data.webhook?.id };
+}
+
 export function mapShopifyToLocalProducts(products: ShopifyProduct[], brandId: string, storeDomain?: string) {
   return products.map(p => mapShopifyProduct(p, brandId, storeDomain));
 }

@@ -20,6 +20,12 @@ export interface SaleAttribution {
   productId?: string | null;
   /** Store order id — persisted for idempotency + reconciliation. */
   externalOrderId?: string | null;
+  /**
+   * Store connection the order belongs to. Store order ids are only unique WITHIN a store,
+   * so this scopes the (external_order_id, affiliate_id, store_connection_id) dedup index and
+   * lets refunds target the right store. Optional/nullable for legacy /internal callers.
+   */
+  storeConnectionId?: string | null;
 }
 
 export interface RecordedCommissions {
@@ -36,6 +42,17 @@ function isUniqueViolation(err: unknown): boolean {
   return code === "23505";
 }
 
+/** A commission row as returned when looking rows up for a clawback. */
+export interface CommissionRow {
+  id: string;
+  affiliateId: string;
+  videoId: string;
+  saleAmount: string;
+  commissionAmount: string;
+  status: string | null;
+  campaignAffiliateId: string | null;
+}
+
 /** Minimal storage surface — keeps this unit-testable without a database. */
 export interface CommissionStore {
   createCommissionTransaction(tx: {
@@ -48,6 +65,7 @@ export interface CommissionStore {
     commissionAmount: string;
     campaignAffiliateId: string | null;
     externalOrderId?: string | null;
+    storeConnectionId?: string | null;
   }): Promise<{ id: string }>;
   getCampaignAffiliates(videoId: string): Promise<Array<{
     id: string;
@@ -56,6 +74,26 @@ export interface CommissionStore {
     totalEarnings?: string | null;
   }>>;
   updateCampaignAffiliateStats(id: string, stats: Record<string, unknown>): Promise<unknown>;
+}
+
+/** Storage surface for reversing commissions when a store order is refunded. */
+export interface ClawbackStore {
+  getCommissionsByExternalOrder(externalOrderId: string, storeConnectionId?: string | null): Promise<CommissionRow[]>;
+  updateCommissionTransactionStatus(id: string, status: string): Promise<unknown>;
+  getCampaignAffiliates(videoId: string): Promise<Array<{
+    id: string;
+    totalConversions?: number | null;
+    totalRevenue?: string | null;
+    totalEarnings?: string | null;
+  }>>;
+  updateCampaignAffiliateStats(id: string, stats: Record<string, unknown>): Promise<unknown>;
+}
+
+export interface ClawbackResult {
+  /** Number of rows flipped to "reversed" by THIS call (0 on a retry / unknown order). */
+  reversed: number;
+  /** True when every row for the order was already reversed (retried refund webhook). */
+  alreadyReversed: boolean;
 }
 
 /**
@@ -74,6 +112,7 @@ export async function recordSaleCommissions(
   const { videoId, creatorId, affiliateId, campaignAffiliateId, resolvedCommissionRate } = attribution;
   const productId = attribution.productId ?? null;
   const externalOrderId = attribution.externalOrderId ?? null;
+  const storeConnectionId = attribution.storeConnectionId ?? null;
   const saleCents = toCents(saleRevenue);
 
   const publisherId = affiliateId && affiliateId !== creatorId ? affiliateId : null;
@@ -106,6 +145,7 @@ export async function recordSaleCommissions(
         commissionAmount: centsToAmount(split.creatorCents),
         campaignAffiliateId: null,
         externalOrderId,
+        storeConnectionId,
       });
       result.creatorCommissionId = tx.id;
     } catch (err) {
@@ -128,6 +168,7 @@ export async function recordSaleCommissions(
         commissionAmount: centsToAmount(split.publisherCents),
         campaignAffiliateId,
         externalOrderId,
+        storeConnectionId,
       });
       result.publisherCommissionId = tx.id;
       publisherInserted = true;
@@ -151,4 +192,69 @@ export async function recordSaleCommissions(
   }
 
   return result;
+}
+
+/**
+ * Reverse (claw back) the commission rows for a refunded store order.
+ *
+ * Mirrors recordSaleCommissions: it finds the up-to-two rows written for the order
+ * (creator + publisher, sharing externalOrderId) and flips each to "reversed" so the
+ * affiliate earnings ledger stops counting the sale and the payout engine — which only
+ * ever pays "approved" rows — skips them from now on.
+ *
+ * Idempotent by design: it only acts on rows that are not already "reversed". A retried
+ * refund webhook (stores retry) finds everything already reversed and returns a no-op.
+ * The campaign-affiliate stat decrement is likewise applied ONCE, only for rows this call
+ * actually reverses, so a double-delivery can't over-decrement.
+ *
+ * The "paid" edge case (money already left via a Stripe transfer): v1 policy is to still
+ * flip paid → reversed so the ledger is correct and the amount is recoverable/visible in
+ * admin, WITHOUT attempting an automatic Stripe reversal here. The clawback never crashes
+ * on a paid row.
+ */
+export async function clawbackSaleCommissions(
+  store: ClawbackStore,
+  externalOrderId: string,
+  storeConnectionId?: string | null,
+): Promise<ClawbackResult> {
+  // Scope the lookup to the store when known — store order ids collide across stores, so an
+  // unscoped lookup could reverse a different store's identically-numbered order. Legacy
+  // callers (and pre-migration NULL-store rows) keep the order-id-only behavior.
+  const rows = await store.getCommissionsByExternalOrder(externalOrderId, storeConnectionId);
+  if (rows.length === 0) {
+    // Unknown / unattributed order — nothing was ever recorded. Ack, don't error.
+    return { reversed: 0, alreadyReversed: false };
+  }
+
+  const toReverse = rows.filter((r) => r.status !== "reversed");
+  if (toReverse.length === 0) {
+    // Every row already clawed back — retried refund webhook is a no-op.
+    return { reversed: 0, alreadyReversed: true };
+  }
+
+  let reversed = 0;
+  for (const row of toReverse) {
+    await store.updateCommissionTransactionStatus(row.id, "reversed");
+    reversed++;
+
+    // Reverse the campaign-affiliate rollup symmetric to the increment in
+    // recordSaleCommissions — only for the publisher (campaign-attributed) row, and only
+    // for rows we actually flipped, so a re-delivered refund can't decrement twice.
+    if (row.campaignAffiliateId) {
+      const ca = (await store.getCampaignAffiliates(row.videoId)).find(
+        (c) => c.id === row.campaignAffiliateId,
+      );
+      if (ca) {
+        const revenueCents = Math.max(0, toCents(ca.totalRevenue || "0") - toCents(row.saleAmount || "0"));
+        const earningsCents = Math.max(0, toCents(ca.totalEarnings || "0") - toCents(row.commissionAmount || "0"));
+        await store.updateCampaignAffiliateStats(row.campaignAffiliateId, {
+          totalConversions: Math.max(0, (ca.totalConversions || 0) - 1),
+          totalRevenue: centsToAmount(revenueCents),
+          totalEarnings: centsToAmount(earningsCents),
+        });
+      }
+    }
+  }
+
+  return { reversed, alreadyReversed: false };
 }

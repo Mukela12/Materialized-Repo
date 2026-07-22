@@ -45,7 +45,7 @@ export const rewardStatusEnum = pgEnum("reward_status", [
 ]);
 
 export const commissionStatusEnum = pgEnum("commission_status", [
-  "pending", "approved", "paid", "rejected"
+  "pending", "approved", "paid", "rejected", "reversed"
 ]);
 
 // Users table with role-based access
@@ -451,14 +451,20 @@ export const commissionTransactions = pgTable("commission_transactions", {
   licensePurchaseId: varchar("license_purchase_id").references(() => videoLicensePurchases.id),
   payoutId: varchar("payout_id").references(() => affiliatePayouts.id),
   externalOrderId: text("external_order_id"),
+  // Store the order belongs to. Store order ids are only unique WITHIN a store, so refunds
+  // and dedup must be scoped by (external_order_id, store_connection_id) to avoid a cross-store
+  // order-id collision. Nullable + backward-compatible: legacy rows (internal /api/sales, or
+  // pre-migration store rows) carry NULL here and keep working with the 1-arg lookups.
+  storeConnectionId: varchar("store_connection_id").references(() => storeConnections.id),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
 }, (t) => ({
   // Prevent concurrent duplicate commissions for the same store order. A single sale
   // writes at most TWO rows (creator + publisher), which always have distinct
-  // affiliate_ids, so the index is on (external_order_id, affiliate_id). The partial
-  // predicate leaves the internal /api/sales path (externalOrderId NULL) unconstrained.
-  extOrderAffiliateUniq: uniqueIndex("commission_tx_ext_order_affiliate_uniq")
-    .on(t.externalOrderId, t.affiliateId)
+  // affiliate_ids. Order ids collide across stores, so the index is scoped by
+  // store_connection_id too: (external_order_id, affiliate_id, store_connection_id). The
+  // partial predicate leaves the internal /api/sales path (externalOrderId NULL) unconstrained.
+  extOrderAffiliateUniq: uniqueIndex("commission_tx_ext_order_affiliate_store_uniq")
+    .on(t.externalOrderId, t.affiliateId, t.storeConnectionId)
     .where(sql`${t.externalOrderId} IS NOT NULL`),
 }));
 

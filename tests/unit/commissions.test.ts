@@ -1,5 +1,11 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { recordSaleCommissions, type CommissionStore } from '../../server/commissions';
+import {
+  recordSaleCommissions,
+  clawbackSaleCommissions,
+  type CommissionStore,
+  type ClawbackStore,
+  type CommissionRow,
+} from '../../server/commissions';
 
 beforeEach(() => {
   delete process.env.MARKETPLACE_FEE_PCT;
@@ -223,5 +229,101 @@ describe('recordSaleCommissions — DB unique-violation idempotency', () => {
       videoId: 'v1', creatorId: 'creator1', affiliateId: null,
       campaignAffiliateId: null, resolvedCommissionRate: null, externalOrderId: 'order-3',
     })).rejects.toThrow(/connection reset/);
+  });
+});
+
+describe('clawbackSaleCommissions', () => {
+  // In-memory ClawbackStore keyed by externalOrderId, mirroring the real storage surface.
+  function makeClawbackStore(rows: CommissionRow[], campaignAffiliates: any[] = []) {
+    const byId = new Map(rows.map((r) => [r.id, { ...r }]));
+    const statUpdates: any[] = [];
+    const store: ClawbackStore = {
+      async getCommissionsByExternalOrder(externalOrderId) {
+        // The test rows carry an `externalOrderId` tag; filter on it.
+        return Array.from(byId.values()).filter(
+          (r) => (r as any).externalOrderId === externalOrderId,
+        );
+      },
+      async updateCommissionTransactionStatus(id, status) {
+        const row = byId.get(id);
+        if (row) row.status = status;
+        return row;
+      },
+      async getCampaignAffiliates() {
+        return campaignAffiliates;
+      },
+      async updateCampaignAffiliateStats(id, stats) {
+        statUpdates.push({ id, stats });
+        return stats;
+      },
+    };
+    return { store, byId, statUpdates };
+  }
+
+  const orderRows = (): CommissionRow[] => [
+    { id: 'c1', affiliateId: 'creator1', videoId: 'v1', saleAmount: '100.00', commissionAmount: '8.00', status: 'pending', campaignAffiliateId: null, externalOrderId: 'order-1' } as any,
+    { id: 'c2', affiliateId: 'pub1', videoId: 'v1', saleAmount: '100.00', commissionAmount: '2.00', status: 'pending', campaignAffiliateId: 'ca1', externalOrderId: 'order-1' } as any,
+  ];
+
+  it('reverses both creator + publisher rows for a refunded order', async () => {
+    const { store, byId } = makeClawbackStore(orderRows());
+    const r = await clawbackSaleCommissions(store, 'order-1');
+    expect(r.reversed).toBe(2);
+    expect(r.alreadyReversed).toBe(false);
+    expect(byId.get('c1')!.status).toBe('reversed');
+    expect(byId.get('c2')!.status).toBe('reversed');
+  });
+
+  it('decrements campaign-affiliate stats symmetric to the sale (once)', async () => {
+    const ca = { id: 'ca1', totalConversions: 3, totalRevenue: '150.00', totalEarnings: '3.00' };
+    const { store, statUpdates } = makeClawbackStore(orderRows(), [ca]);
+    await clawbackSaleCommissions(store, 'order-1');
+    // Only the publisher (campaign-attributed) row updates stats.
+    expect(statUpdates).toHaveLength(1);
+    expect(statUpdates[0].id).toBe('ca1');
+    expect(statUpdates[0].stats.totalConversions).toBe(2);       // 3 - 1
+    expect(statUpdates[0].stats.totalRevenue).toBe('50.00');     // 150 - 100
+    expect(statUpdates[0].stats.totalEarnings).toBe('1.00');     // 3.00 - 2.00
+  });
+
+  it('is idempotent: a retried refund webhook is a no-op', async () => {
+    const ca = { id: 'ca1', totalConversions: 3, totalRevenue: '150.00', totalEarnings: '3.00' };
+    const { store, statUpdates } = makeClawbackStore(orderRows(), [ca]);
+    const first = await clawbackSaleCommissions(store, 'order-1');
+    expect(first.reversed).toBe(2);
+    const second = await clawbackSaleCommissions(store, 'order-1');
+    expect(second.reversed).toBe(0);
+    expect(second.alreadyReversed).toBe(true);
+    // Stats were decremented exactly once across both deliveries.
+    expect(statUpdates).toHaveLength(1);
+  });
+
+  it('acks an unknown / unattributed order as a no-op without error', async () => {
+    const { store } = makeClawbackStore(orderRows());
+    const r = await clawbackSaleCommissions(store, 'no-such-order');
+    expect(r.reversed).toBe(0);
+    expect(r.alreadyReversed).toBe(false);
+  });
+
+  it('still reverses an already-paid row (v1 policy) without crashing', async () => {
+    const rows: CommissionRow[] = [
+      { id: 'c1', affiliateId: 'creator1', videoId: 'v1', saleAmount: '100.00', commissionAmount: '8.00', status: 'paid', campaignAffiliateId: null, externalOrderId: 'order-1' } as any,
+    ];
+    const { store, byId } = makeClawbackStore(rows);
+    const r = await clawbackSaleCommissions(store, 'order-1');
+    expect(r.reversed).toBe(1);
+    expect(byId.get('c1')!.status).toBe('reversed');
+  });
+
+  it('does not decrement campaign stats below zero on stale rollups', async () => {
+    const ca = { id: 'ca1', totalConversions: 0, totalRevenue: '0.00', totalEarnings: '0.00' };
+    const rows: CommissionRow[] = [
+      { id: 'c2', affiliateId: 'pub1', videoId: 'v1', saleAmount: '100.00', commissionAmount: '2.00', status: 'pending', campaignAffiliateId: 'ca1', externalOrderId: 'order-1' } as any,
+    ];
+    const { store, statUpdates } = makeClawbackStore(rows, [ca]);
+    await clawbackSaleCommissions(store, 'order-1');
+    expect(statUpdates[0].stats.totalConversions).toBe(0);
+    expect(statUpdates[0].stats.totalRevenue).toBe('0.00');
+    expect(statUpdates[0].stats.totalEarnings).toBe('0.00');
   });
 });

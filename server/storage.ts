@@ -98,6 +98,7 @@ export interface IStorage {
   getUserByUsername(username: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
   getUserByStripeCustomerId(customerId: string): Promise<User | undefined>;
+  getUserByStripeConnectAccountId(accountId: string): Promise<User | undefined>;
   getUserByVerificationToken(token: string): Promise<User | undefined>;
   getUserByPasswordResetTokenHash(tokenHash: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
@@ -171,9 +172,14 @@ export interface IStorage {
   getAllPayouts(): Promise<AffiliatePayout[]>;
   createPayout(payout: InsertAffiliatePayout): Promise<AffiliatePayout>;
   updatePayoutStatus(id: string, status: string, stripeTransferId?: string): Promise<AffiliatePayout | undefined>;
+  getPayoutByStripeTransferId(stripeTransferId: string): Promise<AffiliatePayout | undefined>;
   getCommissionsByStatus(status: string): Promise<CommissionTransaction[]>;
+  getCommissionsByPayoutId(payoutId: string): Promise<CommissionTransaction[]>;
+  getCommissionTransaction(id: string): Promise<CommissionTransaction | undefined>;
   markCommissionsPaid(commissionIds: string[], payoutId: string): Promise<void>;
-  hasCommissionForExternalOrder(externalOrderId: string): Promise<boolean>;
+  markCommissionsReversed(commissionIds: string[]): Promise<void>;
+  hasCommissionForExternalOrder(externalOrderId: string, storeConnectionId?: string | null): Promise<boolean>;
+  getCommissionsByExternalOrder(externalOrderId: string, storeConnectionId?: string | null): Promise<CommissionTransaction[]>;
   
   // Campaigns
   getCampaigns(brandId: string): Promise<Campaign[]>;
@@ -292,7 +298,7 @@ export interface IStorage {
   getCommissionTransactionsByVideo(videoId: string): Promise<CommissionTransaction[]>;
   createCommissionTransaction(transaction: InsertCommissionTransaction): Promise<CommissionTransaction>;
   updateCommissionTransactionStatus(id: string, status: string): Promise<CommissionTransaction | undefined>;
-  getAffiliateEarningsFromLedger(affiliateId: string): Promise<{ totalSales: number; totalCommission: number; pendingCommission: number; approvedCommission: number; paidCommission: number; transactionCount: number }>;
+  getAffiliateEarningsFromLedger(affiliateId: string): Promise<{ totalSales: number; totalCommission: number; pendingCommission: number; approvedCommission: number; paidCommission: number; reversedCommission: number; transactionCount: number }>;
   
   // UTM Resolution
   resolveUtmToAffiliate(utmCode: string): Promise<{ affiliateId: string; campaignAffiliateId: string | null; videoId: string; commissionRate: string } | null>;
@@ -434,6 +440,10 @@ export class MemStorage implements IStorage {
 
   async getUserByStripeCustomerId(customerId: string): Promise<User | undefined> {
     return Array.from(this.users.values()).find((u) => u.stripeCustomerId === customerId);
+  }
+
+  async getUserByStripeConnectAccountId(accountId: string): Promise<User | undefined> {
+    return Array.from(this.users.values()).find((u) => u.stripeConnectAccountId === accountId);
   }
 
   async getUserByVerificationToken(token: string): Promise<User | undefined> {
@@ -1651,6 +1661,7 @@ export class MemStorage implements IStorage {
       licensePurchaseId: transaction.licensePurchaseId ?? null,
       payoutId: transaction.payoutId ?? null,
       externalOrderId: transaction.externalOrderId ?? null,
+      storeConnectionId: transaction.storeConnectionId ?? null,
       createdAt: new Date(),
     };
     this.commissionTransactionsMap.set(id, newTx);
@@ -1660,7 +1671,7 @@ export class MemStorage implements IStorage {
   async updateCommissionTransactionStatus(id: string, status: string): Promise<CommissionTransaction | undefined> {
     const tx = this.commissionTransactionsMap.get(id);
     if (!tx) return undefined;
-    const updated = { ...tx, status: status as "pending" | "approved" | "paid" | "rejected" };
+    const updated = { ...tx, status: status as "pending" | "approved" | "paid" | "rejected" | "reversed" };
     this.commissionTransactionsMap.set(id, updated);
     return updated;
   }
@@ -1669,14 +1680,44 @@ export class MemStorage implements IStorage {
     return Array.from(this.commissionTransactionsMap.values()).filter(t => t.status === status);
   }
 
-  async hasCommissionForExternalOrder(externalOrderId: string): Promise<boolean> {
-    return Array.from(this.commissionTransactionsMap.values()).some(t => t.externalOrderId === externalOrderId);
+  async getCommissionsByPayoutId(payoutId: string): Promise<CommissionTransaction[]> {
+    return Array.from(this.commissionTransactionsMap.values()).filter(t => t.payoutId === payoutId);
+  }
+
+  async getCommissionTransaction(id: string): Promise<CommissionTransaction | undefined> {
+    return this.commissionTransactionsMap.get(id);
+  }
+
+  async hasCommissionForExternalOrder(externalOrderId: string, storeConnectionId?: string | null): Promise<boolean> {
+    // Store order ids are only unique within a store — when a store is supplied, scope by it
+    // so store A's order id can't match store B's identical id. Legacy 1-arg callers keep the
+    // order-id-only behavior.
+    return Array.from(this.commissionTransactionsMap.values()).some(t =>
+      t.externalOrderId === externalOrderId &&
+      (storeConnectionId == null || t.storeConnectionId === storeConnectionId));
+  }
+
+  async getCommissionsByExternalOrder(externalOrderId: string, storeConnectionId?: string | null): Promise<CommissionTransaction[]> {
+    return Array.from(this.commissionTransactionsMap.values()).filter(t =>
+      t.externalOrderId === externalOrderId &&
+      (storeConnectionId == null || t.storeConnectionId === storeConnectionId));
   }
 
   async markCommissionsPaid(commissionIds: string[], payoutId: string): Promise<void> {
     for (const id of commissionIds) {
       const tx = this.commissionTransactionsMap.get(id);
-      if (tx) this.commissionTransactionsMap.set(id, { ...tx, status: "paid", payoutId } as CommissionTransaction);
+      // Only advance rows still "approved" — a concurrently reversed/paid/rejected row must
+      // not be resurrected to paid by a payout run (mirrors the DB status guard).
+      if (tx && tx.status === "approved") {
+        this.commissionTransactionsMap.set(id, { ...tx, status: "paid", payoutId } as CommissionTransaction);
+      }
+    }
+  }
+
+  async markCommissionsReversed(commissionIds: string[]): Promise<void> {
+    for (const id of commissionIds) {
+      const tx = this.commissionTransactionsMap.get(id);
+      if (tx) this.commissionTransactionsMap.set(id, { ...tx, status: "reversed" } as CommissionTransaction);
     }
   }
 
@@ -1688,14 +1729,22 @@ export class MemStorage implements IStorage {
     return updated;
   }
 
-  async getAffiliateEarningsFromLedger(affiliateId: string): Promise<{ totalSales: number; totalCommission: number; pendingCommission: number; approvedCommission: number; paidCommission: number; transactionCount: number }> {
+  async getPayoutByStripeTransferId(stripeTransferId: string): Promise<AffiliatePayout | undefined> {
+    return Array.from(this.payouts.values()).find((p) => p.stripeTransferId === stripeTransferId);
+  }
+
+  async getAffiliateEarningsFromLedger(affiliateId: string): Promise<{ totalSales: number; totalCommission: number; pendingCommission: number; approvedCommission: number; paidCommission: number; reversedCommission: number; transactionCount: number }> {
     const txs = Array.from(this.commissionTransactionsMap.values()).filter(t => t.affiliateId === affiliateId);
+    // Headline totals exclude clawed-back (reversed) and moderation-rejected rows, so a
+    // refunded sale stops counting toward the affiliate's sales/commission once reversed.
+    const counted = txs.filter(t => t.status !== "reversed" && t.status !== "rejected");
     return {
-      totalSales: txs.reduce((sum, t) => sum + parseFloat(t.saleAmount || "0"), 0),
-      totalCommission: txs.reduce((sum, t) => sum + parseFloat(t.commissionAmount || "0"), 0),
+      totalSales: counted.reduce((sum, t) => sum + parseFloat(t.saleAmount || "0"), 0),
+      totalCommission: counted.reduce((sum, t) => sum + parseFloat(t.commissionAmount || "0"), 0),
       pendingCommission: txs.filter(t => t.status === "pending").reduce((sum, t) => sum + parseFloat(t.commissionAmount || "0"), 0),
       approvedCommission: txs.filter(t => t.status === "approved").reduce((sum, t) => sum + parseFloat(t.commissionAmount || "0"), 0),
       paidCommission: txs.filter(t => t.status === "paid").reduce((sum, t) => sum + parseFloat(t.commissionAmount || "0"), 0),
+      reversedCommission: txs.filter(t => t.status === "reversed").reduce((sum, t) => sum + parseFloat(t.commissionAmount || "0"), 0),
       transactionCount: txs.length,
     };
   }
@@ -1898,6 +1947,11 @@ export class DatabaseStorage implements IStorage {
 
   async getUserByStripeCustomerId(customerId: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.stripeCustomerId, customerId));
+    return user;
+  }
+
+  async getUserByStripeConnectAccountId(accountId: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.stripeConnectAccountId, accountId));
     return user;
   }
 
@@ -2672,26 +2726,64 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateCommissionTransactionStatus(id: string, status: string): Promise<CommissionTransaction | undefined> {
-    const [updated] = await db.update(commissionTransactions).set({ status: status as "pending" | "approved" | "paid" | "rejected" }).where(eq(commissionTransactions.id, id)).returning();
+    const [updated] = await db.update(commissionTransactions).set({ status: status as "pending" | "approved" | "paid" | "rejected" | "reversed" }).where(eq(commissionTransactions.id, id)).returning();
     return updated;
   }
 
   async getCommissionsByStatus(status: string): Promise<CommissionTransaction[]> {
     return db.select().from(commissionTransactions)
-      .where(eq(commissionTransactions.status, status as "pending" | "approved" | "paid" | "rejected"));
+      .where(eq(commissionTransactions.status, status as "pending" | "approved" | "paid" | "rejected" | "reversed"));
   }
 
-  async hasCommissionForExternalOrder(externalOrderId: string): Promise<boolean> {
+  async hasCommissionForExternalOrder(externalOrderId: string, storeConnectionId?: string | null): Promise<boolean> {
+    // Store order ids are only unique within a store — when a store is supplied, scope by it
+    // so store A's order id can't match store B's identical id. Legacy 1-arg callers keep the
+    // order-id-only behavior.
+    const predicate = storeConnectionId == null
+      ? eq(commissionTransactions.externalOrderId, externalOrderId)
+      : and(
+          eq(commissionTransactions.externalOrderId, externalOrderId),
+          eq(commissionTransactions.storeConnectionId, storeConnectionId),
+        );
     const [row] = await db.select({ id: commissionTransactions.id }).from(commissionTransactions)
-      .where(eq(commissionTransactions.externalOrderId, externalOrderId)).limit(1);
+      .where(predicate).limit(1);
     return !!row;
+  }
+
+  async getCommissionsByExternalOrder(externalOrderId: string, storeConnectionId?: string | null): Promise<CommissionTransaction[]> {
+    const predicate = storeConnectionId == null
+      ? eq(commissionTransactions.externalOrderId, externalOrderId)
+      : and(
+          eq(commissionTransactions.externalOrderId, externalOrderId),
+          eq(commissionTransactions.storeConnectionId, storeConnectionId),
+        );
+    return db.select().from(commissionTransactions).where(predicate);
   }
 
   async markCommissionsPaid(commissionIds: string[], payoutId: string): Promise<void> {
     if (commissionIds.length === 0) return;
+    // Only advance rows still "approved". A concurrent refund clawback or transfer.reversed
+    // can flip a row to "reversed" mid-payout-run; without this guard the paid stamp would
+    // silently resurrect it, double-paying a refunded sale.
     await db.update(commissionTransactions)
       .set({ status: "paid", payoutId })
+      .where(and(inArray(commissionTransactions.id, commissionIds), eq(commissionTransactions.status, "approved")));
+  }
+
+  async markCommissionsReversed(commissionIds: string[]): Promise<void> {
+    if (commissionIds.length === 0) return;
+    await db.update(commissionTransactions)
+      .set({ status: "reversed" })
       .where(inArray(commissionTransactions.id, commissionIds));
+  }
+
+  async getCommissionsByPayoutId(payoutId: string): Promise<CommissionTransaction[]> {
+    return db.select().from(commissionTransactions).where(eq(commissionTransactions.payoutId, payoutId));
+  }
+
+  async getCommissionTransaction(id: string): Promise<CommissionTransaction | undefined> {
+    const [row] = await db.select().from(commissionTransactions).where(eq(commissionTransactions.id, id)).limit(1);
+    return row;
   }
 
   async updatePayoutStatus(id: string, status: string, stripeTransferId?: string): Promise<AffiliatePayout | undefined> {
@@ -2702,16 +2794,26 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
-  async getAffiliateEarningsFromLedger(affiliateId: string): Promise<{ totalSales: number; totalCommission: number; pendingCommission: number; approvedCommission: number; paidCommission: number; transactionCount: number }> {
+  async getPayoutByStripeTransferId(stripeTransferId: string): Promise<AffiliatePayout | undefined> {
+    const [payout] = await db.select().from(affiliatePayouts)
+      .where(eq(affiliatePayouts.stripeTransferId, stripeTransferId))
+      .limit(1);
+    return payout;
+  }
+
+  async getAffiliateEarningsFromLedger(affiliateId: string): Promise<{ totalSales: number; totalCommission: number; pendingCommission: number; approvedCommission: number; paidCommission: number; reversedCommission: number; transactionCount: number }> {
     const [result] = await db.select({
-      totalSales: sql<number>`COALESCE(SUM(${commissionTransactions.saleAmount}), 0)::float`,
-      totalCommission: sql<number>`COALESCE(SUM(${commissionTransactions.commissionAmount}), 0)::float`,
+      // Headline totals exclude clawed-back (reversed) and moderation-rejected rows, so a
+      // refunded sale stops counting toward the affiliate's sales/commission once reversed.
+      totalSales: sql<number>`COALESCE(SUM(CASE WHEN ${commissionTransactions.status} NOT IN ('reversed', 'rejected') THEN ${commissionTransactions.saleAmount} ELSE 0 END), 0)::float`,
+      totalCommission: sql<number>`COALESCE(SUM(CASE WHEN ${commissionTransactions.status} NOT IN ('reversed', 'rejected') THEN ${commissionTransactions.commissionAmount} ELSE 0 END), 0)::float`,
       pendingCommission: sql<number>`COALESCE(SUM(CASE WHEN ${commissionTransactions.status} = 'pending' THEN ${commissionTransactions.commissionAmount} ELSE 0 END), 0)::float`,
       approvedCommission: sql<number>`COALESCE(SUM(CASE WHEN ${commissionTransactions.status} = 'approved' THEN ${commissionTransactions.commissionAmount} ELSE 0 END), 0)::float`,
       paidCommission: sql<number>`COALESCE(SUM(CASE WHEN ${commissionTransactions.status} = 'paid' THEN ${commissionTransactions.commissionAmount} ELSE 0 END), 0)::float`,
+      reversedCommission: sql<number>`COALESCE(SUM(CASE WHEN ${commissionTransactions.status} = 'reversed' THEN ${commissionTransactions.commissionAmount} ELSE 0 END), 0)::float`,
       transactionCount: sql<number>`COUNT(*)::int`,
     }).from(commissionTransactions).where(eq(commissionTransactions.affiliateId, affiliateId));
-    return result || { totalSales: 0, totalCommission: 0, pendingCommission: 0, approvedCommission: 0, paidCommission: 0, transactionCount: 0 };
+    return result || { totalSales: 0, totalCommission: 0, pendingCommission: 0, approvedCommission: 0, paidCommission: 0, reversedCommission: 0, transactionCount: 0 };
   }
 
   // UTM Resolution - looks up a UTM code across campaignAffiliates and videoLicensePurchases
