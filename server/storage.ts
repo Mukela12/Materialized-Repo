@@ -148,6 +148,7 @@ export interface IStorage {
   getAllBrandOutreaches(): Promise<BrandOutreach[]>;
   updateBrandOutreachStatus(id: string, status: string, authorizedAt?: Date): Promise<BrandOutreach | undefined>;
   updateBrandOutreachAdmin(id: string, updates: Partial<Pick<BrandOutreach, "adminNotes" | "agreementStartedAt" | "agreementSignedAt" | "brandSubscribedAt" | "status">>): Promise<BrandOutreach | undefined>;
+  setBrandOutreachEnvelopeId(id: string, envelopeId: string): Promise<BrandOutreach | undefined>;
   recordOutreachFollowUp(id: string, followUpType: string): Promise<BrandOutreach | undefined>;
 
   // Analytics
@@ -705,6 +706,14 @@ export class MemStorage implements IStorage {
       authToken: token,
       status: "pending",
       authorizedAt: null,
+      agreementStartedAt: null,
+      agreementSignedAt: null,
+      docusignEnvelopeId: null,
+      brandSubscribedAt: null,
+      followUpCount: 0,
+      lastFollowUpAt: null,
+      lastFollowUpType: null,
+      adminNotes: null,
       createdAt: new Date(),
     };
     this.brandOutreachMap.set(id, newOutreach);
@@ -742,6 +751,14 @@ export class MemStorage implements IStorage {
     const outreach = this.brandOutreachMap.get(id);
     if (!outreach) return undefined;
     const updated = { ...outreach, ...updates };
+    this.brandOutreachMap.set(id, updated);
+    return updated;
+  }
+
+  async setBrandOutreachEnvelopeId(id: string, envelopeId: string): Promise<BrandOutreach | undefined> {
+    const outreach = this.brandOutreachMap.get(id);
+    if (!outreach) return undefined;
+    const updated = { ...outreach, docusignEnvelopeId: envelopeId };
     this.brandOutreachMap.set(id, updated);
     return updated;
   }
@@ -2135,6 +2152,11 @@ export class DatabaseStorage implements IStorage {
 
   async updateBrandOutreachAdmin(id: string, updates: Partial<Pick<BrandOutreach, "adminNotes" | "agreementStartedAt" | "agreementSignedAt" | "brandSubscribedAt" | "status">>): Promise<BrandOutreach | undefined> {
     const [updated] = await db.update(brandOutreachRequests).set(updates as any).where(eq(brandOutreachRequests.id, id)).returning();
+    return updated;
+  }
+
+  async setBrandOutreachEnvelopeId(id: string, envelopeId: string): Promise<BrandOutreach | undefined> {
+    const [updated] = await db.update(brandOutreachRequests).set({ docusignEnvelopeId: envelopeId }).where(eq(brandOutreachRequests.id, id)).returning();
     return updated;
   }
 

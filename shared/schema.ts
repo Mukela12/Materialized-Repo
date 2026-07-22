@@ -744,6 +744,7 @@ export const brandOutreachRequests = pgTable("brand_outreach_requests", {
   authorizedAt: timestamp("authorized_at"),
   agreementStartedAt: timestamp("agreement_started_at"),
   agreementSignedAt: timestamp("agreement_signed_at"),
+  docusignEnvelopeId: text("docusign_envelope_id"),
   brandSubscribedAt: timestamp("brand_subscribed_at"),
   followUpCount: integer("follow_up_count").default(0),
   lastFollowUpAt: timestamp("last_follow_up_at"),
@@ -755,6 +756,7 @@ export const brandOutreachRequests = pgTable("brand_outreach_requests", {
 export const insertBrandOutreachSchema = createInsertSchema(brandOutreachRequests).omit({
   id: true, authToken: true, status: true, authorizedAt: true, createdAt: true,
   agreementStartedAt: true, agreementSignedAt: true, brandSubscribedAt: true,
+  docusignEnvelopeId: true,
   followUpCount: true, lastFollowUpAt: true, lastFollowUpType: true, adminNotes: true,
 });
 export type InsertBrandOutreach = z.infer<typeof insertBrandOutreachSchema>;

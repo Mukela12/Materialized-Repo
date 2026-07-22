@@ -1,3 +1,4 @@
+import { initSentry, Sentry } from "./sentry";
 import express, { type Request, Response, NextFunction } from "express";
 import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
@@ -34,6 +35,11 @@ if (missing.length) {
   console.log(`[Config] Optional env vars not set: ${missing.join(', ')} — some features will be disabled`);
 }
 
+// Initialize Sentry as early as possible so its Node instrumentation and the
+// global unhandledRejection/uncaughtException handlers attach before the app
+// handles traffic. Hard no-op when SENTRY_DSN is unset (see server/sentry.ts).
+initSentry();
+
 const app = express();
 const httpServer = createServer(app);
 
@@ -45,6 +51,9 @@ app.set("trust proxy", 1);
 // importantly, a shoppable video player + widget.js that are meant to be embedded
 // on third-party sites cross-origin. Everything else (HSTS, nosniff, referrer
 // policy, etc.) is applied.
+// NOTE: If Content-Security-Policy is ever enabled here, `connect-src` must
+// include the Sentry ingest host (e.g. `*.sentry.io` and the project-specific
+// ingest domain) or browser-side error reporting will be blocked.
 app.use(
   helmet({
     contentSecurityPolicy: false,
@@ -217,6 +226,12 @@ export function log(message: string, source = "express") {
 app.use((req, res, next) => {
   const start = Date.now();
   const path = req.path;
+  // Attach session user id (only) to Sentry scope so captured errors are
+  // attributable. Uses req.session.userId — never req.user.email — to keep PII
+  // out. Guarded so it is free when Sentry is off.
+  if (process.env.SENTRY_DSN && req.session?.userId) {
+    Sentry.setUser({ id: req.session.userId });
+  }
   // Log method/path/status/duration only — never response bodies (they contain
   // PII, tokens, and secrets).
   res.on("finish", () => {
@@ -231,6 +246,14 @@ app.use((req, res, next) => {
   registerAuthRoutes(app);
   await registerRoutes(httpServer, app);
   await seedAdminAccount();
+
+  // Sentry's Express error handler must run BEFORE the terminal custom handler
+  // below. It reports errors passed to next(err) / thrown in handlers to Sentry
+  // and then delegates to the next error handler, so the existing handler still
+  // logs and sends the JSON response. No-op when SENTRY_DSN is unset.
+  if (process.env.SENTRY_DSN) {
+    Sentry.setupExpressErrorHandler(app);
+  }
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;
