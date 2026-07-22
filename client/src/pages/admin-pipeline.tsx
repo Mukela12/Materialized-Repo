@@ -3,6 +3,9 @@ import { formatMoney } from "@/lib/currency";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useTableControls, type SortDir } from "@/hooks/useTableControls";
+import { exportToCsv } from "@/lib/exportCsv";
+import { TableToolbar } from "@/components/TableToolbar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -45,6 +48,9 @@ import {
   Ban,
   XCircle,
   DollarSign,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
 } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 
@@ -214,20 +220,51 @@ function AdminUsers() {
     onError: () => toast({ title: "Failed to update", variant: "destructive" }),
   });
 
+  const { query, setQuery, sortKey, sortDir, toggleSort, rows } = useTableControls(users, {
+    searchFields: (u) => [u.displayName, u.username, u.email, u.role],
+    sortAccessors: {
+      name: (u) => u.displayName,
+      email: (u) => u.email,
+      role: (u) => u.role,
+    },
+  });
+
+  const handleExport = () =>
+    exportToCsv("admin-users", rows, [
+      { header: "Name", value: (u) => u.displayName },
+      { header: "Username", value: (u) => u.username },
+      { header: "Email", value: (u) => u.email },
+      { header: "Role", value: (u) => u.role },
+      { header: "Admin", value: (u) => (u.isAdmin ? "yes" : "no") },
+      { header: "Free Access", value: (u) => (u.freeAccess ? "yes" : "no") },
+      { header: "Email Verified", value: (u) => (u.emailVerified ? "yes" : "no") },
+    ]);
+
   return (
-    <div className="overflow-x-auto">
+    <div className="space-y-3">
+      <div className="flex justify-end">
+        <TableToolbar
+          query={query}
+          onQueryChange={setQuery}
+          onExport={handleExport}
+          exportDisabled={rows.length === 0}
+          searchPlaceholder="Search users…"
+          data-testid="admin-users-toolbar"
+        />
+      </div>
+      <div className="overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b text-left">
-            <th className="p-3 font-medium">Name</th>
-            <th className="p-3 font-medium">Email</th>
-            <th className="p-3 font-medium">Role</th>
+            <SortTh label="Name" sortKey="name" activeKey={sortKey} dir={sortDir} onSort={toggleSort} />
+            <SortTh label="Email" sortKey="email" activeKey={sortKey} dir={sortDir} onSort={toggleSort} />
+            <SortTh label="Role" sortKey="role" activeKey={sortKey} dir={sortDir} onSort={toggleSort} />
             <th className="p-3 font-medium">Status</th>
             <th className="p-3 font-medium">Actions</th>
           </tr>
         </thead>
         <tbody>
-          {users.map(u => (
+          {rows.map(u => (
             <tr key={u.id} className="border-b hover:bg-muted/50">
               <td className="p-3">
                 <div className="font-medium">{u.displayName}</div>
@@ -274,9 +311,12 @@ function AdminUsers() {
           ))}
         </tbody>
       </table>
-      {users.length === 0 && (
-        <p className="text-center py-8 text-muted-foreground">No users yet</p>
+      {rows.length === 0 && (
+        <p className="text-center py-8 text-muted-foreground">
+          {users.length === 0 ? "No users yet" : "No users match your search"}
+        </p>
       )}
+      </div>
     </div>
   );
 }
@@ -298,22 +338,57 @@ function AdminVideos() {
     queryFn: () => fetch("/api/admin/videos", { credentials: "include" }).then(r => r.json()),
   });
 
+  const { query, setQuery, sortKey, sortDir, toggleSort, rows } = useTableControls(videos, {
+    searchFields: (v) => [v.title, v.creatorName, v.status],
+    sortAccessors: {
+      title: (v) => v.title,
+      creator: (v) => v.creatorName,
+      status: (v) => v.status,
+      views: (v) => v.totalViews ?? 0,
+      clicks: (v) => v.totalClicks ?? 0,
+      revenue: (v) => v.totalRevenue,
+      createdAt: (v) => v.createdAt,
+    },
+  });
+
+  const handleExport = () =>
+    exportToCsv("admin-videos", rows, [
+      { header: "Title", value: (v) => v.title },
+      { header: "Creator", value: (v) => v.creatorName },
+      { header: "Status", value: (v) => v.status },
+      { header: "Views", value: (v) => v.totalViews ?? 0 },
+      { header: "Clicks", value: (v) => v.totalClicks ?? 0 },
+      { header: "Revenue", value: (v) => v.totalRevenue },
+      { header: "Created At", value: (v) => v.createdAt },
+    ]);
+
   return (
-    <div className="overflow-x-auto">
+    <div className="space-y-3">
+      <div className="flex justify-end">
+        <TableToolbar
+          query={query}
+          onQueryChange={setQuery}
+          onExport={handleExport}
+          exportDisabled={rows.length === 0}
+          searchPlaceholder="Search videos…"
+          data-testid="admin-videos-toolbar"
+        />
+      </div>
+      <div className="overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b text-left">
-            <th className="p-3 font-medium">Title</th>
-            <th className="p-3 font-medium">Creator</th>
-            <th className="p-3 font-medium">Status</th>
-            <th className="p-3 font-medium">Views</th>
-            <th className="p-3 font-medium">Clicks</th>
-            <th className="p-3 font-medium">Revenue</th>
-            <th className="p-3 font-medium">Created</th>
+            <SortTh label="Title" sortKey="title" activeKey={sortKey} dir={sortDir} onSort={toggleSort} />
+            <SortTh label="Creator" sortKey="creator" activeKey={sortKey} dir={sortDir} onSort={toggleSort} />
+            <SortTh label="Status" sortKey="status" activeKey={sortKey} dir={sortDir} onSort={toggleSort} />
+            <SortTh label="Views" sortKey="views" activeKey={sortKey} dir={sortDir} onSort={toggleSort} />
+            <SortTh label="Clicks" sortKey="clicks" activeKey={sortKey} dir={sortDir} onSort={toggleSort} />
+            <SortTh label="Revenue" sortKey="revenue" activeKey={sortKey} dir={sortDir} onSort={toggleSort} />
+            <SortTh label="Created" sortKey="createdAt" activeKey={sortKey} dir={sortDir} onSort={toggleSort} />
           </tr>
         </thead>
         <tbody>
-          {videos.map(v => (
+          {rows.map(v => (
             <tr key={v.id} className="border-b hover:bg-muted/50">
               <td className="p-3 font-medium max-w-[200px] truncate">{v.title}</td>
               <td className="p-3 text-muted-foreground">{v.creatorName}</td>
@@ -330,9 +405,12 @@ function AdminVideos() {
           ))}
         </tbody>
       </table>
-      {videos.length === 0 && (
-        <p className="text-center py-8 text-muted-foreground">No videos uploaded yet</p>
+      {rows.length === 0 && (
+        <p className="text-center py-8 text-muted-foreground">
+          {videos.length === 0 ? "No videos uploaded yet" : "No videos match your search"}
+        </p>
       )}
+      </div>
     </div>
   );
 }
@@ -351,19 +429,47 @@ function AdminBrands() {
     queryFn: () => fetch("/api/admin/brands", { credentials: "include" }).then(r => r.json()),
   });
 
+  const { query, setQuery, sortKey, sortDir, toggleSort, rows } = useTableControls(brands, {
+    searchFields: (b) => [b.name, b.category, b.website],
+    sortAccessors: {
+      name: (b) => b.name,
+      category: (b) => b.category,
+      status: (b) => (b.isActive ? 1 : 0),
+    },
+  });
+
+  const handleExport = () =>
+    exportToCsv("admin-brands", rows, [
+      { header: "Brand", value: (b) => b.name },
+      { header: "Category", value: (b) => b.category },
+      { header: "Website", value: (b) => b.website },
+      { header: "Status", value: (b) => (b.isActive ? "Active" : "Inactive") },
+    ]);
+
   return (
-    <div className="overflow-x-auto">
+    <div className="space-y-3">
+      <div className="flex justify-end">
+        <TableToolbar
+          query={query}
+          onQueryChange={setQuery}
+          onExport={handleExport}
+          exportDisabled={rows.length === 0}
+          searchPlaceholder="Search brands…"
+          data-testid="admin-brands-toolbar"
+        />
+      </div>
+      <div className="overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b text-left">
-            <th className="p-3 font-medium">Brand</th>
-            <th className="p-3 font-medium">Category</th>
+            <SortTh label="Brand" sortKey="name" activeKey={sortKey} dir={sortDir} onSort={toggleSort} />
+            <SortTh label="Category" sortKey="category" activeKey={sortKey} dir={sortDir} onSort={toggleSort} />
             <th className="p-3 font-medium">Website</th>
-            <th className="p-3 font-medium">Status</th>
+            <SortTh label="Status" sortKey="status" activeKey={sortKey} dir={sortDir} onSort={toggleSort} />
           </tr>
         </thead>
         <tbody>
-          {brands.map(b => (
+          {rows.map(b => (
             <tr key={b.id} className="border-b hover:bg-muted/50">
               <td className="p-3 font-medium">{b.name}</td>
               <td className="p-3 text-muted-foreground">{b.category || "-"}</td>
@@ -383,9 +489,12 @@ function AdminBrands() {
           ))}
         </tbody>
       </table>
-      {brands.length === 0 && (
-        <p className="text-center py-8 text-muted-foreground">No brands registered yet</p>
+      {rows.length === 0 && (
+        <p className="text-center py-8 text-muted-foreground">
+          {brands.length === 0 ? "No brands registered yet" : "No brands match your search"}
+        </p>
       )}
+      </div>
     </div>
   );
 }
@@ -430,6 +539,46 @@ interface PayoutRunSummary {
 
 const money = (v: string | number) => formatMoney(Number(v));
 const centsMoney = (c: number) => formatMoney(c / 100);
+
+/**
+ * Clickable sort header for the admin native `<table>`s (these predate the
+ * shadcn Table primitive). Mirrors the SortableHeader used elsewhere so sort
+ * affordances look consistent app-wide.
+ */
+function SortTh({
+  label,
+  sortKey,
+  activeKey,
+  dir,
+  onSort,
+  className,
+}: {
+  label: string;
+  sortKey: string;
+  activeKey: string | null;
+  dir: SortDir;
+  onSort: (key: string) => void;
+  className?: string;
+}) {
+  const active = activeKey === sortKey;
+  return (
+    <th className={`p-3 font-medium ${className ?? ""}`}>
+      <button
+        type="button"
+        onClick={() => onSort(sortKey)}
+        className="inline-flex items-center gap-1 hover:text-foreground transition-colors"
+        data-testid={`sort-${sortKey}`}
+      >
+        {label}
+        {active ? (
+          dir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
+        ) : (
+          <ArrowUpDown className="h-3 w-3 opacity-40" />
+        )}
+      </button>
+    </th>
+  );
+}
 
 function AdminMoneyOps() {
   const [subTab, setSubTab] = useState<"payouts" | "commissions" | "rates">("payouts");
@@ -534,6 +683,25 @@ function MoneyPayouts() {
 
   const sumCents = (rows: Array<{ amountCents: number }>) => rows.reduce((s, r) => s + r.amountCents, 0);
 
+  const { query, setQuery, sortKey, sortDir, toggleSort, rows: payoutRows } = useTableControls(payouts, {
+    searchFields: (p) => [p.affiliateName, p.stripeTransferId],
+    sortAccessors: {
+      affiliate: (p) => p.affiliateName,
+      amount: (p) => p.amount,
+      status: (p) => p.status,
+      createdAt: (p) => p.createdAt,
+    },
+  });
+
+  const handleExport = () =>
+    exportToCsv("payouts", payoutRows, [
+      { header: "Affiliate", value: (p) => p.affiliateName },
+      { header: "Amount", value: (p) => p.amount },
+      { header: "Status", value: (p) => p.status ?? "" },
+      { header: "Transfer ID", value: (p) => p.stripeTransferId ?? "" },
+      { header: "Created At", value: (p) => p.createdAt },
+    ]);
+
   return (
     <div className="space-y-6">
       {/* Pending-run summary + action */}
@@ -587,7 +755,17 @@ function MoneyPayouts() {
 
       {/* Payout history */}
       <div>
-        <p className="text-sm font-medium mb-3">Payout history</p>
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+          <p className="text-sm font-medium">Payout history</p>
+          <TableToolbar
+            query={query}
+            onQueryChange={setQuery}
+            onExport={handleExport}
+            exportDisabled={payoutRows.length === 0}
+            searchPlaceholder="Search affiliate / transfer…"
+            data-testid="payouts-toolbar"
+          />
+        </div>
         {isLoading ? (
           <div className="flex justify-center py-12"><RefreshCw className="w-6 h-6 animate-spin text-muted-foreground" /></div>
         ) : (
@@ -595,15 +773,15 @@ function MoneyPayouts() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b text-left">
-                  <th className="p-3 font-medium">Affiliate</th>
-                  <th className="p-3 font-medium">Amount</th>
-                  <th className="p-3 font-medium">Status</th>
+                  <SortTh label="Affiliate" sortKey="affiliate" activeKey={sortKey} dir={sortDir} onSort={toggleSort} />
+                  <SortTh label="Amount" sortKey="amount" activeKey={sortKey} dir={sortDir} onSort={toggleSort} />
+                  <SortTh label="Status" sortKey="status" activeKey={sortKey} dir={sortDir} onSort={toggleSort} />
                   <th className="p-3 font-medium">Transfer ID</th>
-                  <th className="p-3 font-medium">Date</th>
+                  <SortTh label="Date" sortKey="createdAt" activeKey={sortKey} dir={sortDir} onSort={toggleSort} />
                 </tr>
               </thead>
               <tbody>
-                {payouts.map(p => (
+                {payoutRows.map(p => (
                   <tr key={p.id} className="border-b hover:bg-muted/50" data-testid={`payout-row-${p.id}`}>
                     <td className="p-3 font-medium">{p.affiliateName}</td>
                     <td className="p-3">{money(p.amount)}</td>
@@ -616,8 +794,10 @@ function MoneyPayouts() {
                 ))}
               </tbody>
             </table>
-            {payouts.length === 0 && (
-              <p className="text-center py-8 text-muted-foreground">No payouts yet</p>
+            {payoutRows.length === 0 && (
+              <p className="text-center py-8 text-muted-foreground">
+                {payouts.length === 0 ? "No payouts yet" : "No payouts match your search"}
+              </p>
             )}
           </div>
         )}
@@ -671,24 +851,56 @@ function MoneyCommissions() {
     onSettled: () => setApprovingId(null),
   });
 
+  const { query, setQuery, sortKey, sortDir, toggleSort, rows } = useTableControls(commissions, {
+    searchFields: (c) => [c.affiliateName, c.affiliateEmail],
+    sortAccessors: {
+      affiliate: (c) => c.affiliateName,
+      saleAmount: (c) => c.saleAmount,
+      commissionRate: (c) => c.commissionRate,
+      commissionAmount: (c) => c.commissionAmount,
+      createdAt: (c) => c.createdAt,
+    },
+  });
+
+  const handleExport = () =>
+    exportToCsv(`commissions-${statusFilter}`, rows, [
+      { header: "Affiliate", value: (c) => c.affiliateName },
+      { header: "Email", value: (c) => c.affiliateEmail },
+      { header: "Sale Amount", value: (c) => c.saleAmount },
+      { header: "Commission Rate", value: (c) => c.commissionRate },
+      { header: "Commission Amount", value: (c) => c.commissionAmount },
+      { header: "Status", value: (c) => c.status },
+      { header: "Created At", value: (c) => c.createdAt },
+    ]);
+
   return (
     <div className="space-y-4">
-      {/* Status filter pills */}
-      <div className="flex gap-2">
-        {(["pending", "approved", "paid", "reversed", "rejected"] as const).map(s => (
-          <button
-            key={s}
-            onClick={() => setStatusFilter(s)}
-            data-testid={`commission-filter-${s}`}
-            className={`px-3 py-1 rounded-full text-xs font-medium border capitalize transition-colors ${
-              statusFilter === s
-                ? "border-[#677A67] bg-[#677A67]/10 text-foreground"
-                : "border-transparent bg-muted text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            {s}
-          </button>
-        ))}
+      {/* Status filter pills + search / export */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex gap-2 flex-wrap">
+          {(["pending", "approved", "paid", "reversed", "rejected"] as const).map(s => (
+            <button
+              key={s}
+              onClick={() => setStatusFilter(s)}
+              data-testid={`commission-filter-${s}`}
+              className={`px-3 py-1 rounded-full text-xs font-medium border capitalize transition-colors ${
+                statusFilter === s
+                  ? "border-[#677A67] bg-[#677A67]/10 text-foreground"
+                  : "border-transparent bg-muted text-muted-foreground hover:text-foreground"
+              }`}
+            >
+              {s}
+            </button>
+          ))}
+        </div>
+        <TableToolbar
+          query={query}
+          onQueryChange={setQuery}
+          onExport={handleExport}
+          exportDisabled={rows.length === 0}
+          searchPlaceholder="Search affiliate…"
+          data-testid="commissions-toolbar"
+        />
       </div>
 
       {isLoading ? (
@@ -698,16 +910,16 @@ function MoneyCommissions() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b text-left">
-                <th className="p-3 font-medium">Affiliate</th>
-                <th className="p-3 font-medium">Sale</th>
-                <th className="p-3 font-medium">Rate</th>
-                <th className="p-3 font-medium">Commission</th>
-                <th className="p-3 font-medium">Created</th>
+                <SortTh label="Affiliate" sortKey="affiliate" activeKey={sortKey} dir={sortDir} onSort={toggleSort} />
+                <SortTh label="Sale" sortKey="saleAmount" activeKey={sortKey} dir={sortDir} onSort={toggleSort} />
+                <SortTh label="Rate" sortKey="commissionRate" activeKey={sortKey} dir={sortDir} onSort={toggleSort} />
+                <SortTh label="Commission" sortKey="commissionAmount" activeKey={sortKey} dir={sortDir} onSort={toggleSort} />
+                <SortTh label="Created" sortKey="createdAt" activeKey={sortKey} dir={sortDir} onSort={toggleSort} />
                 <th className="p-3 font-medium">Action</th>
               </tr>
             </thead>
             <tbody>
-              {commissions.map(c => (
+              {rows.map(c => (
                 <tr key={c.id} className="border-b hover:bg-muted/50" data-testid={`commission-row-${c.id}`}>
                   <td className="p-3">
                     <div className="font-medium">{c.affiliateName}</div>
@@ -740,8 +952,12 @@ function MoneyCommissions() {
               ))}
             </tbody>
           </table>
-          {commissions.length === 0 && (
-            <p className="text-center py-8 text-muted-foreground">No {statusFilter} commissions</p>
+          {rows.length === 0 && (
+            <p className="text-center py-8 text-muted-foreground">
+              {commissions.length === 0
+                ? `No ${statusFilter} commissions`
+                : "No commissions match your search"}
+            </p>
           )}
         </div>
       )}

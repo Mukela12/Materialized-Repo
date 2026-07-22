@@ -27,6 +27,10 @@ import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useUpload } from "@/hooks/use-upload";
 import type { Product, Brand } from "@shared/schema";
+import { useTableControls, type SortDir } from "@/hooks/useTableControls";
+import { exportToCsv } from "@/lib/exportCsv";
+import { TableToolbar } from "@/components/TableToolbar";
+import { ArrowDownUp } from "lucide-react";
 
 const PLATFORMS = [
   { id: "shopify",     label: "Shopify",      placeholder: "shpat_xxxxxxxxxxxxxxxxxxxx",        Icon: SiShopify,     color: "#96bf48", supported: true  },
@@ -437,6 +441,34 @@ export default function BrandInventory() {
     queryKey: ["/api/products"],
   });
 
+  const { query, setQuery, sortKey, sortDir, toggleSort, rows: productRows } = useTableControls(products, {
+    searchFields: (p) => [
+      p.name,
+      p.description,
+      p.sku,
+      p.category,
+      (p as any).productType,
+    ],
+    initialSort: { key: "name", dir: "asc" },
+    sortAccessors: {
+      name: (p) => p.name,
+      price: (p) => p.price,
+      category: (p) => p.category,
+      productType: (p) => (p as any).productType,
+    },
+  });
+
+  const handleExportProducts = () =>
+    exportToCsv("products", productRows, [
+      { header: "Name", value: (p) => p.name },
+      { header: "SKU", value: (p) => p.sku },
+      { header: "Price", value: (p) => p.price },
+      { header: "Category", value: (p) => p.category },
+      { header: "Type", value: (p) => (p as any).productType },
+      { header: "Active", value: (p) => (p.isActive ? "yes" : "no") },
+      { header: "Product URL", value: (p) => p.productUrl },
+    ]);
+
   const { data: storeConnections = [] } = useQuery<StoreConnection[]>({
     queryKey: ["/api/integrations/stores"],
   });
@@ -828,12 +860,55 @@ export default function BrandInventory() {
       </Card>
 
       <Card>
-        <CardHeader>
-          <CardTitle className="text-lg font-semibold flex items-center gap-2">
-            <Package className="h-5 w-5" />
-            Product Catalog
-          </CardTitle>
-          <p className="text-sm text-muted-foreground">{products.length} products in inventory</p>
+        <CardHeader className="flex flex-col gap-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <CardTitle className="text-lg font-semibold flex items-center gap-2">
+                <Package className="h-5 w-5" />
+                Product Catalog
+              </CardTitle>
+              <p className="text-sm text-muted-foreground">{products.length} products in inventory</p>
+            </div>
+            {products.length > 0 && (
+              <div className="flex items-center gap-2 w-full sm:w-auto">
+                <Select
+                  value={sortKey ?? "name"}
+                  onValueChange={(v) => { if (v !== sortKey) toggleSort(v); }}
+                >
+                  <SelectTrigger className="w-[140px]" data-testid="select-product-sort">
+                    <div className="flex items-center gap-2">
+                      <ArrowDownUp className="h-3.5 w-3.5" />
+                      <SelectValue placeholder="Sort by" />
+                    </div>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="name">Name</SelectItem>
+                    <SelectItem value="price">Price</SelectItem>
+                    <SelectItem value="category">Category</SelectItem>
+                    <SelectItem value="productType">Type</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="shrink-0"
+                  onClick={() => sortKey && toggleSort(sortKey)}
+                  data-testid="button-product-sort-dir"
+                  title={sortDir === "asc" ? "Ascending" : "Descending"}
+                >
+                  <ArrowDownUp className={`h-4 w-4 transition-transform ${sortDir === "asc" ? "rotate-180" : ""}`} />
+                </Button>
+                <TableToolbar
+                  query={query}
+                  onQueryChange={setQuery}
+                  onExport={handleExportProducts}
+                  exportDisabled={productRows.length === 0}
+                  searchPlaceholder="Search products…"
+                  data-testid="products-toolbar"
+                />
+              </div>
+            )}
+          </div>
         </CardHeader>
         <CardContent>
           {isLoading ? (
@@ -842,9 +917,9 @@ export default function BrandInventory() {
                 <Skeleton key={i} className="h-20 w-full" />
               ))}
             </div>
-          ) : products.length > 0 ? (
+          ) : productRows.length > 0 ? (
             <div className="grid gap-4">
-              {products.map((product) => (
+              {productRows.map((product) => (
                 <div
                   key={product.id}
                   className="flex items-center gap-4 p-4 border rounded-lg hover-elevate cursor-pointer"
@@ -910,6 +985,12 @@ export default function BrandInventory() {
                   </div>
                 </div>
               ))}
+            </div>
+          ) : products.length > 0 ? (
+            <div className="text-center py-12 text-muted-foreground" data-testid="products-no-match">
+              <Package className="h-16 w-16 mx-auto mb-4 opacity-50" />
+              <p className="text-lg font-medium">No products match your search</p>
+              <p className="text-sm">Try a different search term</p>
             </div>
           ) : (
             <div className="text-center py-12 text-muted-foreground">

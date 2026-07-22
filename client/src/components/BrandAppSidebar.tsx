@@ -17,6 +17,7 @@ import {
   LogOut,
 } from "lucide-react";
 import { useLogout } from "@/hooks/useCurrentUser";
+import { useMailboxUnreadCount } from "@/hooks/useMailbox";
 import {
   Sidebar,
   SidebarContent,
@@ -80,13 +81,15 @@ interface BrandAppSidebarProps {
 export function BrandAppSidebar({ user }: BrandAppSidebarProps) {
   const [location] = useLocation();
   const logoutMutation = useLogout();
+  const { data: unreadCount = 0 } = useMailboxUnreadCount();
 
   const renderItems = (items: typeof overviewItems) => (
     <SidebarMenu>
       {items.map((item) => {
-        const isActive = location === item.path || 
+        const isActive = location === item.path ||
           (item.path !== "/brand" && location.startsWith(item.path));
         const Icon = item.icon;
+        const isMailbox = item.path.endsWith("/mailbox");
 
         return (
           <SidebarMenuItem key={item.path}>
@@ -94,6 +97,11 @@ export function BrandAppSidebar({ user }: BrandAppSidebarProps) {
               <Link href={item.path} data-testid={`nav-brand-${item.label.toLowerCase().replace(/\s+/g, '-')}`}>
                 <Icon className="h-4 w-4" />
                 <span>{item.label}</span>
+                {isMailbox && unreadCount > 0 && (
+                  <Badge className="ml-auto h-5 min-w-5 justify-center rounded-full bg-primary px-1.5 text-[10px] font-semibold text-primary-foreground border-0">
+                    {unreadCount > 99 ? "99+" : unreadCount}
+                  </Badge>
+                )}
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>

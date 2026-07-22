@@ -3,17 +3,28 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { 
-  Video, 
-  Copy, 
-  ExternalLink, 
-  TrendingUp, 
-  DollarSign, 
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Video,
+  Copy,
+  ExternalLink,
+  TrendingUp,
+  DollarSign,
   MousePointerClick,
-  CheckCircle2
+  CheckCircle2,
+  ArrowDownUp
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
+import { useTableControls } from "@/hooks/useTableControls";
+import { exportToCsv } from "@/lib/exportCsv";
+import { TableToolbar } from "@/components/TableToolbar";
 
 type CampaignAffiliate = {
   id: string;
@@ -55,6 +66,32 @@ export default function AffiliateCampaigns() {
   const totalEarnings = campaigns.reduce((acc, c) => acc + parseFloat(c.totalEarnings || "0"), 0);
   const totalClicks = campaigns.reduce((acc, c) => acc + (c.totalClicks || 0), 0);
   const totalConversions = campaigns.reduce((acc, c) => acc + (c.totalConversions || 0), 0);
+
+  const { query, setQuery, sortKey, sortDir, toggleSort, rows: campaignRows } = useTableControls(campaigns, {
+    searchFields: (c) => [c.utmCode, c.videoId, c.id],
+    initialSort: { key: "totalEarnings", dir: "desc" },
+    sortAccessors: {
+      totalClicks: (c) => c.totalClicks,
+      totalConversions: (c) => c.totalConversions,
+      totalRevenue: (c) => c.totalRevenue,
+      totalEarnings: (c) => c.totalEarnings,
+      commissionRate: (c) => c.commissionRate,
+      createdAt: (c) => c.createdAt,
+    },
+  });
+
+  const handleExport = () =>
+    exportToCsv("campaigns", campaignRows, [
+      { header: "Campaign ID", value: (c) => c.id },
+      { header: "Video ID", value: (c) => c.videoId },
+      { header: "UTM Code", value: (c) => c.utmCode },
+      { header: "Commission Rate", value: (c) => c.commissionRate },
+      { header: "Clicks", value: (c) => c.totalClicks },
+      { header: "Conversions", value: (c) => c.totalConversions },
+      { header: "Revenue", value: (c) => c.totalRevenue },
+      { header: "Earnings", value: (c) => c.totalEarnings },
+      { header: "Created At", value: (c) => c.createdAt },
+    ]);
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
@@ -137,7 +174,54 @@ export default function AffiliateCampaigns() {
         </Card>
       ) : (
         <div className="space-y-4">
-          {campaigns.map((campaign) => (
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <Select
+                value={sortKey ?? "totalEarnings"}
+                onValueChange={(v) => { if (v !== sortKey) toggleSort(v); }}
+              >
+                <SelectTrigger className="w-[160px]" data-testid="select-campaign-sort">
+                  <div className="flex items-center gap-2">
+                    <ArrowDownUp className="h-3.5 w-3.5" />
+                    <SelectValue placeholder="Sort by" />
+                  </div>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="totalEarnings">Earnings</SelectItem>
+                  <SelectItem value="totalRevenue">Revenue</SelectItem>
+                  <SelectItem value="totalClicks">Clicks</SelectItem>
+                  <SelectItem value="totalConversions">Conversions</SelectItem>
+                  <SelectItem value="commissionRate">Commission Rate</SelectItem>
+                  <SelectItem value="createdAt">Created</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button
+                variant="outline"
+                size="icon"
+                className="shrink-0"
+                onClick={() => sortKey && toggleSort(sortKey)}
+                data-testid="button-campaign-sort-dir"
+                title={sortDir === "asc" ? "Ascending" : "Descending"}
+              >
+                <ArrowDownUp className={`h-4 w-4 transition-transform ${sortDir === "asc" ? "rotate-180" : ""}`} />
+              </Button>
+            </div>
+            <TableToolbar
+              query={query}
+              onQueryChange={setQuery}
+              onExport={handleExport}
+              exportDisabled={campaignRows.length === 0}
+              searchPlaceholder="Search UTM / video…"
+              data-testid="campaigns-toolbar"
+            />
+          </div>
+
+          {campaignRows.length === 0 ? (
+            <Card className="p-8 text-center text-muted-foreground" data-testid="campaigns-no-match">
+              <p className="font-medium">No campaigns match your search</p>
+            </Card>
+          ) : (
+            campaignRows.map((campaign) => (
             <Card key={campaign.id} data-testid={`card-campaign-${campaign.id}`}>
               <CardHeader className="flex flex-row items-start justify-between gap-4">
                 <div>
@@ -210,7 +294,8 @@ export default function AffiliateCampaigns() {
                 )}
               </CardContent>
             </Card>
-          ))}
+            ))
+          )}
         </div>
       )}
     </div>

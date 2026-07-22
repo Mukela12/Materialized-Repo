@@ -27,7 +27,9 @@ import {
 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { useLogout } from "@/hooks/useCurrentUser";
+import { useMailboxUnreadCount } from "@/hooks/useMailbox";
 
 type User = {
   id?: string;
@@ -100,6 +102,7 @@ interface AffiliateAppSidebarProps {
 export function AffiliateAppSidebar({ user }: AffiliateAppSidebarProps) {
   const [location] = useLocation();
   const logoutMutation = useLogout();
+  const { data: unreadCount = 0 } = useMailboxUnreadCount();
 
   return (
     <Sidebar className="border-r border-border">
@@ -122,17 +125,23 @@ export function AffiliateAppSidebar({ user }: AffiliateAppSidebarProps) {
           <SidebarGroupContent>
             <SidebarMenu>
               {affiliateMenuItems.map((item) => {
-                const isActive = location === item.url || 
+                const isActive = location === item.url ||
                   (item.url !== "/affiliate" && location.startsWith(item.url));
+                const isMailbox = item.url.endsWith("/mailbox");
                 return (
                   <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton 
+                    <SidebarMenuButton
                       asChild
                       className={isActive ? "bg-sidebar-accent text-sidebar-accent-foreground" : ""}
                     >
                       <Link href={item.url} data-testid={`nav-${item.title.toLowerCase().replace(/\s/g, '-')}`}>
                         <item.icon className="w-4 h-4" />
                         <span>{item.title}</span>
+                        {isMailbox && unreadCount > 0 && (
+                          <Badge className="ml-auto h-5 min-w-5 justify-center rounded-full bg-primary px-1.5 text-[10px] font-semibold text-primary-foreground border-0">
+                            {unreadCount > 99 ? "99+" : unreadCount}
+                          </Badge>
+                        )}
                       </Link>
                     </SidebarMenuButton>
                   </SidebarMenuItem>

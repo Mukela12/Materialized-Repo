@@ -1,12 +1,13 @@
 import { useState } from "react";
-import { useLocation } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format, formatDistanceToNow } from "date-fns";
+import { apiRequest } from "@/lib/queryClient";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
-  Bell, Mail, CheckCircle2, AlertTriangle, TrendingUp, DollarSign,
-  Megaphone, Star, UserPlus, RefreshCw, Info, Inbox,
+  Bell, CheckCircle2, AlertTriangle, DollarSign,
+  Megaphone, Info, RefreshCw, Inbox, CheckCheck, Activity,
 } from "lucide-react";
 
 type NotifType = "success" | "warning" | "payment" | "campaign" | "info" | "system";
@@ -38,14 +39,41 @@ function timeLabel(dateStr: string) {
   return format(date, "d MMM");
 }
 
-function NotifCard({ n }: { n: Notification }) {
+// Only publisher notifications (id `pub-<n>`) have a persisted read flag we can
+// clear. Creator-outreach / brand-invite items derive "read" from business
+// status, so a click can't mark them read — render those as non-interactive.
+function isMarkable(id: string) {
+  return id.startsWith("pub-");
+}
+
+function NotifCard({
+  n,
+  onMarkRead,
+  pending,
+}: {
+  n: Notification;
+  onMarkRead: (id: string) => void;
+  pending: boolean;
+}) {
   const style = TYPE_STYLES[n.type] || TYPE_STYLES.info;
   const Icon = style.Icon;
+  const clickable = !n.read && !pending && isMarkable(n.id);
 
   return (
-    <div className={`flex gap-3 p-4 rounded-2xl transition-all hover:bg-muted/40 ${
-      !n.read ? "bg-muted/30 border border-border/50" : "bg-transparent border border-transparent"
-    }`}>
+    <button
+      type="button"
+      onClick={() => { if (clickable) onMarkRead(n.id); }}
+      disabled={!clickable}
+      aria-label={clickable ? `${n.title} — mark as read` : n.title}
+      data-testid={`notif-${n.id}`}
+      className={`w-full text-left flex gap-3 p-4 rounded-2xl transition-all ${
+        !n.read
+          ? clickable
+            ? "bg-muted/30 border border-border/50 hover:bg-muted/50 cursor-pointer"
+            : "bg-muted/30 border border-border/50 cursor-default"
+          : "bg-transparent border border-transparent cursor-default"
+      } ${pending ? "opacity-60" : ""}`}
+    >
       <div className={`w-9 h-9 rounded-xl ${style.bg} flex items-center justify-center shrink-0`}>
         <Icon size={16} className={style.icon} />
       </div>
@@ -61,27 +89,27 @@ function NotifCard({ n }: { n: Notification }) {
         </div>
         <p className="text-xs text-muted-foreground mt-1 leading-relaxed line-clamp-2">{n.body}</p>
       </div>
-    </div>
+    </button>
   );
 }
 
-function EmptyState() {
+function EmptyState({ label, hint }: { label: string; hint: string }) {
   return (
     <div className="flex flex-col items-center justify-center py-16 text-center">
       <div className="w-16 h-16 rounded-full bg-muted/50 flex items-center justify-center mb-4">
         <Inbox size={24} className="text-muted-foreground" />
       </div>
-      <p className="text-sm font-medium text-foreground/70">No notifications yet</p>
-      <p className="text-xs text-muted-foreground mt-1">Activity from your campaigns and collaborations will appear here</p>
+      <p className="text-sm font-medium text-foreground/70">{label}</p>
+      <p className="text-xs text-muted-foreground mt-1">{hint}</p>
     </div>
   );
 }
 
 export default function Mailbox() {
-  const [location] = useLocation();
-  const [tab, setTab] = useState<"notifications" | "activity">("notifications");
+  const [tab, setTab] = useState<"unread" | "activity">("unread");
+  const queryClient = useQueryClient();
 
-  const { data: notifications = [] } = useQuery<Notification[]>({
+  const { data: notifications = [], isLoading } = useQuery<Notification[]>({
     queryKey: ["/api/mailbox/notifications"],
     queryFn: async () => {
       const res = await fetch("/api/mailbox/notifications", { credentials: "include" });
@@ -90,14 +118,35 @@ export default function Mailbox() {
     },
   });
 
-  const unread = notifications.filter(n => !n.read).length;
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ["/api/mailbox/notifications"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/mailbox/unread-count"] });
+  };
+
+  const markRead = useMutation({
+    mutationFn: (id: string) =>
+      apiRequest("PATCH", `/api/mailbox/notifications/${encodeURIComponent(id)}/read`),
+    onSuccess: invalidate,
+  });
+
+  const markAllRead = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/mailbox/read-all"),
+    onSuccess: invalidate,
+  });
+
+  const unread = notifications.filter((n) => !n.read).length;
+  const unreadList = notifications.filter((n) => !n.read);
+  const list = tab === "unread" ? unreadList : notifications;
+  // "Mark all read" only does something when there are persistable (pub-) unread
+  // items; hide it otherwise so it isn't a dead control.
+  const markableUnread = unreadList.filter((n) => isMarkable(n.id)).length;
 
   return (
     <div className="space-y-5">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-foreground">Mailbox</h1>
+            <h1 className="text-2xl font-bold tracking-tight text-foreground">Activity</h1>
             <p className="text-sm text-muted-foreground mt-0.5">
               {unread > 0 ? `${unread} unread item${unread > 1 ? "s" : ""}` : "All caught up"}
             </p>
@@ -108,16 +157,29 @@ export default function Mailbox() {
             </Badge>
           )}
         </div>
+        {markableUnread > 0 && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => markAllRead.mutate()}
+            disabled={markAllRead.isPending}
+            className="text-xs gap-1.5 text-muted-foreground hover:text-foreground"
+            data-testid="button-mark-all-read"
+          >
+            <CheckCheck size={14} />
+            Mark all read
+          </Button>
+        )}
       </div>
 
       <Tabs value={tab} onValueChange={(v) => setTab(v as any)}>
         <TabsList className="border border-border rounded-2xl p-1 mb-2 w-full h-10">
           <TabsTrigger
-            value="notifications"
+            value="unread"
             className="flex-1 rounded-xl text-xs data-[state=active]:bg-primary data-[state=active]:text-primary-foreground text-muted-foreground transition-all flex items-center gap-1.5"
           >
             <Bell size={12} />
-            Notifications
+            Unread
             {unread > 0 && (
               <span className="bg-primary-foreground/20 text-primary-foreground dark:bg-foreground/20 dark:text-foreground text-[10px] px-1.5 py-0.5 rounded-full leading-none">
                 {unread}
@@ -128,21 +190,49 @@ export default function Mailbox() {
             value="activity"
             className="flex-1 rounded-xl text-xs data-[state=active]:bg-primary data-[state=active]:text-primary-foreground text-muted-foreground transition-all flex items-center gap-1.5"
           >
-            <Mail size={12} />
-            Activity
+            <Activity size={12} />
+            All Activity
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="notifications" className="space-y-1">
-          {notifications.length > 0 ? (
-            notifications.map((n) => <NotifCard key={n.id} n={n} />)
+        <TabsContent value="unread" className="space-y-1">
+          {isLoading ? (
+            <EmptyState label="Loading…" hint="Fetching your latest activity" />
+          ) : unreadList.length > 0 ? (
+            unreadList.map((n) => (
+              <NotifCard
+                key={n.id}
+                n={n}
+                onMarkRead={(id) => markRead.mutate(id)}
+                pending={markRead.isPending && markRead.variables === n.id}
+              />
+            ))
           ) : (
-            <EmptyState />
+            <EmptyState
+              label="You're all caught up"
+              hint="New activity from your campaigns and collaborations will appear here"
+            />
           )}
         </TabsContent>
 
         <TabsContent value="activity" className="space-y-1">
-          <EmptyState />
+          {isLoading ? (
+            <EmptyState label="Loading…" hint="Fetching your latest activity" />
+          ) : list.length > 0 ? (
+            notifications.map((n) => (
+              <NotifCard
+                key={n.id}
+                n={n}
+                onMarkRead={(id) => markRead.mutate(id)}
+                pending={markRead.isPending && markRead.variables === n.id}
+              />
+            ))
+          ) : (
+            <EmptyState
+              label="No activity yet"
+              hint="Activity from your campaigns and collaborations will appear here"
+            />
+          )}
         </TabsContent>
       </Tabs>
     </div>
