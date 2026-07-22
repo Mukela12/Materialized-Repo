@@ -12,6 +12,9 @@ import { Button } from "@/components/ui/button";
 import { Send, Clock, CheckCircle, XCircle, Mail, Building } from "lucide-react";
 import { format } from "date-fns";
 import type { BrandReferral } from "@shared/schema";
+import { useTableControls } from "@/hooks/useTableControls";
+import { exportToCsv } from "@/lib/exportCsv";
+import { TableToolbar, SortableHeader } from "@/components/TableToolbar";
 
 interface ReferralsTableProps {
   referrals: BrandReferral[];
@@ -44,6 +47,26 @@ export function ReferralsTable({ referrals, isLoading, onResend, resendingId }: 
     },
   };
 
+  const { query, setQuery, sortKey, sortDir, toggleSort, rows } = useTableControls(referrals, {
+    searchFields: (r) => [r.brandName, r.prContactName, r.prContactEmail, r.productCategory],
+    sortAccessors: {
+      brandName: (r) => r.brandName,
+      productCategory: (r) => r.productCategory,
+      createdAt: (r) => r.createdAt,
+      status: (r) => r.status,
+    },
+  });
+
+  const handleExport = () =>
+    exportToCsv("referrals", rows, [
+      { header: "Brand", value: (r) => r.brandName },
+      { header: "Contact Name", value: (r) => r.prContactName },
+      { header: "Contact Email", value: (r) => r.prContactEmail },
+      { header: "Category", value: (r) => r.productCategory },
+      { header: "Status", value: (r) => r.status },
+      { header: "Referred On", value: (r) => r.createdAt },
+    ]);
+
   if (isLoading) {
     return (
       <Card>
@@ -63,42 +86,52 @@ export function ReferralsTable({ referrals, isLoading, onResend, resendingId }: 
 
   return (
     <Card>
-      <CardHeader className="flex flex-row items-center justify-between gap-4">
+      <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <CardTitle className="text-lg font-semibold">Your Brand Referrals</CardTitle>
           <p className="text-sm text-muted-foreground mt-1">
             Track the status of brands you've referred to the platform
           </p>
         </div>
-        <Badge variant="secondary" className="text-sm">
-          {referrals.length} Total
-        </Badge>
+        <div className="flex items-center gap-2 w-full sm:w-auto">
+          <TableToolbar
+            query={query}
+            onQueryChange={setQuery}
+            onExport={handleExport}
+            exportDisabled={rows.length === 0}
+            searchPlaceholder="Search brand / contact…"
+            data-testid="referrals-toolbar"
+          />
+          <Badge variant="secondary" className="text-sm shrink-0">
+            {referrals.length} Total
+          </Badge>
+        </div>
       </CardHeader>
       <CardContent className="p-0 overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent">
-              <TableHead className="w-[200px]">Brand</TableHead>
+              <SortableHeader label="Brand" sortKey="brandName" activeKey={sortKey} dir={sortDir} onSort={toggleSort} className="w-[200px]" />
               <TableHead>Contact</TableHead>
-              <TableHead>Category</TableHead>
-              <TableHead>Referred On</TableHead>
-              <TableHead>Status</TableHead>
+              <SortableHeader label="Category" sortKey="productCategory" activeKey={sortKey} dir={sortDir} onSort={toggleSort} />
+              <SortableHeader label="Referred On" sortKey="createdAt" activeKey={sortKey} dir={sortDir} onSort={toggleSort} />
+              <SortableHeader label="Status" sortKey="status" activeKey={sortKey} dir={sortDir} onSort={toggleSort} />
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {referrals.length === 0 ? (
+            {rows.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} className="h-32 text-center">
                   <div className="flex flex-col items-center gap-2 text-muted-foreground">
                     <Building className="h-8 w-8 opacity-50" />
-                    <p>No referrals yet</p>
+                    <p>{referrals.length === 0 ? "No referrals yet" : "No referrals match your search"}</p>
                     <p className="text-sm">Refer brands while uploading videos to grow the network</p>
                   </div>
                 </TableCell>
               </TableRow>
             ) : (
-              referrals.map((referral) => {
+              rows.map((referral) => {
                 const status = statusConfig[referral.status as keyof typeof statusConfig] || statusConfig.pending;
                 const StatusIcon = status.icon;
 

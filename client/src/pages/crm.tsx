@@ -52,16 +52,16 @@ import {
   Users,
   Building,
   TrendingUp,
-  Search,
-  Filter,
   UserPlus,
-  ArrowUpDown,
   Loader2,
   Send,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { Brand } from "@shared/schema";
+import { useTableControls } from "@/hooks/useTableControls";
+import { exportToCsv } from "@/lib/exportCsv";
+import { TableToolbar, SortableHeader } from "@/components/TableToolbar";
 
 const PRODUCT_CATEGORIES = ["Fashion", "Beauty", "Wellness", "Hotel", "Other"] as const;
 
@@ -82,6 +82,24 @@ export default function CRMAnalytics() {
   const { data: brands = [], isLoading } = useQuery<Brand[]>({
     queryKey: ["/api/brands"],
   });
+
+  const { query, setQuery, sortKey, sortDir, toggleSort, rows: brandRows } = useTableControls(brands, {
+    searchFields: (b) => [b.name, b.category, b.website, b.prContactEmail],
+    sortAccessors: {
+      name: (b) => b.name,
+      category: (b) => b.category,
+      status: (b) => (b.isActive ? 1 : 0),
+    },
+  });
+
+  const handleExportBrands = () =>
+    exportToCsv("brand-partners", brandRows, [
+      { header: "Brand", value: (b) => b.name },
+      { header: "Website", value: (b) => b.website },
+      { header: "Category", value: (b) => b.category },
+      { header: "Contact Email", value: (b) => b.prContactEmail },
+      { header: "Status", value: (b) => (b.isActive ? "Active" : "Inactive") },
+    ]);
 
   const form = useForm<ReferralFormValues>({
     resolver: zodResolver(referralFormSchema),
@@ -200,46 +218,40 @@ export default function CRMAnalytics() {
       <Card>
         <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <CardTitle className="text-lg font-semibold">Brand Partners</CardTitle>
-          <div className="flex items-center gap-2 w-full sm:w-auto">
-            <div className="relative flex-1 sm:w-64">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input placeholder="Search brands..." className="pl-9" />
-            </div>
-            <Button variant="outline" size="icon">
-              <Filter className="h-4 w-4" />
-            </Button>
-          </div>
+          <TableToolbar
+            query={query}
+            onQueryChange={setQuery}
+            onExport={handleExportBrands}
+            exportDisabled={brandRows.length === 0}
+            searchPlaceholder="Search brands…"
+            data-testid="brands-toolbar"
+          />
         </CardHeader>
         <CardContent className="p-0 overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead className="w-[250px]">
-                  <Button variant="ghost" size="sm" className="gap-1 -ml-3">
-                    Brand
-                    <ArrowUpDown className="h-3 w-3" />
-                  </Button>
-                </TableHead>
-                <TableHead>Category</TableHead>
+                <SortableHeader label="Brand" sortKey="name" activeKey={sortKey} dir={sortDir} onSort={toggleSort} className="w-[250px]" />
+                <SortableHeader label="Category" sortKey="category" activeKey={sortKey} dir={sortDir} onSort={toggleSort} />
                 <TableHead>Contact</TableHead>
                 <TableHead>Videos</TableHead>
                 <TableHead>Revenue</TableHead>
-                <TableHead>Status</TableHead>
+                <SortableHeader label="Status" sortKey="status" activeKey={sortKey} dir={sortDir} onSort={toggleSort} />
               </TableRow>
             </TableHeader>
             <TableBody>
-              {brands.length === 0 ? (
+              {brandRows.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={6} className="h-32 text-center">
                     <div className="flex flex-col items-center gap-2 text-muted-foreground">
                       <Building className="h-8 w-8 opacity-50" />
-                      <p>No brand partners yet</p>
+                      <p>{brands.length === 0 ? "No brand partners yet" : "No brands match your search"}</p>
                       <p className="text-sm">Start featuring brands in your videos to build partnerships</p>
                     </div>
                   </TableCell>
                 </TableRow>
               ) : (
-                brands.map((brand) => (
+                brandRows.map((brand) => (
                   <TableRow key={brand.id}>
                     <TableCell className="font-medium">
                       <div className="flex items-center gap-3">

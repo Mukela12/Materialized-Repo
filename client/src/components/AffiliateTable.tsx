@@ -8,10 +8,11 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { ArrowUpDown, Search, Download, Eye, MousePointer, DollarSign } from "lucide-react";
+import { Eye, MousePointer, DollarSign } from "lucide-react";
 import type { Video } from "@shared/schema";
+import { useTableControls } from "@/hooks/useTableControls";
+import { exportToCsv } from "@/lib/exportCsv";
+import { TableToolbar, SortableHeader } from "@/components/TableToolbar";
 
 interface AffiliateTableProps {
   videos: Video[];
@@ -19,12 +20,34 @@ interface AffiliateTableProps {
   formatMoney?: (usd: number) => string;
 }
 
+const calculateCTR = (clicks: number, views: number) => {
+  if (views === 0) return "0.00";
+  return ((clicks / views) * 100).toFixed(2);
+};
+
 export function AffiliateTable({ videos, isLoading, formatMoney }: AffiliateTableProps) {
   const fmtMoney = formatMoney || ((v: number) => `$${v.toFixed(2)}`);
-  const calculateCTR = (clicks: number, views: number) => {
-    if (views === 0) return "0.00";
-    return ((clicks / views) * 100).toFixed(2);
-  };
+
+  const { query, setQuery, sortKey, sortDir, toggleSort, rows } = useTableControls(videos, {
+    searchFields: (v) => [v.title, v.status],
+    sortAccessors: {
+      title: (v) => v.title,
+      views: (v) => v.totalViews ?? 0,
+      clicks: (v) => v.totalClicks ?? 0,
+      ctr: (v) => Number(calculateCTR(v.totalClicks ?? 0, v.totalViews ?? 0)),
+      revenue: (v) => Number(v.totalRevenue ?? 0),
+    },
+  });
+
+  const handleExport = () =>
+    exportToCsv("performance-data", rows, [
+      { header: "Video", value: (v) => v.title },
+      { header: "Views", value: (v) => v.totalViews ?? 0 },
+      { header: "Clicks", value: (v) => v.totalClicks ?? 0 },
+      { header: "CTR (%)", value: (v) => calculateCTR(v.totalClicks ?? 0, v.totalViews ?? 0) },
+      { header: "Revenue", value: (v) => v.totalRevenue ?? 0 },
+      { header: "Status", value: (v) => v.status },
+    ]);
 
   if (isLoading) {
     return (
@@ -47,73 +70,40 @@ export function AffiliateTable({ videos, isLoading, formatMoney }: AffiliateTabl
     <Card>
       <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <CardTitle className="text-lg font-semibold">Performance Data</CardTitle>
-        <div className="flex items-center gap-2 w-full sm:w-auto">
-          <div className="relative flex-1 sm:w-64">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search videos..."
-              className="pl-9"
-              data-testid="input-search-performance"
-            />
-          </div>
-          <Button variant="outline" size="icon" data-testid="button-export-data">
-            <Download className="h-4 w-4" />
-          </Button>
-        </div>
+        <TableToolbar
+          query={query}
+          onQueryChange={setQuery}
+          onExport={handleExport}
+          exportDisabled={rows.length === 0}
+          searchPlaceholder="Search videos…"
+          data-testid="performance-toolbar"
+        />
       </CardHeader>
       <CardContent className="p-0 overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent">
-              <TableHead className="w-[300px]">
-                <Button variant="ghost" size="sm" className="gap-1 -ml-3 font-semibold">
-                  Video
-                  <ArrowUpDown className="h-3 w-3" />
-                </Button>
-              </TableHead>
-              <TableHead>
-                <Button variant="ghost" size="sm" className="gap-1 font-semibold">
-                  <Eye className="h-3 w-3" />
-                  Views
-                  <ArrowUpDown className="h-3 w-3" />
-                </Button>
-              </TableHead>
-              <TableHead>
-                <Button variant="ghost" size="sm" className="gap-1 font-semibold">
-                  <MousePointer className="h-3 w-3" />
-                  Clicks
-                  <ArrowUpDown className="h-3 w-3" />
-                </Button>
-              </TableHead>
-              <TableHead>
-                <Button variant="ghost" size="sm" className="gap-1 font-semibold">
-                  CTR
-                  <ArrowUpDown className="h-3 w-3" />
-                </Button>
-              </TableHead>
-              <TableHead>
-                <Button variant="ghost" size="sm" className="gap-1 font-semibold">
-                  <DollarSign className="h-3 w-3" />
-                  Revenue
-                  <ArrowUpDown className="h-3 w-3" />
-                </Button>
-              </TableHead>
+              <SortableHeader label="Video" sortKey="title" activeKey={sortKey} dir={sortDir} onSort={toggleSort} className="w-[300px]" />
+              <SortableHeader label="Views" sortKey="views" activeKey={sortKey} dir={sortDir} onSort={toggleSort} icon={<Eye className="h-3 w-3" />} />
+              <SortableHeader label="Clicks" sortKey="clicks" activeKey={sortKey} dir={sortDir} onSort={toggleSort} icon={<MousePointer className="h-3 w-3" />} />
+              <SortableHeader label="CTR" sortKey="ctr" activeKey={sortKey} dir={sortDir} onSort={toggleSort} />
+              <SortableHeader label="Revenue" sortKey="revenue" activeKey={sortKey} dir={sortDir} onSort={toggleSort} icon={<DollarSign className="h-3 w-3" />} />
               <TableHead>Status</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {videos.length === 0 ? (
+            {rows.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} className="h-32 text-center">
                   <div className="flex flex-col items-center gap-2 text-muted-foreground">
                     <Eye className="h-8 w-8 opacity-50" />
-                    <p>No video data yet</p>
+                    <p>{videos.length === 0 ? "No video data yet" : "No videos match your search"}</p>
                     <p className="text-sm">Upload your first video to start tracking performance</p>
                   </div>
                 </TableCell>
               </TableRow>
             ) : (
-              videos.map((video) => (
+              rows.map((video) => (
                 <TableRow key={video.id} data-testid={`row-video-${video.id}`}>
                   <TableCell className="font-medium">
                     <div className="flex items-center gap-3">

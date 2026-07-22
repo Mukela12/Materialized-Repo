@@ -9,6 +9,7 @@ import { hashPassword } from "./auth";
 import { recordSaleCommissions, clawbackSaleCommissions } from "./commissions";
 import { appendUtm } from "./embedUtils";
 import { resolveFeeConfig, userRateOr, centsToAmount, formatMoney } from "./feeConfig";
+import { buildNotifications, countUnread, parseMailboxId, type MailboxSources } from "./mailbox";
 import { executePayouts } from "./payouts";
 import { verifyStoreHmac, extractShopifyAttribution, extractWooAttribution, type OrderAttribution } from "./storeWebhooks";
 import { 
@@ -2281,9 +2282,9 @@ export async function registerRoutes(
   // Publisher Notification routes
   app.get("/api/publisher/notifications", async (req, res) => {
     try {
-      const user = (req as any).user;
-      if (!user) return res.status(401).json({ error: "Not authenticated" });
-      const notes = await storage.getPublisherNotifications(user.id);
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ error: "Authentication required" });
+      const notes = await storage.getPublisherNotifications(sessionUserId);
       res.json(notes);
     } catch (error) {
       res.status(500).json({ error: "Failed to get notifications" });
@@ -2291,9 +2292,9 @@ export async function registerRoutes(
   });
   app.get("/api/publisher/notifications/unread-count", async (req, res) => {
     try {
-      const user = (req as any).user;
-      if (!user) return res.status(401).json({ error: "Not authenticated" });
-      const count = await storage.getUnreadNotificationCount(user.id);
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ error: "Authentication required" });
+      const count = await storage.getUnreadNotificationCount(sessionUserId);
       res.json({ count });
     } catch (error) {
       res.status(500).json({ error: "Failed to get count" });
@@ -2317,14 +2318,18 @@ export async function registerRoutes(
   });
   app.post("/api/publisher/notifications/:id/extend", async (req, res) => {
     try {
-      const user = (req as any).user;
-      if (!user) return res.status(401).json({ error: "Not authenticated" });
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ error: "Authentication required" });
+      const notification = await storage.getPublisherNotification(Number(req.params.id));
+      if (!notification) return res.status(404).json({ error: "Notification not found" });
+      const actor = await storage.getUser(sessionUserId);
+      if (!actor?.isAdmin && notification.affiliateId !== sessionUserId) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
       await storage.markPublisherNotificationRead(Number(req.params.id));
-      // Find the campaignAffiliateId from the notification and extend
-      const notes = await storage.getPublisherNotifications(user.id);
-      const note = notes.find(n => n.id === Number(req.params.id));
-      if (note?.campaignAffiliateId) {
-        await storage.extendCampaignPublisher(note.campaignAffiliateId, 48);
+      // Extend the associated campaign publisher link, if any.
+      if (notification.campaignAffiliateId) {
+        await storage.extendCampaignPublisher(notification.campaignAffiliateId, 48);
       }
       res.json({ ok: true });
     } catch (error) {
@@ -3652,6 +3657,35 @@ Identify which products from the catalog are most likely to appear or be feature
 
   // ==================== MAILBOX ====================
 
+  // Fetch the raw source rows for a user's role and build the role-aware,
+  // time-sorted mailbox feed. Shared by the notifications + unread-count routes
+  // so the badge and the page always agree.
+  async function loadMailboxNotifications(user: { id: string; role: string }) {
+    const sources: MailboxSources = {};
+
+    if (user.role === "affiliate") {
+      sources.pubNotifs = await storage.getPublisherNotifications(user.id);
+    } else if (user.role === "creator") {
+      sources.outreaches = await storage.getBrandOutreachesByCreator(user.id) as any;
+    } else if (user.role === "brand") {
+      const { db } = await import("./db");
+      const { creatorInvitations, brands: brandsTable } = await import("@shared/schema");
+      const { eq, desc } = await import("drizzle-orm");
+      const userBrands = await db.select().from(brandsTable).where(eq(brandsTable.ownerId, user.id));
+      if (userBrands.length > 0) {
+        const rows = await db.select().from(creatorInvitations)
+          .where(eq(creatorInvitations.brandId, userBrands[0].id))
+          .orderBy(desc(creatorInvitations.invitedAt))
+          .limit(10);
+        // `creator_invitations` timestamps its rows as `invitedAt`; expose it as
+        // `createdAt` for the shared mailbox mapper.
+        sources.invites = rows.map((inv) => ({ ...inv, createdAt: inv.invitedAt })) as any;
+      }
+    }
+
+    return buildNotifications(user.role, sources);
+  }
+
   // Get notifications from real platform activity
   app.get("/api/mailbox/notifications", async (req, res) => {
     try {
@@ -3661,69 +3695,89 @@ Identify which products from the catalog are most likely to appear or be feature
       const user = await storage.getUser(sessionUserId);
       if (!user) return res.status(401).json({ error: "User not found" });
 
-      const notifications: any[] = [];
-
-      // Pull from publisher notifications (for affiliates)
-      if (user.role === "affiliate") {
-        const pubNotifs = await storage.getPublisherNotifications(user.id);
-        for (const pn of pubNotifs) {
-          notifications.push({
-            id: `pub-${pn.id}`,
-            type: pn.type === "deactivation" ? "warning" : "campaign",
-            title: pn.type === "deactivation" ? "Publisher deactivated" : "Campaign update",
-            body: pn.message || `Campaign: ${pn.campaignName || "Unknown"}`,
-            time: pn.createdAt?.toISOString() || new Date().toISOString(),
-            read: pn.isRead ?? false,
-          });
-        }
-      }
-
-      // Pull from brand outreach (for creators)
-      if (user.role === "creator") {
-        const outreaches = await storage.getBrandOutreachesByCreator(user.id);
-        for (const o of outreaches.slice(0, 10)) {
-          notifications.push({
-            id: `outreach-${o.id}`,
-            type: o.status === "authorized" ? "success" : o.status === "pending" ? "info" : "campaign",
-            title: `Brand outreach: ${o.brandName}`,
-            body: `Status: ${o.status}${o.videoTitle ? ` — Video: ${o.videoTitle}` : ""}`,
-            time: o.createdAt?.toISOString() || new Date().toISOString(),
-            read: o.status !== "pending",
-          });
-        }
-      }
-
-      // Pull recent creator invitations (for brands)
-      if (user.role === "brand") {
-        const { db } = await import("./db");
-        const { creatorInvitations, brands: brandsTable } = await import("@shared/schema");
-        const { eq, desc } = await import("drizzle-orm");
-        const userBrands = await db.select().from(brandsTable).where(eq(brandsTable.ownerId, user.id));
-        if (userBrands.length > 0) {
-          const invites = await db.select().from(creatorInvitations)
-            .where(eq(creatorInvitations.brandId, userBrands[0].id))
-            .orderBy(desc(creatorInvitations.createdAt))
-            .limit(10);
-          for (const inv of invites) {
-            notifications.push({
-              id: `invite-${inv.id}`,
-              type: inv.status === "accepted" ? "success" : inv.status === "declined" ? "warning" : "info",
-              title: `Creator invitation: ${inv.creatorName}`,
-              body: `Status: ${inv.status}`,
-              time: inv.createdAt?.toISOString() || new Date().toISOString(),
-              read: inv.status !== "pending",
-            });
-          }
-        }
-      }
-
-      // Sort by time descending
-      notifications.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime());
-
+      const notifications = await loadMailboxNotifications(user);
       res.json(notifications);
     } catch (error) {
       console.error("Mailbox error:", error);
       res.json([]);
+    }
+  });
+
+  // Unread count for the nav badge — mirrors the aggregate feed exactly so the
+  // badge and the page never disagree across roles.
+  app.get("/api/mailbox/unread-count", async (req, res) => {
+    try {
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ error: "Authentication required" });
+
+      const user = await storage.getUser(sessionUserId);
+      if (!user) return res.status(401).json({ error: "User not found" });
+
+      const notifications = await loadMailboxNotifications(user);
+      res.json({ count: countUnread(notifications) });
+    } catch (error) {
+      console.error("Mailbox unread-count error:", error);
+      res.json({ count: 0 });
+    }
+  });
+
+  // Mark a single mailbox item read. Only `pub-<n>` (publisher_notifications)
+  // has a persistable read flag; `outreach-`/`invite-` items are computed from
+  // business state, so marking them is a no-op the client can safely fire.
+  app.patch("/api/mailbox/notifications/:id/read", async (req, res) => {
+    try {
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ error: "Authentication required" });
+
+      const parsed = parseMailboxId(req.params.id);
+      if (!parsed) return res.status(400).json({ error: "Invalid notification id" });
+
+      if (parsed.source !== "pub" || parsed.numericId === undefined) {
+        // Computed read-state (outreach/invitation) — nothing persistable.
+        return res.json({ ok: true, persisted: false });
+      }
+
+      const notification = await storage.getPublisherNotification(parsed.numericId);
+      if (!notification) return res.status(404).json({ error: "Notification not found" });
+
+      const actor = await storage.getUser(sessionUserId);
+      if (!actor?.isAdmin && notification.affiliateId !== sessionUserId) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+
+      await storage.markPublisherNotificationRead(parsed.numericId);
+      res.json({ ok: true, persisted: true });
+    } catch (error) {
+      console.error("Mailbox mark-read error:", error);
+      res.status(500).json({ error: "Failed to mark read" });
+    }
+  });
+
+  // Mark all of the current user's persistable notifications read. Only the
+  // affiliate publisher_notifications source has a real read flag; for other
+  // roles this is a harmless no-op so the client can always call it.
+  app.post("/api/mailbox/read-all", async (req, res) => {
+    try {
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ error: "Authentication required" });
+
+      const user = await storage.getUser(sessionUserId);
+      if (!user) return res.status(401).json({ error: "User not found" });
+
+      let updated = 0;
+      if (user.role === "affiliate") {
+        const pubNotifs = await storage.getPublisherNotifications(user.id);
+        for (const pn of pubNotifs) {
+          if (!(pn.isRead ?? false)) {
+            await storage.markPublisherNotificationRead(pn.id);
+            updated++;
+          }
+        }
+      }
+      res.json({ ok: true, updated });
+    } catch (error) {
+      console.error("Mailbox read-all error:", error);
+      res.status(500).json({ error: "Failed to mark all read" });
     }
   });
 

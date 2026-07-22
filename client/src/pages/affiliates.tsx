@@ -36,6 +36,9 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useTableControls } from "@/hooks/useTableControls";
+import { exportToCsv } from "@/lib/exportCsv";
+import { TableToolbar, SortableHeader } from "@/components/TableToolbar";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -78,6 +81,26 @@ export default function Affiliates() {
   const { data: invitations = [], isLoading } = useQuery<AffiliateInvitation[]>({
     queryKey: ['/api/affiliates/invitations'],
   });
+
+  const { query, setQuery, sortKey, sortDir, toggleSort, rows: invitationRows } = useTableControls(invitations, {
+    searchFields: (i) => [i.affiliateName, i.email, i.status],
+    sortAccessors: {
+      name: (i) => i.affiliateName,
+      email: (i) => i.email,
+      commissionRate: (i) => i.commissionRate,
+      status: (i) => i.status,
+      createdAt: (i) => i.createdAt,
+    },
+  });
+
+  const handleExportInvitations = () =>
+    exportToCsv("affiliate-invitations", invitationRows, [
+      { header: "Name", value: (i) => i.affiliateName },
+      { header: "Email", value: (i) => i.email },
+      { header: "Commission Rate", value: (i) => i.commissionRate },
+      { header: "Status", value: (i) => i.status },
+      { header: "Created At", value: (i) => i.createdAt },
+    ]);
 
   const form = useForm<InviteFormValues>({
     resolver: zodResolver(inviteFormSchema),
@@ -394,35 +417,53 @@ export default function Affiliates() {
         </Card>
       ) : (
         <Card>
-          <CardHeader>
-            <CardTitle>All Invitations</CardTitle>
-            <CardDescription>
-              Track and manage your affiliate invitations
-            </CardDescription>
+          <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <CardTitle>All Invitations</CardTitle>
+              <CardDescription>
+                Track and manage your affiliate invitations
+              </CardDescription>
+            </div>
+            <TableToolbar
+              query={query}
+              onQueryChange={setQuery}
+              onExport={handleExportInvitations}
+              exportDisabled={invitationRows.length === 0}
+              searchPlaceholder="Search invitations…"
+              data-testid="invitations-toolbar"
+            />
           </CardHeader>
           <CardContent>
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Commission</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Date</TableHead>
+                  <SortableHeader label="Name" sortKey="name" activeKey={sortKey} dir={sortDir} onSort={toggleSort} />
+                  <SortableHeader label="Email" sortKey="email" activeKey={sortKey} dir={sortDir} onSort={toggleSort} />
+                  <SortableHeader label="Commission" sortKey="commissionRate" activeKey={sortKey} dir={sortDir} onSort={toggleSort} />
+                  <SortableHeader label="Status" sortKey="status" activeKey={sortKey} dir={sortDir} onSort={toggleSort} />
+                  <SortableHeader label="Date" sortKey="createdAt" activeKey={sortKey} dir={sortDir} onSort={toggleSort} />
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {invitations.map((invitation) => (
-                  <TableRow key={invitation.id} data-testid={`row-invitation-${invitation.id}`}>
-                    <TableCell className="font-medium">{invitation.affiliateName}</TableCell>
-                    <TableCell>{invitation.email}</TableCell>
-                    <TableCell>{invitation.commissionRate}%</TableCell>
-                    <TableCell>{getStatusBadge(invitation.status)}</TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {new Date(invitation.createdAt).toLocaleDateString()}
+                {invitationRows.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={5} className="h-24 text-center text-muted-foreground">
+                      No invitations match your search
                     </TableCell>
                   </TableRow>
-                ))}
+                ) : (
+                  invitationRows.map((invitation) => (
+                    <TableRow key={invitation.id} data-testid={`row-invitation-${invitation.id}`}>
+                      <TableCell className="font-medium">{invitation.affiliateName}</TableCell>
+                      <TableCell>{invitation.email}</TableCell>
+                      <TableCell>{invitation.commissionRate}%</TableCell>
+                      <TableCell>{getStatusBadge(invitation.status)}</TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {new Date(invitation.createdAt).toLocaleDateString()}
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
               </TableBody>
             </Table>
           </CardContent>

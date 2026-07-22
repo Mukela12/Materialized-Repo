@@ -3,11 +3,21 @@ import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ArrowLeft, Download, Receipt, Loader2 } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { ArrowLeft, Download, Receipt, Loader2, ArrowDownUp } from "lucide-react";
 import { format } from "date-fns";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { BrandBillingRecord } from "@shared/schema";
+import { useTableControls } from "@/hooks/useTableControls";
+import { exportToCsv } from "@/lib/exportCsv";
+import { TableToolbar } from "@/components/TableToolbar";
 
 function StatusPill({ status }: { status: string }) {
   const map: Record<string, string> = {
@@ -28,7 +38,26 @@ export default function BrandSettingsBillingHistory() {
     queryKey: ["/api/brand/billing-records", "invoice"],
   });
 
-  const display = records;
+  const { query, setQuery, sortKey, sortDir, toggleSort, rows: display } = useTableControls(records, {
+    searchFields: (r) => [r.description, r.reference, r.status],
+    initialSort: { key: "createdAt", dir: "desc" },
+    sortAccessors: {
+      description: (r) => r.description,
+      amount: (r) => r.amount,
+      status: (r) => r.status,
+      createdAt: (r) => r.createdAt,
+    },
+  });
+
+  const handleExport = () =>
+    exportToCsv("billing-history", display, [
+      { header: "Description", value: (r) => r.description },
+      { header: "Reference", value: (r) => r.reference },
+      { header: "Amount", value: (r) => r.amount },
+      { header: "Currency", value: (r) => r.currency },
+      { header: "Status", value: (r) => r.status },
+      { header: "Date", value: (r) => r.createdAt },
+    ]);
 
   const downloadMutation = useMutation({
     mutationFn: async (id: number) => {
@@ -62,10 +91,49 @@ export default function BrandSettingsBillingHistory() {
       </div>
 
       <Card>
-        <CardHeader className="pb-2">
+        <CardHeader className="pb-2 flex flex-col gap-3">
           <CardTitle className="text-base flex items-center gap-2">
             <Receipt className="h-4 w-4 text-muted-foreground" /> Invoices
           </CardTitle>
+          {records.length > 0 && (
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+              <Select
+                value={sortKey ?? "createdAt"}
+                onValueChange={(v) => { if (v !== sortKey) toggleSort(v); }}
+              >
+                <SelectTrigger className="w-[140px]" data-testid="select-billing-sort">
+                  <div className="flex items-center gap-2">
+                    <ArrowDownUp className="h-3.5 w-3.5" />
+                    <SelectValue placeholder="Sort by" />
+                  </div>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="createdAt">Date</SelectItem>
+                  <SelectItem value="amount">Amount</SelectItem>
+                  <SelectItem value="status">Status</SelectItem>
+                  <SelectItem value="description">Description</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button
+                variant="outline"
+                size="icon"
+                className="shrink-0"
+                onClick={() => sortKey && toggleSort(sortKey)}
+                data-testid="button-billing-sort-dir"
+                title={sortDir === "asc" ? "Ascending" : "Descending"}
+              >
+                <ArrowDownUp className={`h-4 w-4 transition-transform ${sortDir === "asc" ? "rotate-180" : ""}`} />
+              </Button>
+              <TableToolbar
+                query={query}
+                onQueryChange={setQuery}
+                onExport={handleExport}
+                exportDisabled={display.length === 0}
+                searchPlaceholder="Search invoices…"
+                data-testid="billing-toolbar"
+              />
+            </div>
+          )}
         </CardHeader>
         <CardContent className="p-0">
           {isLoading ? (
@@ -73,7 +141,9 @@ export default function BrandSettingsBillingHistory() {
               {[1,2,3].map(i => <Skeleton key={i} className="h-14 w-full rounded-lg" />)}
             </div>
           ) : display.length === 0 ? (
-            <p className="text-center text-muted-foreground py-12 text-sm">No invoices yet</p>
+            <p className="text-center text-muted-foreground py-12 text-sm">
+              {records.length === 0 ? "No invoices yet" : "No invoices match your search"}
+            </p>
           ) : (
             display.map((r, i) => (
               <div

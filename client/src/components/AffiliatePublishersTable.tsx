@@ -19,14 +19,17 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { 
-  Users, 
-  ArrowUpDown, 
+import {
+  Users,
+  ArrowUpDown,
   TrendingUp,
   MousePointer,
   DollarSign,
   Percent
 } from "lucide-react";
+import { useTableControls } from "@/hooks/useTableControls";
+import { exportToCsv } from "@/lib/exportCsv";
+import { TableToolbar } from "@/components/TableToolbar";
 
 type AffiliatePublisher = {
   id: string;
@@ -69,6 +72,23 @@ export function AffiliatePublishersTable({ formatMoney }: AffiliatePublishersTab
     return ((conversions / clicks) * 100).toFixed(2);
   };
 
+  // Server already sorts; only add a client-side search over the returned page.
+  const { query, setQuery, rows: filteredPublishers } = useTableControls(publishers, {
+    searchFields: (p) => [p.affiliateName, p.affiliateEmail],
+  });
+
+  const handleExport = () =>
+    exportToCsv("affiliate-publishers", filteredPublishers, [
+      { header: "Publisher", value: (p) => p.affiliateName },
+      { header: "Email", value: (p) => p.affiliateEmail },
+      { header: "Clicks", value: (p) => p.totalClicks },
+      { header: "Conversions", value: (p) => p.totalConversions },
+      { header: "Conversion Rate (%)", value: (p) => getConversionRate(p.totalClicks, p.totalConversions) },
+      { header: "Revenue", value: (p) => p.totalRevenue },
+      { header: "Earnings", value: (p) => p.totalEarnings },
+      { header: "Campaigns", value: (p) => p.campaignCount },
+    ]);
+
   if (isLoading) {
     return (
       <Card>
@@ -93,7 +113,15 @@ export function AffiliatePublishersTable({ formatMoney }: AffiliatePublishersTab
           <Users className="h-5 w-5" />
           Affiliate Publishers
         </CardTitle>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+          <TableToolbar
+            query={query}
+            onQueryChange={setQuery}
+            onExport={handleExport}
+            exportDisabled={filteredPublishers.length === 0}
+            searchPlaceholder="Search publisher…"
+            data-testid="publishers-toolbar"
+          />
           <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortField)}>
             <SelectTrigger className="w-[180px]" data-testid="select-sort-field">
               <SelectValue placeholder="Sort by" />
@@ -142,10 +170,12 @@ export function AffiliatePublishersTable({ formatMoney }: AffiliatePublishersTab
         </div>
       </CardHeader>
       <CardContent className="p-0 overflow-x-auto">
-        {publishers.length === 0 ? (
+        {filteredPublishers.length === 0 ? (
           <div className="text-center py-12 text-muted-foreground">
             <Users className="h-12 w-12 mx-auto mb-3 opacity-50" />
-            <p className="font-medium">No affiliate publishers yet</p>
+            <p className="font-medium">
+              {publishers.length === 0 ? "No affiliate publishers yet" : "No publishers match your search"}
+            </p>
             <p className="text-sm">Affiliate performance data will appear here</p>
           </div>
         ) : (
@@ -162,7 +192,7 @@ export function AffiliatePublishersTable({ formatMoney }: AffiliatePublishersTab
               </TableRow>
             </TableHeader>
             <TableBody>
-              {publishers.map((publisher, index) => (
+              {filteredPublishers.map((publisher) => (
                 <TableRow key={publisher.id} data-testid={`row-publisher-${publisher.id}`}>
                   <TableCell>
                     <div className="flex items-center gap-3">
