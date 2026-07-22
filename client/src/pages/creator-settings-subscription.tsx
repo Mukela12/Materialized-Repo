@@ -137,7 +137,7 @@ export default function CreatorSettingsSubscription() {
           </Button>
         </Link>
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Creator Subscription</h1>
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Creator Subscription</h1>
           <p className="text-muted-foreground text-sm">Your plan, billing, and usage overage</p>
         </div>
       </div>

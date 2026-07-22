@@ -61,7 +61,7 @@ export default function BrandSettingsApiKey() {
           </Button>
         </Link>
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">API Keys</h1>
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">API Keys</h1>
           <p className="text-muted-foreground text-sm">Manage keys for programmatic access to your account</p>
         </div>
       </div>

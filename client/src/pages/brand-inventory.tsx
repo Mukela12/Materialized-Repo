@@ -21,6 +21,16 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Package, Link2, Plus, RefreshCw, Code2, UploadCloud, X, AlertTriangle, ExternalLink, ImageIcon, Video, Trash2 } from "lucide-react";
 import { SiShopify, SiWoocommerce, SiBigcommerce, SiMagento, SiGoogledrive, SiDropbox } from "react-icons/si";
 import { useToast } from "@/hooks/use-toast";
@@ -421,6 +431,7 @@ export default function BrandInventory() {
   const [selectedPlatform, setSelectedPlatform] = useState<PlatformId | null>(null);
   const [addProductOpen, setAddProductOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [productToDelete, setProductToDelete] = useState<Product | null>(null);
   // One-time webhook setup details returned by the connect call (URL + secret to paste).
   const [webhookSetup, setWebhookSetup] = useState<
     { status: string; url: string; secret: string; error?: string } | null
@@ -602,8 +613,13 @@ export default function BrandInventory() {
   });
 
   const handleDeleteProduct = (product: Product) => {
-    if (window.confirm(`Delete "${product.name}"? This cannot be undone.`)) {
-      deleteMutation.mutate(product.id);
+    setProductToDelete(product);
+  };
+
+  const confirmDeleteProduct = () => {
+    if (productToDelete) {
+      deleteMutation.mutate(productToDelete.id);
+      setProductToDelete(null);
     }
   };
 
@@ -1018,6 +1034,34 @@ export default function BrandInventory() {
         brandId={currentBrandId}
         product={editingProduct ?? undefined}
       />
+
+      <AlertDialog
+        open={!!productToDelete}
+        onOpenChange={(o) => { if (!o) setProductToDelete(null); }}
+      >
+        <AlertDialogContent data-testid="dialog-delete-product">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete product?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {productToDelete
+                ? `"${productToDelete.name}" will be permanently removed. This cannot be undone.`
+                : "This cannot be undone."}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-delete-product">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground border border-destructive-border"
+              onClick={confirmDeleteProduct}
+              data-testid="button-confirm-delete-product"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

@@ -85,7 +85,7 @@ export default function BrandSettingsBillingHistory() {
           </Button>
         </Link>
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Billing History</h1>
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Billing History</h1>
           <p className="text-muted-foreground text-sm">All invoices and payments on your account</p>
         </div>
       </div>

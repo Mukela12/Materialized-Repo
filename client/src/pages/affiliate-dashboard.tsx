@@ -118,7 +118,7 @@ export default function AffiliateDashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-4">
-            <CardTitle className="text-lg">My Campaigns</CardTitle>
+            <CardTitle className="text-lg font-semibold">My Campaigns</CardTitle>
             <Link href="/affiliate/campaigns">
               <Button variant="ghost" size="sm" className="gap-1" data-testid="link-view-campaigns">
                 View All
@@ -134,9 +134,11 @@ export default function AffiliateDashboard() {
                 ))}
               </div>
             ) : campaigns.length === 0 ? (
-              <div className="text-center py-8">
-                <Video className="h-12 w-12 mx-auto text-muted-foreground mb-3" />
-                <p className="text-muted-foreground mb-4">No active campaigns yet</p>
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <div className="w-16 h-16 rounded-full bg-muted/50 flex items-center justify-center mb-4">
+                  <Video className="h-6 w-6 text-muted-foreground" />
+                </div>
+                <p className="text-sm font-medium text-foreground/70 mb-4">No active campaigns yet</p>
                 <Link href="/affiliate/library">
                   <Button data-testid="button-browse-library">
                     <ShoppingBag className="h-4 w-4 mr-2" />
@@ -175,7 +177,7 @@ export default function AffiliateDashboard() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-4">
-            <CardTitle className="text-lg">Available Videos</CardTitle>
+            <CardTitle className="text-lg font-semibold">Available Videos</CardTitle>
             <Link href="/affiliate/library">
               <Button variant="ghost" size="sm" className="gap-1" data-testid="link-browse-library">
                 Browse All
@@ -185,9 +187,11 @@ export default function AffiliateDashboard() {
           </CardHeader>
           <CardContent>
             {libraryItems.length === 0 ? (
-              <div className="text-center py-8">
-                <ShoppingBag className="h-12 w-12 mx-auto text-muted-foreground mb-3" />
-                <p className="text-muted-foreground">No videos available in the library yet</p>
+              <div className="flex flex-col items-center justify-center py-12 text-center">
+                <div className="w-16 h-16 rounded-full bg-muted/50 flex items-center justify-center mb-4">
+                  <ShoppingBag className="h-6 w-6 text-muted-foreground" />
+                </div>
+                <p className="text-sm font-medium text-foreground/70">No videos available in the library yet</p>
               </div>
             ) : (
               <div className="space-y-3">
@@ -226,7 +230,7 @@ export default function AffiliateDashboard() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg">Quick Actions</CardTitle>
+          <CardTitle className="text-lg font-semibold">Quick Actions</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

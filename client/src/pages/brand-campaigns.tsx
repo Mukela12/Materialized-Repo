@@ -230,7 +230,7 @@ export default function BrandCampaigns() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">Campaigns</h1>
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-foreground">Campaigns</h1>
           <p className="text-sm text-muted-foreground mt-0.5">Video-linked campaigns with publisher performance</p>
         </div>
         <Button

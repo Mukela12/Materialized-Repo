@@ -204,7 +204,7 @@ export default function Affiliates() {
     <div className="space-y-6 max-w-6xl mx-auto">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight" data-testid="text-page-title">
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight" data-testid="text-page-title">
             Affiliate Management
           </h1>
           <p className="text-muted-foreground">

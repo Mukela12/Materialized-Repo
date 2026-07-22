@@ -153,7 +153,7 @@ export default function BrandSettingsSubscription() {
           </Button>
         </Link>
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Subscription</h1>
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Subscription</h1>
           <p className="text-muted-foreground text-sm">Your current plan and billing</p>
         </div>
       </div>

@@ -31,6 +31,8 @@ import {
   Link2,
 } from "lucide-react";
 import type { Video } from "@shared/schema";
+import { exportToCsv } from "@/lib/exportCsv";
+import { useToast } from "@/hooks/use-toast";
 
 const CURRENCIES: { code: string; symbol: string; rate: number }[] = [
   { code: "USD", symbol: "$", rate: 1 },
@@ -112,6 +114,7 @@ function getPageSubtitle(context: DashboardContext) {
 
 export default function Analytics() {
   const dashboardContext = useDashboardContext();
+  const { toast } = useToast();
   const [currency, setCurrency] = useState("USD");
   const [timeRange, setTimeRange] = useState<"7" | "30" | "90">("30");
 
@@ -156,6 +159,25 @@ export default function Analytics() {
 
   const showAffiliateTable = dashboardContext === "creator";
 
+  const handleExport = () => {
+    if (filteredViewsByDay.length === 0) {
+      toast({
+        title: "Nothing to export",
+        description: "There is no analytics data for the selected range yet.",
+      });
+      return;
+    }
+    exportToCsv(
+      `${dashboardContext}-analytics`,
+      filteredViewsByDay,
+      [
+        { header: "Date", value: (r) => r.date },
+        { header: "Views", value: (r) => r.views },
+      ],
+    );
+    toast({ title: "Export started", description: "Your CSV is downloading." });
+  };
+
   return (
     <div className="space-y-6 pb-24 md:pb-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -186,7 +208,14 @@ export default function Analytics() {
               ))}
             </SelectContent>
           </Select>
-          <Button variant="outline" size="icon" data-testid="button-download">
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={handleExport}
+            aria-label="Export analytics as CSV"
+            title="Export CSV"
+            data-testid="button-download"
+          >
             <Download className="h-4 w-4" />
           </Button>
         </div>
@@ -311,10 +340,12 @@ export default function Analytics() {
                 </div>
               ) : (
                 <div className="h-64 flex items-center justify-center bg-muted/30 rounded-lg">
-                  <div className="text-center text-muted-foreground">
-                    <BarChart3 className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                    <p>No view data yet</p>
-                    <p className="text-sm">Upload videos to start tracking performance</p>
+                  <div className="flex flex-col items-center text-center text-muted-foreground">
+                    <div className="w-16 h-16 rounded-full bg-muted/50 flex items-center justify-center mb-4">
+                      <BarChart3 className="h-6 w-6 text-muted-foreground" />
+                    </div>
+                    <p className="text-sm font-medium text-foreground/70">No view data yet</p>
+                    <p className="text-xs mt-1">Upload videos to start tracking performance</p>
                   </div>
                 </div>
               )}
@@ -366,9 +397,11 @@ export default function Analytics() {
                 </div>
               ) : (
                 <div className="h-64 flex items-center justify-center bg-muted/30 rounded-lg">
-                  <div className="text-center text-muted-foreground">
-                    <Clock className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                    <p>No hourly data yet</p>
+                  <div className="flex flex-col items-center text-center text-muted-foreground">
+                    <div className="w-16 h-16 rounded-full bg-muted/50 flex items-center justify-center mb-4">
+                      <Clock className="h-6 w-6 text-muted-foreground" />
+                    </div>
+                    <p className="text-sm font-medium text-foreground/70">No hourly data yet</p>
                   </div>
                 </div>
               )}
@@ -467,10 +500,12 @@ export default function Analytics() {
                   </div>
                 </div>
               ) : (
-                <div className="text-center py-12 text-muted-foreground">
-                  <Link2 className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                  <p>No publishing sources tracked yet</p>
-                  <p className="text-sm">Embed codes will appear here once deployed</p>
+                <div className="flex flex-col items-center justify-center py-12 text-center text-muted-foreground">
+                  <div className="w-16 h-16 rounded-full bg-muted/50 flex items-center justify-center mb-4">
+                    <Link2 className="h-6 w-6 text-muted-foreground" />
+                  </div>
+                  <p className="text-sm font-medium text-foreground/70">No publishing sources tracked yet</p>
+                  <p className="text-xs mt-1">Embed codes will appear here once deployed</p>
                 </div>
               )}
             </CardContent>
@@ -528,9 +563,11 @@ export default function Analytics() {
                   ))}
                 </div>
               ) : (
-                <div className="text-center py-12 text-muted-foreground">
-                  <Globe className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                  <p>No geographic data yet</p>
+                <div className="flex flex-col items-center justify-center py-12 text-center text-muted-foreground">
+                  <div className="w-16 h-16 rounded-full bg-muted/50 flex items-center justify-center mb-4">
+                    <Globe className="h-6 w-6 text-muted-foreground" />
+                  </div>
+                  <p className="text-sm font-medium text-foreground/70">No geographic data yet</p>
                 </div>
               )}
             </CardContent>
@@ -568,9 +605,11 @@ export default function Analytics() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-center py-12 text-muted-foreground">
-                  <Smartphone className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                  <p>No device data yet</p>
+                <div className="flex flex-col items-center justify-center py-12 text-center text-muted-foreground">
+                  <div className="w-16 h-16 rounded-full bg-muted/50 flex items-center justify-center mb-4">
+                    <Smartphone className="h-6 w-6 text-muted-foreground" />
+                  </div>
+                  <p className="text-sm font-medium text-foreground/70">No device data yet</p>
                 </div>
               </CardContent>
             </Card>

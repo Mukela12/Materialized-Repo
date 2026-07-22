@@ -182,7 +182,7 @@ export function AffiliateAppSidebar({ user }: AffiliateAppSidebarProps) {
         <div className="flex items-center gap-3">
           <Avatar className="w-9 h-9 border border-border">
             <AvatarImage src={user?.avatarUrl || undefined} />
-            <AvatarFallback className="bg-accent-sage/10 text-accent-sage">
+            <AvatarFallback className="bg-primary/10 text-primary">
               {user?.displayName?.charAt(0) || "A"}
             </AvatarFallback>
           </Avatar>

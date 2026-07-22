@@ -194,7 +194,7 @@ export default function AffiliateLibrary() {
                         <Users className="w-4 h-4" />
                         <span>{listing.totalLicenses} licenses sold</span>
                       </div>
-                      <div className="flex items-center gap-1 font-semibold text-accent-gold">
+                      <div className="flex items-center gap-1 font-semibold text-primary">
                         <DollarSign className="w-4 h-4" />
                         <span>{listing.licenseFee}</span>
                       </div>
