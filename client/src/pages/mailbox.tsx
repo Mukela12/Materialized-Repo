@@ -146,7 +146,7 @@ export default function Mailbox() {
       <div className="flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight text-foreground">Activity</h1>
+            <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-foreground">Activity</h1>
             <p className="text-sm text-muted-foreground mt-0.5">
               {unread > 0 ? `${unread} unread item${unread > 1 ? "s" : ""}` : "All caught up"}
             </p>

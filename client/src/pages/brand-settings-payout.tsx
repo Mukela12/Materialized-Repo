@@ -50,7 +50,7 @@ export default function BrandSettingsPayout() {
           </Button>
         </Link>
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Payout Method</h1>
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Payout Method</h1>
           <p className="text-muted-foreground text-sm">Where we send your affiliate earnings</p>
         </div>
       </div>

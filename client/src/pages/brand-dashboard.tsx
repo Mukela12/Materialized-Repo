@@ -460,10 +460,12 @@ export default function BrandDashboard() {
                   ))}
                 </div>
               ) : (
-                <div className="text-center py-8 text-muted-foreground">
-                  <Package className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                  <p>No products synced yet</p>
-                  <p className="text-sm">Connect your API to import your inventory</p>
+                <div className="flex flex-col items-center justify-center py-12 text-center text-muted-foreground">
+                  <div className="w-16 h-16 rounded-full bg-muted/50 flex items-center justify-center mb-4">
+                    <Package className="h-6 w-6 text-muted-foreground" />
+                  </div>
+                  <p className="text-sm font-medium text-foreground/70">No products synced yet</p>
+                  <p className="text-xs mt-1">Connect your API to import your inventory</p>
                 </div>
               )}
             </CardContent>
@@ -580,10 +582,12 @@ export default function BrandDashboard() {
               </p>
             </CardHeader>
             <CardContent>
-              <div className="text-center py-8 text-muted-foreground">
-                <Users className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                <p>No creators connected yet</p>
-                <p className="text-sm">Send invitations to start building your creator network</p>
+              <div className="flex flex-col items-center justify-center py-12 text-center text-muted-foreground">
+                <div className="w-16 h-16 rounded-full bg-muted/50 flex items-center justify-center mb-4">
+                  <Users className="h-6 w-6 text-muted-foreground" />
+                </div>
+                <p className="text-sm font-medium text-foreground/70">No creators connected yet</p>
+                <p className="text-xs mt-1">Send invitations to start building your creator network</p>
               </div>
             </CardContent>
           </Card>
@@ -599,10 +603,12 @@ export default function BrandDashboard() {
             </p>
           </CardHeader>
           <CardContent>
-            <div className="text-center py-12 text-muted-foreground">
-              <TrendingUp className="h-12 w-12 mx-auto mb-3 opacity-50" />
-              <p>View full performance analytics and embed traces</p>
-              <p className="text-sm mb-4">See viewing trends, peak hours, and per-source performance</p>
+            <div className="flex flex-col items-center justify-center py-12 text-center text-muted-foreground">
+              <div className="w-16 h-16 rounded-full bg-muted/50 flex items-center justify-center mb-4">
+                <TrendingUp className="h-6 w-6 text-muted-foreground" />
+              </div>
+              <p className="text-sm font-medium text-foreground/70">View full performance analytics and embed traces</p>
+              <p className="text-xs mt-1 mb-4">See viewing trends, peak hours, and per-source performance</p>
               <Link href="/brand/analytics">
                 <Button className="rounded-full gap-2" data-testid="button-view-analytics">
                   <TrendingUp className="h-4 w-4" />
@@ -680,10 +686,12 @@ export default function BrandDashboard() {
             </p>
           </CardHeader>
           <CardContent>
-            <div className="text-center py-12 text-muted-foreground">
-              <Zap className="h-12 w-12 mx-auto mb-3 opacity-50" />
-              <p>No active campaigns</p>
-              <p className="text-sm">Create your first campaign to boost product visibility</p>
+            <div className="flex flex-col items-center justify-center py-12 text-center text-muted-foreground">
+              <div className="w-16 h-16 rounded-full bg-muted/50 flex items-center justify-center mb-4">
+                <Zap className="h-6 w-6 text-muted-foreground" />
+              </div>
+              <p className="text-sm font-medium text-foreground/70">No active campaigns</p>
+              <p className="text-xs mt-1">Create your first campaign to boost product visibility</p>
               <Button className="rounded-full mt-4" data-testid="button-create-campaign" onClick={() => navigate("/brand/campaigns/new")}>
                 Create Campaign
               </Button>

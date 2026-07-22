@@ -96,7 +96,7 @@ export default function AffiliateCampaigns() {
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
       <div className="flex flex-col gap-2">
-        <h1 className="text-2xl font-bold tracking-tight" data-testid="text-page-title">
+        <h1 className="text-2xl md:text-3xl font-bold tracking-tight" data-testid="text-page-title">
           My Campaigns
         </h1>
         <p className="text-muted-foreground">
@@ -108,7 +108,7 @@ export default function AffiliateCampaigns() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-4 pb-2">
             <CardTitle className="text-sm font-medium">Total Earnings</CardTitle>
-            <DollarSign className="w-4 h-4 text-accent-gold" />
+            <DollarSign className="w-4 h-4 text-primary" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold" data-testid="text-total-earnings">
@@ -253,7 +253,7 @@ export default function AffiliateCampaigns() {
                   </div>
                   <div>
                     <p className="text-sm text-muted-foreground">Earnings</p>
-                    <p className="text-xl font-semibold text-accent-gold">${campaign.totalEarnings}</p>
+                    <p className="text-xl font-semibold text-primary">${campaign.totalEarnings}</p>
                   </div>
                 </div>
 

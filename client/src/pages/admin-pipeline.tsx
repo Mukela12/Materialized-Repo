@@ -475,7 +475,7 @@ function AdminBrands() {
               <td className="p-3 text-muted-foreground">{b.category || "-"}</td>
               <td className="p-3">
                 {b.website ? (
-                  <a href={b.website.startsWith("http") ? b.website : `https://${b.website}`} target="_blank" rel="noopener noreferrer" className="text-[#677A67] hover:underline text-xs">
+                  <a href={b.website.startsWith("http") ? b.website : `https://${b.website}`} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline text-xs">
                     {b.website}
                   </a>
                 ) : "-"}
@@ -594,7 +594,7 @@ function AdminMoneyOps() {
             data-testid={`money-subtab-${t}`}
             className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px capitalize transition-colors ${
               subTab === t
-                ? "border-[#677A67] text-foreground"
+                ? "border-primary text-foreground"
                 : "border-transparent text-muted-foreground hover:text-foreground"
             }`}
           >
@@ -885,7 +885,7 @@ function MoneyCommissions() {
               data-testid={`commission-filter-${s}`}
               className={`px-3 py-1 rounded-full text-xs font-medium border capitalize transition-colors ${
                 statusFilter === s
-                  ? "border-[#677A67] bg-[#677A67]/10 text-foreground"
+                  ? "border-primary bg-primary/10 text-foreground"
                   : "border-transparent bg-muted text-muted-foreground hover:text-foreground"
               }`}
             >
@@ -1012,7 +1012,7 @@ function MoneyRates() {
       <Card className="shadow-none border">
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
-            <Percent className="h-4 w-4 text-[#677A67]" /> Platform fee & commission split
+            <Percent className="h-4 w-4 text-primary" /> Platform fee & commission split
           </CardTitle>
         </CardHeader>
         <CardContent className="p-4 pt-0">
@@ -1072,7 +1072,7 @@ function MoneyRates() {
       {/* Per-affiliate commission overrides */}
       <div>
         <p className="text-sm font-medium mb-3 flex items-center gap-2">
-          <Wallet className="h-4 w-4 text-[#677A67]" /> Per-affiliate commission overrides
+          <Wallet className="h-4 w-4 text-primary" /> Per-affiliate commission overrides
         </p>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
@@ -1248,7 +1248,7 @@ export default function AdminPipeline() {
         {/* Admin Header */}
         <div className="flex items-center justify-between mb-6">
           <div>
-            <h1 className="text-2xl font-bold">Admin Dashboard</h1>
+            <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Admin Dashboard</h1>
             <p className="text-sm text-muted-foreground">Manage your platform</p>
           </div>
         </div>
@@ -1262,7 +1262,7 @@ export default function AdminPipeline() {
               data-testid={`tab-${tab}`}
               className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px capitalize transition-colors ${
                 activeTab === tab
-                  ? "border-[#677A67] text-foreground"
+                  ? "border-primary text-foreground"
                   : "border-transparent text-muted-foreground hover:text-foreground"
               }`}
             >
@@ -1281,7 +1281,7 @@ export default function AdminPipeline() {
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">Brand Outreach Pipeline</h1>
+            <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Brand Outreach Pipeline</h1>
             <p className="text-muted-foreground text-sm mt-1">Sales team view — track and action every brand contact</p>
           </div>
           <Button variant="outline" size="sm" onClick={() => refetch()} className="gap-2">
@@ -1361,7 +1361,7 @@ export default function AdminPipeline() {
                           <div
                             key={s}
                             className={`w-2 h-2 rounded-full ${
-                              stage >= s ? "bg-[#677A67]" : "bg-border"
+                              stage >= s ? "bg-primary" : "bg-border"
                             }`}
                           />
                         ))}
@@ -1429,8 +1429,8 @@ export default function AdminPipeline() {
                             { label: "Agmt Signed", ts: entry.agreementSignedAt, done: stage >= 4 },
                             { label: "Subscribed", ts: entry.brandSubscribedAt, done: stage >= 5 },
                           ].map((step, i) => (
-                            <div key={i} className={`rounded-lg p-2 text-center border ${step.done ? "border-[#677A67]/40 bg-[#677A67]/10" : "border-border bg-background"}`}>
-                              <p className={`text-xs font-medium ${step.done ? "text-[#677A67]" : "text-muted-foreground"}`}>{step.label}</p>
+                            <div key={i} className={`rounded-lg p-2 text-center border ${step.done ? "border-primary/40 bg-primary/10" : "border-border bg-background"}`}>
+                              <p className={`text-xs font-medium ${step.done ? "text-primary" : "text-muted-foreground"}`}>{step.label}</p>
                               {step.ts ? (
                                 <p className="text-[10px] text-muted-foreground mt-0.5">{format(new Date(step.ts), "d MMM")}</p>
                               ) : (
@@ -1535,13 +1535,13 @@ export default function AdminPipeline() {
                 onClick={() => setSelectedFollowUp(opt.value)}
                 className={`w-full text-left p-3 rounded-xl border transition-all ${
                   selectedFollowUp === opt.value
-                    ? "border-[#677A67] bg-[#677A67]/10"
+                    ? "border-primary bg-primary/10"
                     : "border-border hover:border-muted-foreground/50"
                 }`}
                 data-testid={`followup-option-${opt.value}`}
               >
                 <div className="flex items-center gap-2 mb-1">
-                  <opt.icon className={`h-4 w-4 ${selectedFollowUp === opt.value ? "text-[#677A67]" : "text-muted-foreground"}`} />
+                  <opt.icon className={`h-4 w-4 ${selectedFollowUp === opt.value ? "text-primary" : "text-muted-foreground"}`} />
                   <span className="text-sm font-semibold">{opt.label}</span>
                 </div>
                 <p className="text-xs text-muted-foreground pl-6">{opt.desc}</p>

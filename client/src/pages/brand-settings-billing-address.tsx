@@ -77,7 +77,7 @@ export default function BrandSettingsBillingAddress() {
           </Button>
         </Link>
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">Billing Address</h1>
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Billing Address</h1>
           <p className="text-muted-foreground text-sm">Business information used on invoices</p>
         </div>
       </div>
