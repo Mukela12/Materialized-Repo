@@ -238,7 +238,15 @@ export async function registerRoutes(
   // Create brand
   app.post("/api/brands", async (req, res) => {
     try {
-      const data = insertBrandSchema.parse(req.body);
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ error: "Authentication required" });
+      const actor = await storage.getUser(sessionUserId);
+      // A created brand is owned by its creator; only an admin may set a different
+      // owner. This makes the brand/product/campaign ownership gates meaningful.
+      const data = insertBrandSchema.parse({
+        ...req.body,
+        ownerId: actor?.isAdmin && req.body?.ownerId ? req.body.ownerId : sessionUserId,
+      });
       const brand = await storage.createBrand(data);
       res.status(201).json(brand);
     } catch (error) {
@@ -265,13 +273,20 @@ export async function registerRoutes(
   // Create product
   app.post("/api/products", async (req, res) => {
     try {
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ error: "Authentication required" });
       let { brandId, price, ...rest } = req.body;
-      // Resolve brandId — prefer explicit, then fall back to first available brand
-      if (!brandId) {
-        const brands = await storage.getBrands();
-        brandId = brands[0]?.id;
-      }
+      // Resolve brandId — prefer explicit, else the caller's own brand (not an
+      // arbitrary first brand, which would let anyone add products to it).
+      const brands = await storage.getBrands();
+      const actor = await storage.getUser(sessionUserId);
+      if (!brandId) brandId = brands.find(b => b.ownerId === sessionUserId)?.id;
       if (!brandId) return res.status(400).json({ error: "No brand available" });
+      const targetBrand = brands.find(b => b.id === brandId);
+      if (!targetBrand) return res.status(404).json({ error: "Brand not found" });
+      if (!actor?.isAdmin && targetBrand.ownerId !== sessionUserId) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
       // Drizzle decimal columns are validated as strings by drizzle-zod
       const priceStr = price !== undefined && price !== null ? String(price) : undefined;
       const data = insertProductSchema.parse({ ...rest, brandId, price: priceStr });
@@ -446,6 +461,14 @@ export async function registerRoutes(
   // Update video
   app.patch("/api/videos/:id", async (req, res) => {
     try {
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ error: "Authentication required" });
+      const existing = await storage.getVideo(req.params.id);
+      if (!existing) return res.status(404).json({ error: "Video not found" });
+      const actor = await storage.getUser(sessionUserId);
+      if (!actor?.isAdmin && existing.creatorId !== sessionUserId) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
       const video = await storage.updateVideo(req.params.id, req.body);
       if (!video) {
         return res.status(404).json({ error: "Video not found" });
@@ -459,6 +482,14 @@ export async function registerRoutes(
   // Delete video
   app.delete("/api/videos/:id", async (req, res) => {
     try {
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ error: "Authentication required" });
+      const existing = await storage.getVideo(req.params.id);
+      if (!existing) return res.status(404).json({ error: "Video not found" });
+      const actor = await storage.getUser(sessionUserId);
+      if (!actor?.isAdmin && existing.creatorId !== sessionUserId) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
       const deleted = await storage.deleteVideo(req.params.id);
       if (!deleted) {
         return res.status(404).json({ error: "Video not found" });
@@ -1201,6 +1232,10 @@ export async function registerRoutes(
   // Get signed upload params for Cloudinary (client-side upload)
   app.post("/api/upload/url", async (req, res) => {
     try {
+      // Signed Cloudinary upload params must not be mintable anonymously (storage
+      // /cost abuse) — require an authenticated session.
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ error: "Authentication required" });
       const { fileName, fileType } = req.body;
       const isVideo = fileType?.startsWith("video/");
       const { generateSignedUploadParams } = await import("./cloudinaryService");
@@ -1763,18 +1798,27 @@ export async function registerRoutes(
   // Invite creator (brand to creator invitation)
   app.post("/api/brands/invite-creator", async (req, res) => {
     try {
+      // Sends an email — must be gated so it can't be used to spam invitations
+      // from a brand the caller doesn't own.
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ error: "Authentication required" });
       const { creatorName, creatorEmail, contentCategory, message, brandId } = req.body;
-      
+
       if (!creatorName || !creatorEmail) {
         return res.status(400).json({ error: "Creator name and email are required" });
       }
 
-      // Get a demo brand ID if not provided
+      // Resolve to a brand the caller actually owns (or any brand for an admin).
       const brands = await storage.getBrands();
-      const useBrandId = brandId || brands[0]?.id;
-      
+      const actor = await storage.getUser(sessionUserId);
+      const useBrandId = brandId || brands.find(b => b.ownerId === sessionUserId)?.id;
       if (!useBrandId) {
         return res.status(400).json({ error: "No brand available" });
+      }
+      const targetBrand = brands.find(b => b.id === useBrandId);
+      if (!targetBrand) return res.status(404).json({ error: "Brand not found" });
+      if (!actor?.isAdmin && targetBrand.ownerId !== sessionUserId) {
+        return res.status(403).json({ error: "Forbidden" });
       }
 
       const invitation = await storage.createCreatorInvitation({
@@ -1816,8 +1860,12 @@ export async function registerRoutes(
   // Bulk invite creators (CSV import)
   app.post("/api/brands/invite-creators/bulk", async (req, res) => {
     try {
+      // Sends up to 200 emails — must be gated so it can't be used to email-bomb
+      // from a brand the caller doesn't own.
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ error: "Authentication required" });
       const { invitations, brandId } = req.body;
-      
+
       if (!Array.isArray(invitations) || invitations.length === 0) {
         return res.status(400).json({ error: "Invitations array is required" });
       }
@@ -1826,12 +1874,17 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Maximum 200 invitations per bulk upload" });
       }
 
-      // Get a demo brand ID if not provided
+      // Resolve to a brand the caller actually owns (or any brand for an admin).
       const brands = await storage.getBrands();
-      const useBrandId = brandId || brands[0]?.id;
-      
+      const actor = await storage.getUser(sessionUserId);
+      const useBrandId = brandId || brands.find(b => b.ownerId === sessionUserId)?.id;
       if (!useBrandId) {
         return res.status(400).json({ error: "No brand available" });
+      }
+      const targetBrand = brands.find(b => b.id === useBrandId);
+      if (!targetBrand) return res.status(404).json({ error: "Brand not found" });
+      if (!actor?.isAdmin && targetBrand.ownerId !== sessionUserId) {
+        return res.status(403).json({ error: "Forbidden" });
       }
 
       // Validate each invitation using the shared insert schema
@@ -1909,15 +1962,23 @@ export async function registerRoutes(
     }
   });
 
-  // Update invitation status
+  // Update invitation status (owner brand or admin only)
   app.patch("/api/brands/creator-invites/:id", async (req, res) => {
     try {
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ error: "Authentication required" });
       const { status } = req.body;
       if (!["pending", "sent", "accepted", "declined"].includes(status)) {
         return res.status(400).json({ error: "Invalid status" });
       }
-
-      const updated = await storage.updateCreatorInvitationStatus(req.params.id, status);
+      const invitation = await storage.getCreatorInvitation(req.params.id);
+      if (!invitation) return res.status(404).json({ error: "Invitation not found" });
+      const actor = await storage.getUser(sessionUserId);
+      const brand = await storage.getBrand(invitation.brandId);
+      if (!actor?.isAdmin && brand?.ownerId !== sessionUserId) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+      const updated = await storage.updateCreatorInvitationStatus(req.params.id, status, invitation.brandId);
       if (!updated) {
         return res.status(404).json({ error: "Invitation not found" });
       }
@@ -2018,6 +2079,14 @@ export async function registerRoutes(
   // Create or update carousel override for a video
   app.post("/api/videos/:id/carousel", async (req, res) => {
     try {
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ error: "Authentication required" });
+      const video = await storage.getVideo(req.params.id);
+      if (!video) return res.status(404).json({ error: "Video not found" });
+      const actor = await storage.getUser(sessionUserId);
+      if (!actor?.isAdmin && video.creatorId !== sessionUserId) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
       const { manualProducts, ...settings } = req.body;
       const body: any = { ...settings };
       if (manualProducts !== undefined) {
@@ -2041,6 +2110,14 @@ export async function registerRoutes(
   // Add a manual product URL to a video's carousel
   app.post("/api/videos/:id/carousel/products", async (req, res) => {
     try {
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ error: "Authentication required" });
+      const video = await storage.getVideo(req.params.id);
+      if (!video) return res.status(404).json({ error: "Video not found" });
+      const actor = await storage.getUser(sessionUserId);
+      if (!actor?.isAdmin && video.creatorId !== sessionUserId) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
       const { name, buyUrl, price, imageUrl, startTime, endTime } = req.body;
       if (!name || !buyUrl) {
         return res.status(400).json({ error: "name and buyUrl are required" });
@@ -2074,6 +2151,14 @@ export async function registerRoutes(
   // Remove a manual product from a video's carousel
   app.delete("/api/videos/:id/carousel/products/:productId", async (req, res) => {
     try {
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ error: "Authentication required" });
+      const video = await storage.getVideo(req.params.id);
+      if (!video) return res.status(404).json({ error: "Video not found" });
+      const actor = await storage.getUser(sessionUserId);
+      if (!actor?.isAdmin && video.creatorId !== sessionUserId) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
       const override = await storage.getVideoCarouselOverride(req.params.id);
       if (!override) return res.status(404).json({ error: "No carousel found" });
       let existing: any[] = [];
@@ -2142,9 +2227,18 @@ export async function registerRoutes(
     }
   });
 
-  // Disable a publisher from a campaign
+  // Disable a publisher from a campaign (owner brand or admin only)
   app.post("/api/campaigns/:id/publishers/:caId/disable", async (req, res) => {
     try {
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ error: "Authentication required" });
+      const campaign = await storage.getCampaign(req.params.id);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+      const actor = await storage.getUser(sessionUserId);
+      const brand = await storage.getBrand(campaign.brandId);
+      if (!actor?.isAdmin && brand?.ownerId !== sessionUserId) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
       const updated = await storage.disableCampaignPublisher(req.params.caId);
       if (!updated) return res.status(404).json({ error: "Publisher link not found" });
       // Create notification for the publisher
@@ -2164,9 +2258,18 @@ export async function registerRoutes(
     }
   });
 
-  // Grant 48-hour grace extension to a publisher
+  // Grant 48-hour grace extension to a publisher (owner brand or admin only)
   app.post("/api/campaigns/:id/publishers/:caId/extend", async (req, res) => {
     try {
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ error: "Authentication required" });
+      const campaign = await storage.getCampaign(req.params.id);
+      if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+      const actor = await storage.getUser(sessionUserId);
+      const brand = await storage.getBrand(campaign.brandId);
+      if (!actor?.isAdmin && brand?.ownerId !== sessionUserId) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
       const updated = await storage.extendCampaignPublisher(req.params.caId, 48);
       if (!updated) return res.status(404).json({ error: "Publisher link not found" });
       res.json(updated);
@@ -2198,6 +2301,14 @@ export async function registerRoutes(
   });
   app.patch("/api/publisher/notifications/:id/read", async (req, res) => {
     try {
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ error: "Authentication required" });
+      const notification = await storage.getPublisherNotification(Number(req.params.id));
+      if (!notification) return res.status(404).json({ error: "Notification not found" });
+      const actor = await storage.getUser(sessionUserId);
+      if (!actor?.isAdmin && notification.affiliateId !== sessionUserId) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
       await storage.markPublisherNotificationRead(Number(req.params.id));
       res.json({ ok: true });
     } catch (error) {
@@ -2221,9 +2332,19 @@ export async function registerRoutes(
     }
   });
 
-  // Create a new campaign
+  // Create a new campaign (owner of the target brand or admin only)
   app.post("/api/campaigns", async (req, res) => {
     try {
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ error: "Authentication required" });
+      const brandId = req.body?.brandId;
+      if (!brandId) return res.status(400).json({ error: "brandId is required" });
+      const brand = await storage.getBrand(brandId);
+      if (!brand) return res.status(404).json({ error: "Brand not found" });
+      const actor = await storage.getUser(sessionUserId);
+      if (!actor?.isAdmin && brand.ownerId !== sessionUserId) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
       const campaign = await storage.createCampaign(req.body);
       res.status(201).json(campaign);
     } catch (error) {
@@ -2231,10 +2352,19 @@ export async function registerRoutes(
     }
   });
 
-  // Update a campaign
+  // Update a campaign (owner brand or admin only)
   app.patch("/api/campaigns/:id", async (req, res) => {
     try {
-      const campaign = await storage.updateCampaign(req.params.id, req.body);
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ error: "Authentication required" });
+      const existing = await storage.getCampaign(req.params.id);
+      if (!existing) return res.status(404).json({ error: "Campaign not found" });
+      const actor = await storage.getUser(sessionUserId);
+      const brand = await storage.getBrand(existing.brandId);
+      if (!actor?.isAdmin && brand?.ownerId !== sessionUserId) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+      const campaign = await storage.updateCampaign(req.params.id, req.body, existing.brandId);
       if (!campaign) {
         return res.status(404).json({ error: "Campaign not found" });
       }
@@ -2244,10 +2374,19 @@ export async function registerRoutes(
     }
   });
 
-  // Delete a campaign
+  // Delete a campaign (owner brand or admin only)
   app.delete("/api/campaigns/:id", async (req, res) => {
     try {
-      const deleted = await storage.deleteCampaign(req.params.id);
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ error: "Authentication required" });
+      const existing = await storage.getCampaign(req.params.id);
+      if (!existing) return res.status(404).json({ error: "Campaign not found" });
+      const actor = await storage.getUser(sessionUserId);
+      const brand = await storage.getBrand(existing.brandId);
+      if (!actor?.isAdmin && brand?.ownerId !== sessionUserId) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+      const deleted = await storage.deleteCampaign(req.params.id, existing.brandId);
       if (!deleted) {
         return res.status(404).json({ error: "Campaign not found" });
       }
@@ -2274,9 +2413,22 @@ export async function registerRoutes(
     }
   });
 
-  // Create detection job for a video — runs Gemini AI product detection
+  // Create detection job for a video — runs Gemini AI product detection.
+  // Gated: detection triggers paid Gemini vision calls, so only the video's
+  // creator (or an admin) may start it. Unauthenticated/foreign callers are
+  // rejected before any job is created, and a missing video is a clean 404
+  // (not a 500 from the createDetectionJob FK).
   app.post("/api/videos/:id/detections", async (req, res) => {
     try {
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ error: "Authentication required" });
+      const video = await storage.getVideo(req.params.id);
+      if (!video) return res.status(404).json({ error: "Video not found" });
+      const actor = await storage.getUser(sessionUserId);
+      if (!actor?.isAdmin && video.creatorId !== sessionUserId) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+
       const { brandIds, videoTitle, videoDescription } = req.body;
 
       const job = await storage.createDetectionJob({
@@ -2577,9 +2729,15 @@ Identify which products from the catalog are most likely to appear or be feature
   // Publish a video and generate embed code
   app.post("/api/videos/:id/publish", async (req, res) => {
     try {
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ error: "Authentication required" });
       const video = await storage.getVideo(req.params.id);
       if (!video) {
         return res.status(404).json({ error: "Video not found" });
+      }
+      const actor = await storage.getUser(sessionUserId);
+      if (!actor?.isAdmin && video.creatorId !== sessionUserId) {
+        return res.status(403).json({ error: "Forbidden" });
       }
 
       const { widgetConfig } = req.body;
@@ -2795,14 +2953,20 @@ Identify which products from the catalog are most likely to appear or be feature
   // Add affiliate to video campaign
   app.post("/api/videos/:id/affiliates", async (req, res) => {
     try {
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ error: "Authentication required" });
       const validatedData = insertCampaignAffiliateSchema.parse({
         videoId: req.params.id,
         ...req.body,
       });
-      
+
       const video = await storage.getVideo(req.params.id);
       if (!video) {
         return res.status(404).json({ error: "Video not found" });
+      }
+      const actor = await storage.getUser(sessionUserId);
+      if (!actor?.isAdmin && video.creatorId !== sessionUserId) {
+        return res.status(403).json({ error: "Forbidden" });
       }
 
       const assignment = await storage.createCampaignAffiliate(validatedData);
@@ -3043,10 +3207,19 @@ Identify which products from the catalog are most likely to appear or be feature
     }
   });
 
-  // Remove a single item from a playlist
+  // Remove a single item from a playlist (owner or admin only)
   app.delete("/api/playlists/:id/items/:itemId", async (req, res) => {
     try {
-      await storage.removePlaylistItem(Number(req.params.itemId));
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ error: "Authentication required" });
+      const playlistId = Number(req.params.id);
+      const playlist = await storage.getPlaylist(playlistId);
+      if (!playlist) return res.status(404).json({ error: "Playlist not found" });
+      const actor = await storage.getUser(sessionUserId);
+      if (!actor?.isAdmin && playlist.userId !== sessionUserId) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+      await storage.removePlaylistItem(Number(req.params.itemId), playlistId, playlist.userId);
       res.json({ success: true });
     } catch {
       res.status(500).json({ error: "Failed to remove item" });
@@ -3397,14 +3570,22 @@ Identify which products from the catalog are most likely to appear or be feature
     }
   });
 
-  // Redeem reward for video listing
+  // Redeem reward for video listing (owner or admin only)
   app.post("/api/rewards/:id/redeem", async (req, res) => {
     try {
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ error: "Authentication required" });
       const { listingId } = req.body;
       if (!listingId) {
         return res.status(400).json({ error: "Listing ID required" });
       }
-      const reward = await storage.redeemCreatorReward(req.params.id, listingId);
+      const existing = await storage.getCreatorReward(req.params.id);
+      if (!existing) return res.status(404).json({ error: "Reward not found" });
+      const actor = await storage.getUser(sessionUserId);
+      if (!actor?.isAdmin && existing.creatorId !== sessionUserId) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+      const reward = await storage.redeemCreatorReward(req.params.id, listingId, existing.creatorId);
       if (!reward) {
         return res.status(404).json({ error: "Reward not found" });
       }

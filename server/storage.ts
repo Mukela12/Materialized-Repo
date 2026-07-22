@@ -186,8 +186,8 @@ export interface IStorage {
   getCampaigns(brandId: string): Promise<Campaign[]>;
   getCampaign(id: string): Promise<Campaign | undefined>;
   createCampaign(campaign: InsertCampaign): Promise<Campaign>;
-  updateCampaign(id: string, data: Partial<Campaign>): Promise<Campaign | undefined>;
-  deleteCampaign(id: string): Promise<boolean>;
+  updateCampaign(id: string, data: Partial<Campaign>, brandId?: string): Promise<Campaign | undefined>;
+  deleteCampaign(id: string, brandId?: string): Promise<boolean>;
   getCampaignStats(brandId: string): Promise<{
     totalCampaigns: number;
     activeCampaigns: number;
@@ -226,9 +226,10 @@ export interface IStorage {
 
   // Creator Invitations
   getCreatorInvitations(brandId: string): Promise<CreatorInvitation[]>;
+  getCreatorInvitation(id: string): Promise<CreatorInvitation | undefined>;
   createCreatorInvitation(invitation: InsertCreatorInvitation): Promise<CreatorInvitation>;
   createCreatorInvitationsBulk(invitations: InsertCreatorInvitation[]): Promise<CreatorInvitation[]>;
-  updateCreatorInvitationStatus(id: string, status: string): Promise<CreatorInvitation | undefined>;
+  updateCreatorInvitationStatus(id: string, status: string, brandId?: string): Promise<CreatorInvitation | undefined>;
   
   // Affiliate Invitations
   getAffiliateInvitations(inviterId: string): Promise<AffiliateInvitation[]>;
@@ -284,9 +285,10 @@ export interface IStorage {
   
   // Creator Rewards
   getCreatorRewards(creatorId: string): Promise<CreatorReward[]>;
+  getCreatorReward(id: string): Promise<CreatorReward | undefined>;
   getCreatorRewardsSummary(creatorId: string): Promise<{ totalCredits: number; availableCredits: number; redeemedCredits: number; euroValue: number }>;
   createCreatorReward(reward: InsertCreatorReward): Promise<CreatorReward>;
-  redeemCreatorReward(rewardId: string, listingId: string): Promise<CreatorReward | undefined>;
+  redeemCreatorReward(rewardId: string, listingId: string, creatorId?: string): Promise<CreatorReward | undefined>;
   
   // Embed Deployments
   getEmbedDeployment(affiliateId: string, videoId: string, referrerDomain: string, utmCode: string): Promise<EmbedDeployment | undefined>;
@@ -310,6 +312,7 @@ export interface IStorage {
 
   // Publisher Notifications
   getPublisherNotifications(affiliateId: string): Promise<PublisherNotification[]>;
+  getPublisherNotification(id: number): Promise<PublisherNotification | undefined>;
   createPublisherNotification(data: InsertPublisherNotification): Promise<PublisherNotification>;
   markPublisherNotificationRead(id: number): Promise<void>;
   getUnreadNotificationCount(affiliateId: string): Promise<number>;
@@ -340,7 +343,7 @@ export interface IStorage {
   deletePlaylist(id: number, userId: string): Promise<void>;
   getPlaylistItems(playlistId: number): Promise<PlaylistItem[]>;
   addPlaylistItems(items: InsertPlaylistItem[]): Promise<PlaylistItem[]>;
-  removePlaylistItem(id: number): Promise<void>;
+  removePlaylistItem(id: number, playlistId?: number, userId?: string): Promise<void>;
   getUserWishlist(userId: string): Promise<Wishlist[]>;
   addToWishlist(data: InsertWishlist): Promise<Wishlist>;
   removeFromWishlist(userId: string, globalListingId: string): Promise<void>;
@@ -992,15 +995,19 @@ export class MemStorage implements IStorage {
     return newCampaign;
   }
 
-  async updateCampaign(id: string, data: Partial<Campaign>): Promise<Campaign | undefined> {
+  async updateCampaign(id: string, data: Partial<Campaign>, brandId?: string): Promise<Campaign | undefined> {
     const campaign = this.campaigns.get(id);
     if (!campaign) return undefined;
+    if (brandId !== undefined && campaign.brandId !== brandId) return undefined;
     const updated = { ...campaign, ...data, updatedAt: new Date() } as Campaign;
     this.campaigns.set(id, updated);
     return updated;
   }
 
-  async deleteCampaign(id: string): Promise<boolean> {
+  async deleteCampaign(id: string, brandId?: string): Promise<boolean> {
+    const campaign = this.campaigns.get(id);
+    if (!campaign) return false;
+    if (brandId !== undefined && campaign.brandId !== brandId) return false;
     return this.campaigns.delete(id);
   }
 
@@ -1244,9 +1251,14 @@ export class MemStorage implements IStorage {
     return created;
   }
 
-  async updateCreatorInvitationStatus(id: string, status: string): Promise<CreatorInvitation | undefined> {
+  async getCreatorInvitation(id: string): Promise<CreatorInvitation | undefined> {
+    return this.creatorInvitations.get(id);
+  }
+
+  async updateCreatorInvitationStatus(id: string, status: string, brandId?: string): Promise<CreatorInvitation | undefined> {
     const invitation = this.creatorInvitations.get(id);
     if (!invitation) return undefined;
+    if (brandId !== undefined && invitation.brandId !== brandId) return undefined;
     const updated = { ...invitation, status: status as "pending" | "sent" | "accepted" | "declined" };
     this.creatorInvitations.set(id, updated);
     return updated;
@@ -1617,9 +1629,14 @@ export class MemStorage implements IStorage {
     return newReward;
   }
 
-  async redeemCreatorReward(rewardId: string, listingId: string): Promise<CreatorReward | undefined> {
+  async getCreatorReward(id: string): Promise<CreatorReward | undefined> {
+    return this.creatorRewardsMap.get(id);
+  }
+
+  async redeemCreatorReward(rewardId: string, listingId: string, creatorId?: string): Promise<CreatorReward | undefined> {
     const reward = this.creatorRewardsMap.get(rewardId);
     if (!reward) return undefined;
+    if (creatorId !== undefined && reward.creatorId !== creatorId) return undefined;
     const updated = { ...reward, status: "redeemed" as const, redeemedForListingId: listingId, redeemedAt: new Date() };
     this.creatorRewardsMap.set(rewardId, updated);
     return updated;
@@ -1808,6 +1825,9 @@ export class MemStorage implements IStorage {
   async getPublisherNotifications(affiliateId: string): Promise<PublisherNotification[]> {
     return this.publisherNotificationsList.filter(n => n.affiliateId === affiliateId).sort((a, b) => +new Date(b.createdAt!) - +new Date(a.createdAt!));
   }
+  async getPublisherNotification(id: number): Promise<PublisherNotification | undefined> {
+    return this.publisherNotificationsList.find(n => n.id === id);
+  }
   async createPublisherNotification(data: InsertPublisherNotification): Promise<PublisherNotification> {
     const n: PublisherNotification = { id: Date.now(), createdAt: new Date(), ...data } as any;
     this.publisherNotificationsList.push(n);
@@ -1901,6 +1921,10 @@ export class MemStorage implements IStorage {
     return this.playlistsList[idx];
   }
   async deletePlaylist(id: number, userId: string): Promise<void> {
+    // Only wipe items when the playlist is actually owned by userId; otherwise a
+    // caller could delete a victim's items by passing someone else's playlist id.
+    const owned = this.playlistsList.some(p => p.id === id && p.userId === userId);
+    if (!owned) return;
     this.playlistsList = this.playlistsList.filter(p => !(p.id === id && p.userId === userId));
     this.playlistItemsList = this.playlistItemsList.filter(i => i.playlistId !== id);
   }
@@ -1917,7 +1941,17 @@ export class MemStorage implements IStorage {
     this.playlistItemsList.push(...created);
     return created;
   }
-  async removePlaylistItem(id: number): Promise<void> {
+  async removePlaylistItem(id: number, playlistId?: number, userId?: string): Promise<void> {
+    // Defense-in-depth: when a playlist id + owner are supplied, only remove the
+    // item if it belongs to that playlist and the playlist is owned by userId.
+    if (playlistId !== undefined) {
+      if (userId !== undefined) {
+        const owned = this.playlistsList.some(p => p.id === playlistId && p.userId === userId);
+        if (!owned) return;
+      }
+      this.playlistItemsList = this.playlistItemsList.filter(i => !(i.id === id && i.playlistId === playlistId));
+      return;
+    }
     this.playlistItemsList = this.playlistItemsList.filter(i => i.id !== id);
   }
 
@@ -2365,14 +2399,20 @@ export class DatabaseStorage implements IStorage {
     return newCampaign;
   }
 
-  async updateCampaign(id: string, data: Partial<Campaign>): Promise<Campaign | undefined> {
-    const [updated] = await db.update(campaigns).set(data).where(eq(campaigns.id, id)).returning();
+  async updateCampaign(id: string, data: Partial<Campaign>, brandId?: string): Promise<Campaign | undefined> {
+    const where = brandId !== undefined
+      ? and(eq(campaigns.id, id), eq(campaigns.brandId, brandId))
+      : eq(campaigns.id, id);
+    const [updated] = await db.update(campaigns).set(data).where(where).returning();
     return updated;
   }
 
-  async deleteCampaign(id: string): Promise<boolean> {
-    await db.delete(campaigns).where(eq(campaigns.id, id));
-    return true;
+  async deleteCampaign(id: string, brandId?: string): Promise<boolean> {
+    const where = brandId !== undefined
+      ? and(eq(campaigns.id, id), eq(campaigns.brandId, brandId))
+      : eq(campaigns.id, id);
+    const deleted = await db.delete(campaigns).where(where).returning();
+    return deleted.length > 0;
   }
 
   async getCampaignStats(brandId: string): Promise<{ totalCampaigns: number; activeCampaigns: number; totalBudget: number; totalSpent: number; totalRevenue: number; averageROI: number }> {
@@ -2488,8 +2528,16 @@ export class DatabaseStorage implements IStorage {
     return db.insert(creatorInvitations).values(invitations).returning();
   }
 
-  async updateCreatorInvitationStatus(id: string, status: string): Promise<CreatorInvitation | undefined> {
-    const [updated] = await db.update(creatorInvitations).set({ status: status as "pending" | "sent" | "accepted" | "declined" }).where(eq(creatorInvitations.id, id)).returning();
+  async getCreatorInvitation(id: string): Promise<CreatorInvitation | undefined> {
+    const [invitation] = await db.select().from(creatorInvitations).where(eq(creatorInvitations.id, id));
+    return invitation;
+  }
+
+  async updateCreatorInvitationStatus(id: string, status: string, brandId?: string): Promise<CreatorInvitation | undefined> {
+    const where = brandId !== undefined
+      ? and(eq(creatorInvitations.id, id), eq(creatorInvitations.brandId, brandId))
+      : eq(creatorInvitations.id, id);
+    const [updated] = await db.update(creatorInvitations).set({ status: status as "pending" | "sent" | "accepted" | "declined" }).where(where).returning();
     return updated;
   }
 
@@ -2700,12 +2748,20 @@ export class DatabaseStorage implements IStorage {
     return newReward;
   }
 
-  async redeemCreatorReward(rewardId: string, listingId: string): Promise<CreatorReward | undefined> {
+  async getCreatorReward(id: string): Promise<CreatorReward | undefined> {
+    const [reward] = await db.select().from(creatorRewards).where(eq(creatorRewards.id, id));
+    return reward;
+  }
+
+  async redeemCreatorReward(rewardId: string, listingId: string, creatorId?: string): Promise<CreatorReward | undefined> {
+    const where = creatorId !== undefined
+      ? and(eq(creatorRewards.id, rewardId), eq(creatorRewards.creatorId, creatorId))
+      : eq(creatorRewards.id, rewardId);
     const [updated] = await db.update(creatorRewards).set({
       status: "redeemed",
       redeemedForListingId: listingId,
       redeemedAt: new Date(),
-    }).where(eq(creatorRewards.id, rewardId)).returning();
+    }).where(where).returning();
     return updated;
   }
 
@@ -2901,6 +2957,10 @@ export class DatabaseStorage implements IStorage {
       .where(eq(publisherNotifications.affiliateId, affiliateId))
       .orderBy(desc(publisherNotifications.createdAt));
   }
+  async getPublisherNotification(id: number): Promise<PublisherNotification | undefined> {
+    const [n] = await db.select().from(publisherNotifications).where(eq(publisherNotifications.id, id));
+    return n;
+  }
   async createPublisherNotification(data: InsertPublisherNotification): Promise<PublisherNotification> {
     const [n] = await db.insert(publisherNotifications).values(data).returning();
     return n;
@@ -3029,8 +3089,13 @@ export class DatabaseStorage implements IStorage {
     return pl;
   }
   async deletePlaylist(id: number, userId: string): Promise<void> {
+    // Delete the owned playlist first; only wipe its items if a row was actually
+    // removed, so passing a victim's playlist id can't delete their items.
+    const deleted = await db.delete(playlists)
+      .where(and(eq(playlists.id, id), eq(playlists.userId, userId)))
+      .returning();
+    if (deleted.length === 0) return;
     await db.delete(playlistItems).where(eq(playlistItems.playlistId, id));
-    await db.delete(playlists).where(and(eq(playlists.id, id), eq(playlists.userId, userId)));
   }
   async getPlaylistItems(playlistId: number): Promise<PlaylistItem[]> {
     return db.select().from(playlistItems).where(eq(playlistItems.playlistId, playlistId)).orderBy(playlistItems.addedAt);
@@ -3039,7 +3104,18 @@ export class DatabaseStorage implements IStorage {
     if (items.length === 0) return [];
     return db.insert(playlistItems).values(items).returning();
   }
-  async removePlaylistItem(id: number): Promise<void> {
+  async removePlaylistItem(id: number, playlistId?: number, userId?: string): Promise<void> {
+    // Defense-in-depth: when a playlist id + owner are supplied, only remove the
+    // item if it belongs to that playlist and the playlist is owned by userId.
+    if (playlistId !== undefined) {
+      if (userId !== undefined) {
+        const [owned] = await db.select({ id: playlists.id }).from(playlists)
+          .where(and(eq(playlists.id, playlistId), eq(playlists.userId, userId)));
+        if (!owned) return;
+      }
+      await db.delete(playlistItems).where(and(eq(playlistItems.id, id), eq(playlistItems.playlistId, playlistId)));
+      return;
+    }
     await db.delete(playlistItems).where(eq(playlistItems.id, id));
   }
 
