@@ -18,6 +18,7 @@ const allowlist = [
   "p-retry",
   "pg",
   "resend",
+  "@sentry/node",
   "stripe",
   "ws",
   "zod",

@@ -59,6 +59,7 @@ import type Stripe from "stripe";
 import { stripeService } from "./stripeService";
 import { getStripePublishableKey, getUncachableStripeClient } from "./stripeClient";
 import { dispatchStripeEvent } from "./webhookHandlers";
+import { resolveSigningUrl } from "./docusignHelper";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -703,7 +704,11 @@ export async function registerRoutes(
 
       const creator = await storage.getUser(outreach.creatorId);
       const embedCode = `<script src="https://embed.join.materialized.com/player.js" data-video="${outreach.videoId ?? "pending"}" data-brand="${outreach.brandName}"></script>`;
-      const docuSignUrl = process.env.DOCUSIGN_SIGNING_URL ?? "https://app.docusign.com/templates";
+      // When DOCUSIGN_* is unset this returns the exact static fallback
+      // (process.env.DOCUSIGN_SIGNING_URL ?? "https://app.docusign.com/templates");
+      // when configured it mints a real embedded-signing envelope URL. Never throws.
+      const signCompleteUrl = `${req.protocol}://${req.get("host")}/brand-outreach/signed/${outreach.id}`;
+      const docuSignUrl = await resolveSigningUrl(outreach, signCompleteUrl);
 
       if (isEmailConfigured()) {
         await sendBrandAgreementEmail({
@@ -3832,7 +3837,11 @@ Identify which products from the catalog are most likely to appear or be feature
 
       const baseUrl = process.env.BASE_URL ?? req.get("host") ?? "join.materialized.com";
       const subscribeUrl = `https://${baseUrl}/brand`;
-      const docuSignUrl = process.env.DOCUSIGN_SIGNING_URL ?? "https://app.docusign.com/templates";
+      // When DOCUSIGN_* is unset this returns the exact static fallback
+      // (process.env.DOCUSIGN_SIGNING_URL ?? "https://app.docusign.com/templates");
+      // when configured it mints a real embedded-signing envelope URL. Never throws.
+      const signCompleteUrl = `https://${baseUrl}/brand-outreach/signed/${outreach.id}`;
+      const docuSignUrl = await resolveSigningUrl(outreach, signCompleteUrl);
 
       const events = outreach.videoId ? await storage.getAnalyticsEvents(outreach.videoId) : [];
       const videoViews = events.filter(e => e.eventType === "view").length;
