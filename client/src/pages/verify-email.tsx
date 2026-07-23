@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from "react";
 import { useParams, useLocation, Link } from "wouter";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
-import materializedLogo from "@assets/MATERIALIZED_full_logo_1773352270197.png";
+import materializedLogo from "@assets/MTRLZD_Logo_white_transparent.png";
 
 const ROLE_ROUTES: Record<string, string> = {
   creator: "/creator",

@@ -1,5 +1,55 @@
 @import url('https://fonts.cdnfonts.com/css/public-pixel');
 
+@font-face {
+  font-family: 'Aileron';
+  src: url('/fonts/Aileron/Aileron-Regular.otf') format('opentype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Aileron';
+  src: url('/fonts/Aileron/Aileron-Italic.otf') format('opentype');
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Aileron';
+  src: url('/fonts/Aileron/Aileron-Light.otf') format('opentype');
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Aileron';
+  src: url('/fonts/Aileron/Aileron-SemiBold.otf') format('opentype');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Aileron';
+  src: url('/fonts/Aileron/Aileron-Bold.otf') format('opentype');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Aileron';
+  src: url('/fonts/Aileron/Aileron-Heavy.otf') format('opentype');
+  font-weight: 800;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Lekton';
+  src: url('/fonts/Lekton-Regular.otf') format('opentype');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -24,34 +74,39 @@
   --sidebar: 0 0% 96%;
   --sidebar-foreground: 210 7% 28%;
   --sidebar-border: 210 5% 88%;
-  --sidebar-primary: 120 10% 44%;
+  --sidebar-primary: 215 80% 37%;
   --sidebar-primary-foreground: 0 0% 100%;
   --sidebar-accent: 210 5% 92%;
   --sidebar-accent-foreground: 210 7% 28%;
-  --sidebar-ring: 120 10% 44%;
+  --sidebar-ring: 215 80% 37%;
   --popover: 0 0% 100%;
   --popover-foreground: 210 7% 28%;
   --popover-border: 210 5% 85%;
-  --primary: 120 10% 44%;
+  --primary: 215 80% 37%;
   --primary-foreground: 0 0% 100%;
   --secondary: 210 5% 94%;
   --secondary-foreground: 210 7% 28%;
   --muted: 210 5% 92%;
   --muted-foreground: 210 5% 45%;
-  --accent: 120 10% 44%;
+  --accent: 215 80% 37%;
   --accent-foreground: 0 0% 100%;
   --destructive: 0 84% 48%;
   --destructive-foreground: 0 0% 100%;
   --input: 210 5% 85%;
-  --ring: 120 10% 44%;
-  --chart-1: 120 10% 44%;
-  --chart-2: 120 10% 55%;
-  --chart-3: 120 10% 35%;
+  --ring: 215 80% 37%;
+  --chart-1: 215 80% 37%;
+  --chart-2: 215 80% 48%;
+  --chart-3: 215 80% 28%;
   --chart-4: 210 7% 40%;
   --chart-5: 210 7% 50%;
   --font-sans: Open Sans, sans-serif;
   --font-serif: Georgia, serif;
   --font-mono: Menlo, monospace;
+  --font-heading: 'Aileron', sans-serif;
+  --font-accent: 'Lekton', monospace;
+  --cta: 141 22% 25%;
+  --cta-hover: 142 21% 18%;
+  --cta-foreground: 0 0% 100%;
   --radius: .5rem;
   --shadow-2xs: 0px 2px 0px 0px hsl(240 4% 10% / 0.00);
   --shadow-xs: 0px 2px 0px 0px hsl(240 4% 10% / 0.00);
@@ -109,31 +164,34 @@
   --sidebar: 210 7% 10%;
   --sidebar-foreground: 0 0% 94%;
   --sidebar-border: 210 5% 18%;
-  --sidebar-primary: 120 10% 50%;
+  --sidebar-primary: 215 80% 45%;
   --sidebar-primary-foreground: 0 0% 100%;
   --sidebar-accent: 210 7% 18%;
   --sidebar-accent-foreground: 0 0% 94%;
-  --sidebar-ring: 120 10% 50%;
+  --sidebar-ring: 215 80% 45%;
   --popover: 210 7% 14%;
   --popover-foreground: 0 0% 96%;
   --popover-border: 210 5% 24%;
-  --primary: 120 10% 50%;
+  --primary: 215 80% 45%;
   --primary-foreground: 0 0% 100%;
   --secondary: 210 7% 20%;
   --secondary-foreground: 0 0% 94%;
   --muted: 210 5% 20%;
   --muted-foreground: 0 0% 65%;
-  --accent: 120 10% 50%;
+  --accent: 215 80% 45%;
   --accent-foreground: 0 0% 100%;
   --destructive: 0 84% 48%;
   --destructive-foreground: 0 0% 100%;
   --input: 210 5% 28%;
-  --ring: 120 10% 50%;
-  --chart-1: 120 10% 50%;
-  --chart-2: 120 10% 60%;
-  --chart-3: 120 10% 40%;
+  --ring: 215 80% 45%;
+  --chart-1: 215 80% 45%;
+  --chart-2: 215 80% 55%;
+  --chart-3: 215 80% 35%;
   --chart-4: 210 7% 45%;
   --chart-5: 210 7% 55%;
+  --cta: 141 22% 25%;
+  --cta-hover: 142 21% 18%;
+  --cta-foreground: 0 0% 100%;
   --shadow-2xs: 0px 2px 0px 0px hsl(240 4% 95% / 0.00);
   --shadow-xs: 0px 2px 0px 0px hsl(240 4% 95% / 0.00);
   --shadow-sm: 0px 2px 0px 0px hsl(240 4% 95% / 0.00), 0px 1px 2px -1px hsl(240 4% 95% / 0.00);
@@ -179,6 +237,11 @@
 
   body {
     @apply font-sans antialiased bg-background text-foreground;
+  }
+
+  h1 {
+    font-family: var(--font-heading);
+    letter-spacing: -0.055em;
   }
 }
 

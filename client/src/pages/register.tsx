@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import materializedLogo from "@assets/MATERIALIZED_full_logo_1773352270197.png";
+import materializedLogo from "@assets/MTRLZD_Logo_white_transparent.png";
 import { Eye, EyeOff } from "lucide-react";
 import type { CurrentUser } from "@/hooks/useCurrentUser";
 

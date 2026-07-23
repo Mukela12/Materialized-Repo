@@ -81,11 +81,18 @@ export default {
           busy: "rgb(239 68 68)",
           offline: "rgb(156 163 175)",
         },
+        cta: {
+          DEFAULT: "hsl(var(--cta) / <alpha-value>)",
+          hover: "hsl(var(--cta-hover) / <alpha-value>)",
+          foreground: "hsl(var(--cta-foreground) / <alpha-value>)",
+        },
       },
       fontFamily: {
         sans: ["var(--font-sans)"],
         serif: ["var(--font-serif)"],
         mono: ["var(--font-mono)"],
+        heading: ["var(--font-heading)"],
+        accent: ["var(--font-accent)"],
       },
       keyframes: {
         "accordion-down": {

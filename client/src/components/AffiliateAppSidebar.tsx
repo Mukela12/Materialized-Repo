@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import materializedLogo from "@assets/MATERIALIZED_full_logo_1773352270197.png";
+import materializedLogo from "@assets/MTRLZD_Logo_white_transparent.png";
 import {
   Sidebar,
   SidebarContent,
@@ -111,6 +111,7 @@ export function AffiliateAppSidebar({ user }: AffiliateAppSidebarProps) {
           <img
             src={materializedLogo}
             alt="Materialized"
+            className="invert dark:invert-0"
             style={{ height: 40, width: "auto" }}
           />
           <p className="text-xs text-muted-foreground">Affiliate Portal</p>
