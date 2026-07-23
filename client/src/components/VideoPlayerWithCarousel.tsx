@@ -74,7 +74,7 @@ const defaultCarouselConfig: CarouselConfig = {
   showPrice: true,
   showTitle: true,
   buttonLabel: "BUY NOW",
-  buttonColor: "#677A67",
+  buttonColor: "#314d3b",
   buttonTextColor: "#FFFFFF",
 };
 

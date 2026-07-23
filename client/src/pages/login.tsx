@@ -138,7 +138,7 @@ export default function Login() {
           <div className="mt-4 text-center">
             <Link
               href="/forgot-password"
-              className="text-sm text-[#677A67] hover:underline"
+              className="text-sm text-[#1351aa] hover:underline"
               data-testid="link-login-forgot-password"
             >
               Forgot password?

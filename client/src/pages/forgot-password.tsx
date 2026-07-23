@@ -53,8 +53,8 @@ export default function ForgotPassword() {
             <img src={materializedLogo} alt="Materialized" style={{ height: 40, width: "auto" }} />
           </div>
           <div className="bg-card border border-border rounded-2xl p-8 shadow-xl text-center">
-            <div className="w-16 h-16 rounded-full bg-[#677A67]/20 flex items-center justify-center mx-auto mb-4">
-              <svg className="w-8 h-8 text-[#677A67]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="w-16 h-16 rounded-full bg-[#1351aa]/20 flex items-center justify-center mx-auto mb-4">
+              <svg className="w-8 h-8 text-[#1351aa]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
               </svg>
             </div>
@@ -63,7 +63,7 @@ export default function ForgotPassword() {
               If an account exists for <strong className="text-foreground">{submittedEmail}</strong>,
               we've sent a link to reset your password. The link expires in 1 hour.
             </p>
-            <Link href="/login" className="text-sm text-[#677A67] hover:underline" data-testid="link-forgot-back-login">
+            <Link href="/login" className="text-sm text-[#1351aa] hover:underline" data-testid="link-forgot-back-login">
               Back to login
             </Link>
           </div>

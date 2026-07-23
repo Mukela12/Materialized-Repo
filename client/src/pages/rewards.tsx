@@ -65,7 +65,7 @@ export default function RewardsPage() {
             <Coins className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-[#677A67]">
+            <div className="text-2xl font-bold text-[#1351aa]">
               {isLoading ? "..." : summary?.availableCredits || 0}
             </div>
             <p className="text-xs text-muted-foreground">
@@ -136,8 +136,8 @@ export default function RewardsPage() {
                   data-testid={`reward-item-${reward.id}`}
                 >
                   <div className="flex items-center gap-4">
-                    <div className="h-10 w-10 rounded-full bg-[#677A67]/10 flex items-center justify-center">
-                      <Gift className="h-5 w-5 text-[#677A67]" />
+                    <div className="h-10 w-10 rounded-full bg-[#1351aa]/10 flex items-center justify-center">
+                      <Gift className="h-5 w-5 text-[#1351aa]" />
                     </div>
                     <div>
                       <p className="font-medium">{getRewardTypeLabel(reward.rewardType)}</p>
@@ -151,7 +151,7 @@ export default function RewardsPage() {
                   </div>
                   <div className="text-right">
                     <div className="flex items-center gap-2">
-                      <span className="text-lg font-bold text-[#677A67]">
+                      <span className="text-lg font-bold text-[#1351aa]">
                         +{reward.creditsAmount}
                       </span>
                       <span className="text-sm text-muted-foreground">credits</span>

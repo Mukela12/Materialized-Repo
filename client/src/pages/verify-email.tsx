@@ -62,8 +62,8 @@ export default function VerifyEmail() {
         <div className="bg-card border border-border rounded-2xl p-8 shadow-xl text-center">
           {status === "verifying" && (
             <>
-              <div className="w-16 h-16 rounded-full bg-[#677A67]/20 flex items-center justify-center mx-auto mb-4 animate-pulse">
-                <svg className="w-8 h-8 text-[#677A67]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <div className="w-16 h-16 rounded-full bg-[#1351aa]/20 flex items-center justify-center mx-auto mb-4 animate-pulse">
+                <svg className="w-8 h-8 text-[#1351aa]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
               </div>
@@ -84,7 +84,7 @@ export default function VerifyEmail() {
                 Your account is now active. You're automatically logged in.
               </p>
               <Button
-                className="w-full bg-[#677A67] hover:bg-[#556655] text-white"
+                className="w-full bg-[#314d3b] hover:bg-[#24372b] text-white"
                 onClick={() => navigate(ROLE_ROUTES[userRole] || "/creator")}
               >
                 Go to Dashboard
@@ -103,7 +103,7 @@ export default function VerifyEmail() {
               <p className="text-sm text-muted-foreground mb-6">{errorMessage}</p>
               <div className="space-y-3">
                 <Link href="/login">
-                  <Button className="w-full bg-[#677A67] hover:bg-[#556655] text-white">
+                  <Button className="w-full bg-[#314d3b] hover:bg-[#24372b] text-white">
                     Go to Login
                   </Button>
                 </Link>

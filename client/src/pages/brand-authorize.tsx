@@ -45,7 +45,7 @@ export default function BrandAuthorize() {
   if (isLoading) {
     return (
       <div className="min-h-screen bg-[#202120] flex items-center justify-center">
-        <Loader2 className="w-8 h-8 text-[#677A67] animate-spin" />
+        <Loader2 className="w-8 h-8 text-[#1351aa] animate-spin" />
       </div>
     );
   }
@@ -58,7 +58,7 @@ export default function BrandAuthorize() {
           <CardContent className="p-8 text-center">
             {isUsed ? (
               <>
-                <CheckCircle className="w-12 h-12 text-[#677A67] mx-auto mb-4" />
+                <CheckCircle className="w-12 h-12 text-[#1351aa] mx-auto mb-4" />
                 <h1 className="text-white text-xl font-bold mb-2">Already Authorised</h1>
                 <p className="text-white/60 text-sm">
                   This link has already been used. Please check your email for the Materialized Brand Agreement.
@@ -74,7 +74,7 @@ export default function BrandAuthorize() {
               </>
             )}
             <p className="text-white/30 text-xs mt-6">
-              Questions? Visit <a href="https://join.materialized.com" className="text-[#677A67]">join.materialized.com</a>
+              Questions? Visit <a href="https://join.materialized.com" className="text-[#1351aa]">join.materialized.com</a>
             </p>
           </CardContent>
         </Card>
@@ -87,8 +87,8 @@ export default function BrandAuthorize() {
       <div className="min-h-screen bg-[#202120] flex items-center justify-center px-4">
         <Card className="max-w-md w-full bg-[#2a2a2a] border-white/10">
           <CardContent className="p-8 text-center">
-            <div className="w-16 h-16 rounded-full bg-[#677A67]/20 flex items-center justify-center mx-auto mb-6">
-              <CheckCircle className="w-8 h-8 text-[#677A67]" />
+            <div className="w-16 h-16 rounded-full bg-[#1351aa]/20 flex items-center justify-center mx-auto mb-6">
+              <CheckCircle className="w-8 h-8 text-[#1351aa]" />
             </div>
             <h1 className="text-white text-2xl font-bold mb-3">You're all set, {firstName}!</h1>
             <p className="text-white/70 text-sm leading-relaxed mb-6">
@@ -96,8 +96,8 @@ export default function BrandAuthorize() {
               <strong className="text-white"> Materialized Brand Agreement</strong> (via DocuSign).
               Once signed, you'll receive the embeddable code to publish the shoppable video on your website.
             </p>
-            <div className="bg-[#677A67]/10 border border-[#677A67]/20 rounded-lg p-4 mb-6">
-              <p className="text-[#677A67] text-sm font-medium">Next steps:</p>
+            <div className="bg-[#1351aa]/10 border border-[#1351aa]/20 rounded-lg p-4 mb-6">
+              <p className="text-[#1351aa] text-sm font-medium">Next steps:</p>
               <ol className="text-white/60 text-sm mt-2 space-y-1 text-left list-decimal list-inside">
                 <li>Check your inbox for the DocuSign agreement</li>
                 <li>Review and sign the brand commission terms</li>
@@ -106,7 +106,7 @@ export default function BrandAuthorize() {
             </div>
             <p className="text-white/30 text-xs">
               Want full Brand dashboard access?{" "}
-              <a href="/brand" className="text-[#677A67] hover:underline">Subscribe to Materialized →</a>
+              <a href="/brand" className="text-[#1351aa] hover:underline">Subscribe to Materialized →</a>
             </p>
           </CardContent>
         </Card>
@@ -125,8 +125,8 @@ export default function BrandAuthorize() {
         <Card className="bg-[#2a2a2a] border-white/10">
           <CardContent className="p-8">
             <div className="flex items-center gap-3 mb-6">
-              <div className="w-10 h-10 rounded-full bg-[#677A67]/20 flex items-center justify-center">
-                <ShieldCheck className="w-5 h-5 text-[#677A67]" />
+              <div className="w-10 h-10 rounded-full bg-[#1351aa]/20 flex items-center justify-center">
+                <ShieldCheck className="w-5 h-5 text-[#1351aa]" />
               </div>
               <div>
                 <p className="text-white/40 text-xs uppercase tracking-wider">Brand Collaboration Request</p>
@@ -152,7 +152,7 @@ export default function BrandAuthorize() {
 
             {outreach.videoTitle && (
               <div className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-lg p-4 mb-6">
-                <Video className="w-5 h-5 text-[#677A67] shrink-0" />
+                <Video className="w-5 h-5 text-[#1351aa] shrink-0" />
                 <div>
                   <p className="text-white/40 text-xs uppercase tracking-wider">Video</p>
                   <p className="text-white text-sm font-medium">{outreach.videoTitle}</p>
@@ -160,8 +160,8 @@ export default function BrandAuthorize() {
               </div>
             )}
 
-            <div className="bg-[#677A67]/10 border border-[#677A67]/20 rounded-lg p-4 mb-6 text-sm text-white/70 leading-relaxed">
-              <p className="font-medium text-[#677A67] mb-1">What happens when you click below:</p>
+            <div className="bg-[#1351aa]/10 border border-[#1351aa]/20 rounded-lg p-4 mb-6 text-sm text-white/70 leading-relaxed">
+              <p className="font-medium text-[#1351aa] mb-1">What happens when you click below:</p>
               <ol className="list-decimal list-inside space-y-1">
                 <li>We'll send you a <strong className="text-white">Materialized Brand Agreement</strong> via DocuSign</li>
                 <li>The agreement covers video marketplace commission terms</li>
@@ -170,7 +170,7 @@ export default function BrandAuthorize() {
             </div>
 
             <Button
-              className="w-full rounded-full py-6 text-base font-bold bg-[#677A67] hover:bg-[#556655] text-white"
+              className="w-full rounded-full py-6 text-base font-bold bg-[#314d3b] hover:bg-[#24372b] text-white"
               onClick={() => authorizeMutation.mutate()}
               disabled={authorizeMutation.isPending}
               data-testid="button-brand-authorize"
@@ -194,7 +194,7 @@ export default function BrandAuthorize() {
 
             <p className="text-white/30 text-xs text-center mt-4">
               A separate Materialized Brand subscription is required for full dashboard access.{" "}
-              <a href="/brand" className="text-[#677A67]">Learn more →</a>
+              <a href="/brand" className="text-[#1351aa]">Learn more →</a>
             </p>
           </CardContent>
         </Card>

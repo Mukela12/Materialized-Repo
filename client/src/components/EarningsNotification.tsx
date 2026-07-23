@@ -32,7 +32,7 @@ export function CreatorRewardNotification({ visible = true, onDismiss }: Creator
       >
         <div 
           className="flex items-center justify-center w-12 h-12 rounded-full flex-shrink-0"
-          style={{ backgroundColor: "#677A67" }}
+          style={{ backgroundColor: "#1351aa" }}
         >
           <Gift className="w-6 h-6 text-white" />
         </div>

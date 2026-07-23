@@ -52,14 +52,14 @@ export default function BrandKitPage() {
   
   const [newColor, setNewColor] = useState<ColorEntry>({
     name: "",
-    hex: "#677A67",
+    hex: "#1351aa",
     cmyk: { c: 0, m: 0, y: 0, k: 0 }
   });
   const [newFont, setNewFont] = useState<FontEntry>({ name: "", weight: "400" });
   
   const [carouselSettings, setCarouselSettings] = useState({
     buttonFont: "Inter",
-    buttonColor: "#677A67",
+    buttonColor: "#314d3b",
     buttonTextColor: "#FFFFFF",
     cornerRadius: 16,
     backgroundOpacity: 55,
@@ -99,7 +99,7 @@ export default function BrandKitPage() {
       // Set carousel settings from brand kit
       setCarouselSettings({
         buttonFont: brandKit.defaultButtonFont || "Inter",
-        buttonColor: brandKit.defaultButtonColor || "#677A67",
+        buttonColor: brandKit.defaultButtonColor || "#314d3b",
         buttonTextColor: brandKit.defaultButtonTextColor || "#FFFFFF",
         cornerRadius: brandKit.defaultCornerRadius ?? 16,
         backgroundOpacity: brandKit.defaultBackgroundOpacity ?? 55,
@@ -329,7 +329,7 @@ export default function BrandKitPage() {
       return;
     }
     setManualColors([...manualColors, { ...newColor }]);
-    setNewColor({ name: "", hex: "#677A67", cmyk: { c: 0, m: 0, y: 0, k: 0 } });
+    setNewColor({ name: "", hex: "#1351aa", cmyk: { c: 0, m: 0, y: 0, k: 0 } });
   };
 
   const addManualFont = () => {
@@ -581,7 +581,7 @@ export default function BrandKitPage() {
                           hex: e.target.value,
                           cmyk: hexToCmyk(e.target.value)
                         })}
-                        placeholder="#677A67"
+                        placeholder="#1351aa"
                         data-testid="input-color-hex"
                       />
                     </div>

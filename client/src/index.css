@@ -54,10 +54,10 @@
 @tailwind components;
 @tailwind utilities;
 
-/* LIGHT MODE - Dark Charcoal, White, Black with Sage Accent
+/* LIGHT MODE - Dark Charcoal, White, Black with MTRLZD Blue Accent
  * Background: White (#FFFFFF)
  * Foreground: Dark Charcoal (#43484D)
- * Accent: Sage Green (#677A67)
+ * Accent: #1351aa, CTA buttons: #314d3b / #24372b hover
  */
 :root {
   --button-outline: rgba(0,0,0, .10);
@@ -239,7 +239,7 @@
     @apply font-sans antialiased bg-background text-foreground;
   }
 
-  h1 {
+  h1, h2 {
     font-family: var(--font-heading);
     letter-spacing: -0.055em;
   }
