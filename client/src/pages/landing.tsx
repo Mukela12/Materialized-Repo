@@ -31,7 +31,7 @@ const verticalDemoVideo = "https://res.cloudinary.com/dvj7ayoot/video/upload/v17
 import materializedLogo from "@assets/MTRLZD_Logo_white_transparent.png";
 
 const streetStyleVideo = "https://res.cloudinary.com/dvj7ayoot/video/upload/v1775609784/materialized/public/street-style-ss26.mp4";
-const mtrlzdVideoBanner = "/mtrlzd-video-banner.mp4";
+const mtrlzdVideoBanner = "https://res.cloudinary.com/dvj7ayoot/video/upload/v1784819097/materialized/landing/mtrlzd-video-banner.mp4";
 
 const formSchema = z.object({
   role: z.enum(["creator", "brand", "publisher"]),
@@ -1347,7 +1347,7 @@ export default function Landing() {
           className="absolute inset-0 w-full h-full object-cover"
           aria-label="Miro Misljen black dress fashion video"
         >
-          <source src="/miro-misljen-black-dress.mp4" type="video/mp4" />
+          <source src="https://res.cloudinary.com/dvj7ayoot/video/upload/v1784819059/materialized/landing/miro-misljen-black-dress.mp4" type="video/mp4" />
         </video>
         <div className="absolute inset-0 bg-gradient-to-b from-black/65 via-black/25 to-black/70" />
 
