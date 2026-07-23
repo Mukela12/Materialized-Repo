@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import materializedLogo from "@assets/MATERIALIZED_full_logo_1773352270197.png";
+import materializedLogo from "@assets/MTRLZD_Logo_white_transparent.png";
 import {
   LayoutDashboard,
   Package,
@@ -117,7 +117,8 @@ export function BrandAppSidebar({ user }: BrandAppSidebarProps) {
           <img
             src={materializedLogo}
             alt="Materialized"
-            style={{ height: 28, width: "auto", filter: "invert(1)" }}
+            className="invert dark:invert-0"
+            style={{ height: 28, width: "auto" }}
           />
         </div>
 

@@ -26,7 +26,7 @@ import { SiInstagram, SiLinkedin } from "react-icons/si";
 const heroVideo = "https://res.cloudinary.com/dvj7ayoot/video/upload/v1775609692/materialized/landing/hero-video.mp4";
 const discoveryPacksVideo = "https://res.cloudinary.com/dvj7ayoot/video/upload/v1775609709/materialized/landing/discovery-packs.mp4";
 const verticalDemoVideo = "https://res.cloudinary.com/dvj7ayoot/video/upload/v1775609713/materialized/landing/vertical-demo.mp4";
-import materializedLogo from "@assets/MATERIALIZED_full_logo_1773324040022.png";
+import materializedLogo from "@assets/MTRLZD_Logo_white_transparent.png";
 
 const streetStyleVideo = "https://res.cloudinary.com/dvj7ayoot/video/upload/v1775609784/materialized/public/street-style-ss26.mp4";
 
@@ -1271,7 +1271,7 @@ export default function Landing() {
         </motion.div>
 
         <div className="absolute top-0 left-0 right-0 z-20 flex items-center justify-between px-6 py-4">
-          <img src={materializedLogo} alt="Materialized" style={{ height: 140, width: "auto", filter: "invert(1)" }} />
+          <img src={materializedLogo} alt="Materialized" style={{ height: 140, width: "auto" }} />
           <div className="flex items-center gap-3">
             <Link href="/login">
               <Button
@@ -1519,7 +1519,7 @@ export default function Landing() {
       <footer className="py-12 px-4 bg-[#202120] border-t border-white/10">
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-8">
-            <img src={materializedLogo} alt="Materialized" className="h-40 mx-auto" style={{ filter: "invert(1)" }} />
+            <img src={materializedLogo} alt="Materialized" className="h-40 mx-auto" />
           </div>
 
           <div className="max-w-md mx-auto mb-8 space-y-1">
