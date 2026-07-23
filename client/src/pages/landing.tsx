@@ -18,6 +18,8 @@ import starIcon from "@assets/Materialized_Star_icon_1773416195409.png";
 import chromeBlobIcon from "@assets/2Iconography_Icons_1773417096477.png";
 import bagCartImage from "@assets/bag_cart_1773417992382.png";
 import celineBagImage from "@assets/celine_bag_1773420370038.png";
+import iphoneFrameTransparent from "@assets/iphone_frame_transparent.png";
+import tabletFrameTransparent from "@assets/tablet_frame_transparent.png";
 import { COUNTRIES } from "@shared/schema";
 import { Play, ChevronDown, Users, DollarSign, TrendingUp, ShoppingBag, ArrowRight, Star, Smartphone, Monitor, Video, Volume2, VolumeX, CircleUserRound } from "lucide-react";
 import { DemoPopup } from "@/components/DemoPopup";
@@ -29,6 +31,7 @@ const verticalDemoVideo = "https://res.cloudinary.com/dvj7ayoot/video/upload/v17
 import materializedLogo from "@assets/MTRLZD_Logo_white_transparent.png";
 
 const streetStyleVideo = "https://res.cloudinary.com/dvj7ayoot/video/upload/v1775609784/materialized/public/street-style-ss26.mp4";
+const mtrlzdVideoBanner = "/mtrlzd-video-banner.mp4";
 
 const formSchema = z.object({
   role: z.enum(["creator", "brand", "publisher"]),
@@ -398,19 +401,19 @@ function TestimonialCarousel() {
 
 function VideoOrientationSection() {
   return (
-    <section className="py-20 px-4 bg-white dark:bg-[#1a1a1a]">
+    <section className="py-20 px-4 bg-[#00000094]">
       <div className="max-w-6xl mx-auto">
         <motion.h2
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
-          className="md:text-4xl font-bold text-center mb-4 text-[#43484D] text-[24px]"
-         
+          className="md:text-4xl font-bold text-center mb-8 text-white text-[24px] px-[10px]"
         >
-          One Platform, Every Format
+          One Platform,<br />
+          <span style={{ color: "transparent", WebkitTextStroke: "1.5px white" }}>Every Format</span>
         </motion.h2>
         <p className="text-center text-muted-foreground mb-12 max-w-2xl mx-auto">
-          Whether you create vertical Reels or horizontal long-form content, our platform adapts to your style. Materialized offers multiple customization options, including the layout of your product carousel and branded video players
+          Upload your Reels or Film Series for dynamic product carousels on all content formats
         </p>
         <div className="grid md:grid-cols-2 gap-8">
           <motion.div
@@ -418,51 +421,61 @@ function VideoOrientationSection() {
             whileInView={{ opacity: 1, x: 0 }}
             viewport={{ once: true }}
           >
-            <div className="flex justify-center">
-              <div className="relative w-[220px] md:w-[260px]">
+            <div className="flex flex-col items-center gap-0">
+              <div
+                className="relative w-[220px] md:w-[260px]"
+                style={{ aspectRatio: "1024 / 1536" }}
+              >
+                {/* Screen area — inset to match the frame's cutout, clipped edge-to-edge */}
                 <div
-                  className="relative bg-[#1a1a1a] rounded-[3rem] p-3"
-                  style={{
-                    boxShadow: "0 25px 60px rgba(0,0,0,0.4), 0 10px 20px rgba(0,0,0,0.3), 0 0 40px rgba(103,122,103,0.15)",
-                  }}
+                  className="absolute overflow-hidden z-0"
+                  style={{ top: "2.6%", bottom: "3.3%", left: "21.5%", right: "16.6%", borderRadius: "30px" }}
                 >
-                  <div className="absolute top-0 left-1/2 -translate-x-1/2 w-20 h-6 bg-[#1a1a1a] rounded-b-2xl z-20" />
-                  <div className="relative rounded-[2.25rem] overflow-hidden bg-black">
-                    <video
-                      autoPlay
-                      loop
-                      muted
-                      playsInline
-                      className="w-full aspect-[9/16] object-cover"
-                      aria-label="Vertical video demo"
-                    >
-                      <source src={verticalDemoVideo} type="video/mp4" />
-                    </video>
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
-                    {/* Bag product carousel — mid-screen, compact */}
-                    <div className="absolute left-2 right-2 z-10" style={{ top: "52%" }}>
-                      <div className="bg-black/40 backdrop-blur-md rounded-lg px-2 py-1.5 border border-white/10">
-                        <div className="flex items-center gap-1.5">
-                          <div className="w-7 h-7 rounded-md bg-white/10 flex-shrink-0 overflow-hidden">
-                            <img src={bagCartImage} alt="Metallic Chain Handbag" className="w-full h-full object-contain" />
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="text-white/70 text-[7px] leading-tight truncate">Metallic Chain Bag</div>
-                            <div className="text-white font-bold text-[10px] leading-tight">{CURRENCY_SYMBOL}720</div>
-                          </div>
-                          <button className="bg-white/90 text-[#43484D] text-[6.5px] font-black tracking-wide px-1.5 py-1 rounded flex-shrink-0">
-                            BUY NOW
-                          </button>
+                  <video
+                    autoPlay
+                    loop
+                    muted
+                    playsInline
+                    className="w-full h-full object-cover"
+                    aria-label="Vertical video demo"
+                  >
+                    <source src={verticalDemoVideo} type="video/mp4" />
+                  </video>
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
+                  {/* Bag product carousel — bottom of screen */}
+                  <div className="absolute left-2 right-2 z-10" style={{ bottom: 5 }}>
+                    <div className="bg-black/40 backdrop-blur-md rounded-lg px-2 py-1.5 border border-white/10">
+                      <div className="flex items-center gap-1.5">
+                        <div className="w-7 h-7 rounded-md bg-white/10 flex-shrink-0 overflow-hidden">
+                          <img src={bagCartImage} alt="Metallic Chain Handbag" className="w-full h-full object-contain" />
                         </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-white/70 text-[7px] leading-tight truncate">Metallic Chain Bag</div>
+                          <div className="text-white font-bold text-[10px] leading-tight">{CURRENCY_SYMBOL}720</div>
+                        </div>
+                        <button className="bg-white/90 text-[#43484D] text-[6.5px] font-black tracking-wide px-1.5 py-1 rounded flex-shrink-0">
+                          BUY NOW
+                        </button>
                       </div>
                     </div>
-                    <div className="absolute bottom-4 left-4 right-4">
-                      <div className="text-white font-semibold text-sm">Vertical / Reels</div>
-                      <div className="text-white/70 text-xs">9:16 Format</div>
-                    </div>
                   </div>
-                  <div className="absolute bottom-2 left-1/2 -translate-x-1/2 w-28 h-1 bg-white/30 rounded-full" />
                 </div>
+                {/* Transparent iPhone frame overlay */}
+                <img
+                  src={iphoneFrameTransparent}
+                  alt=""
+                  aria-hidden="true"
+                  className="absolute inset-0 w-full h-full z-10 pointer-events-none select-none"
+                  style={{ filter: "drop-shadow(0 25px 60px rgba(0,0,0,0.4)) drop-shadow(0 10px 20px rgba(0,0,0,0.3))" }}
+                />
+              </div>
+              {/* Format label */}
+              <div className="w-[220px] md:w-[260px] px-1 pt-3 flex items-center justify-between">
+                <div>
+                  <div className="text-white font-semibold text-sm">Vertical</div>
+                  <div className="text-white/60 text-xs">9:16</div>
+                </div>
+                <div className="text-white/50 text-[10px] font-bold tracking-widest uppercase">REELS</div>
               </div>
             </div>
           </motion.div>
@@ -473,24 +486,13 @@ function VideoOrientationSection() {
             className="flex justify-center"
           >
             {/* iPad landscape frame */}
-            <div className="w-full max-w-[560px]">
-              <div
-                className="relative rounded-[28px] p-[14px]"
-                style={{
-                  background: "#1a1a1a",
-                  boxShadow: "0 30px 70px rgba(0,0,0,0.45), 0 10px 25px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.08), inset 0 -1px 0 rgba(0,0,0,0.3)",
-                }}
-              >
-                {/* Front camera dot */}
-                <div className="absolute top-[7px] left-1/2 -translate-x-1/2 w-2 h-2 rounded-full bg-[#333] shadow-inner" />
-                {/* Side button (right) */}
-                <div className="absolute right-[-3px] top-[60px] w-[3px] h-8 rounded-r-full bg-[#2a2a2a]" />
-                {/* Volume buttons (left) */}
-                <div className="absolute left-[-3px] top-[50px] w-[3px] h-5 rounded-l-full bg-[#2a2a2a]" />
-                <div className="absolute left-[-3px] top-[78px] w-[3px] h-5 rounded-l-full bg-[#2a2a2a]" />
-
-                {/* Screen */}
-                <div className="relative rounded-[16px] overflow-hidden bg-black" style={{ aspectRatio: "16/10" }}>
+            <div className="flex flex-col items-center gap-0 w-full max-w-[560px]">
+              <div className="relative w-full" style={{ aspectRatio: "1536 / 1024" }}>
+                {/* Screen area — inset to match the frame's cutout, clipped edge-to-edge */}
+                <div
+                  className="absolute overflow-hidden z-0"
+                  style={{ top: "6.0%", bottom: "5.4%", left: "5.3%", right: "4.2%", borderRadius: "30px" }}
+                >
                   <video
                     autoPlay
                     loop
@@ -504,8 +506,8 @@ function VideoOrientationSection() {
                   </video>
                   {/* Subtle screen glare */}
                   <div className="absolute inset-0 bg-gradient-to-br from-white/5 via-transparent to-transparent pointer-events-none" />
-                  {/* Seasonal Leasing carousel card */}
-                  <div className="absolute left-3 right-3 z-10" style={{ top: "55%" }}>
+                  {/* Seasonal Leasing carousel card — bottom of screen */}
+                  <div className="absolute left-3 right-3 z-10" style={{ bottom: 5 }}>
                     <div className="rounded-xl px-3 py-2 border border-white/15" style={{ background: "rgba(0,0,0,0.55)", backdropFilter: "blur(12px)" }}>
                       <div className="flex items-center justify-between gap-3">
                         <div className="min-w-0">
@@ -523,11 +525,23 @@ function VideoOrientationSection() {
                       </div>
                     </div>
                   </div>
-                  <div className="absolute bottom-3 left-4 right-4">
-                    <div className="text-white font-semibold text-sm drop-shadow">Horizontal / YouTube</div>
-                    <div className="text-white/70 text-xs drop-shadow">16:9 Format</div>
-                  </div>
                 </div>
+                {/* Transparent tablet frame overlay */}
+                <img
+                  src={tabletFrameTransparent}
+                  alt=""
+                  aria-hidden="true"
+                  className="absolute inset-0 w-full h-full z-10 pointer-events-none select-none"
+                  style={{ filter: "drop-shadow(0 30px 70px rgba(0,0,0,0.45)) drop-shadow(0 10px 25px rgba(0,0,0,0.3))" }}
+                />
+              </div>
+              {/* Format label */}
+              <div className="w-full px-1 pt-3 flex items-center justify-between">
+                <div>
+                  <div className="text-white font-semibold text-sm">Horizontal</div>
+                  <div className="text-white/60 text-xs">16:9</div>
+                </div>
+                <div className="text-white/50 text-[10px] font-bold tracking-widest uppercase">YOUTUBE</div>
               </div>
             </div>
           </motion.div>
@@ -546,7 +560,7 @@ function ParallaxImageSection() {
   const y = useTransform(scrollYProgress, [0, 1], ["-20%", "20%"]);
 
   return (
-    <section ref={ref} className="relative h-[80vh] overflow-hidden">
+    <section ref={ref} className="relative h-[64vh] overflow-hidden">
       {/* Parallax video layer */}
       <motion.div
         style={{ y }}
@@ -557,10 +571,11 @@ function ParallaxImageSection() {
           loop
           muted
           playsInline
+          preload="auto"
           className="w-full h-full object-cover"
-          aria-label="Street style fashion video"
+          aria-label="Materialized video banner"
         >
-          <source src={streetStyleVideo} type="video/mp4" />
+          <source src={mtrlzdVideoBanner} type="video/mp4" />
         </video>
       </motion.div>
 
@@ -578,16 +593,28 @@ function ParallaxImageSection() {
         >
           Shopifying Creator Content
         </motion.p>
-        <motion.h2
+        <motion.p
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
           transition={{ delay: 0.25 }}
-          className="text-white font-bold leading-tight max-w-2xl"
-          style={{ fontSize: "clamp(18px, 4vw, 36px)" }}
+          className="text-white max-w-3xl text-center pl-[10px] pr-[10px] text-[24px]"
+          style={{ fontFamily: "inherit" }}
         >
-          Buy directly from creator content, music videos, or film series
-        </motion.h2>
+          Buy directly from{" "}
+          <span
+            className="inline-flex items-center overflow-hidden align-middle bg-[#6b8fd6]"
+            style={{ borderRadius: 50, height: 44, width: 230, verticalAlign: "middle", position: "relative", top: -2 }}
+          >
+            <span
+              className="pill-marquee-track font-accent text-white"
+              style={{ fontStyle: "italic", fontSize: 18, whiteSpace: "nowrap", paddingLeft: 16 }}
+            >
+              creator content &nbsp;&nbsp;&nbsp;&nbsp; creator content &nbsp;&nbsp;&nbsp;&nbsp;
+            </span>
+          </span>
+          , music videos, or film series
+        </motion.p>
       </div>
     </section>
   );
@@ -971,8 +998,8 @@ function SignupSection() {
   };
 
   return (
-    <section id="signup" className="py-20 px-4 bg-[#202120]">
-      <div className="max-w-2xl mx-auto">
+    <section id="signup" className="py-20 px-4 bg-[#33415c]">
+      <div className="max-w-5xl mx-auto">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
@@ -981,30 +1008,68 @@ function SignupSection() {
           <h2 className="text-3xl md:text-4xl font-bold text-center mb-4 text-white">
             Join the Revolution
           </h2>
-          <p className="text-center text-white/70 mb-12">
-            Create your free account to see how AI is transforming entertainment & building new wealth today
+          <p className="text-center text-white/70 mb-12 text-lg">
+            Choose your subscription &amp; increase your sales performance
           </p>
 
           {!selectedRole ? (
-            <div className="grid md:grid-cols-3 gap-4">
+            <div className="grid md:grid-cols-3 gap-6">
               {[
-                { role: "creator" as const, title: "Creator", desc: "Import your videos, tag brands, and shopify your video assets in seconds" },
-                { role: "brand" as const, title: "Brand", desc: "Connect your inventory, import your recorded runways or fashion films and Materialized will deliver shoppable videos for your website" },
-                { role: "publisher" as const, title: "Publisher", desc: "Save on production costs! Search our global video library for categorized entertainment, curate a playlist of content that suits your niche, publish and generate a new revenue stream from affiliate royalties" },
+                {
+                  role: "creator" as const,
+                  title: "Creator",
+                  tagline: "Built for Content Creators and Filmmakers",
+                  hoverBg: "rgba(19,81,170,0.22)",
+                  hoverBorder: "rgba(19,81,170,0.7)",
+                  glowColor: "rgba(19,81,170,0.35)",
+                  icon: "🎬",
+                },
+                {
+                  role: "brand" as const,
+                  title: "Brand",
+                  tagline: "Designed for Brands and eCommerce Stores",
+                  hoverBg: "rgba(49,77,59,0.28)",
+                  hoverBorder: "rgba(109,191,126,0.7)",
+                  glowColor: "rgba(107,143,214,0.3)",
+                  icon: "🛍️",
+                },
+                {
+                  role: "publisher" as const,
+                  title: "Publisher",
+                  tagline: "Affiliate benefits for Publishers who repost from the Global Video Library",
+                  hoverBg: "rgba(200,165,74,0.2)",
+                  hoverBorder: "rgba(200,165,74,0.65)",
+                  glowColor: "rgba(2,4,16,0.35)",
+                  icon: "📡",
+                },
               ].map((item) => (
                 <motion.button
                   key={item.role}
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
+                  initial={{ boxShadow: "0 0 0px transparent" }}
+                  whileHover={{
+                    scale: 1.04,
+                    backgroundColor: item.hoverBg,
+                    borderColor: item.hoverBorder,
+                    boxShadow: `0 8px 40px ${item.glowColor}, 0 0 0 1px ${item.hoverBorder}`,
+                  }}
+                  whileTap={{ scale: 0.97 }}
+                  transition={{ duration: 0.18, ease: "easeOut" }}
                   onClick={() => handleRoleSelect(item.role)}
-                  className="p-6 rounded-2xl bg-white/10 backdrop-blur-sm border border-white/20 text-left hover:bg-white/20 transition-colors group"
+                  className="p-8 rounded-3xl backdrop-blur-sm text-left flex flex-col gap-5 group"
+                  style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.15)", minHeight: 220 }}
                   data-testid={`button-role-${item.role}`}
                 >
-                  <div className="text-xl font-semibold text-white mb-2">
-                    {item.title}
+                  <div className="text-3xl">{item.icon}</div>
+                  <div>
+                    <div className="text-2xl font-bold text-white mb-3 tracking-tight" style={{ fontFamily: "'Aileron', sans-serif" }}>
+                      {item.title}
+                    </div>
+                    <div className="text-white/75 text-base leading-relaxed">{item.tagline}</div>
                   </div>
-                  <div className="text-white/60 text-sm">{item.desc}</div>
-                  <ArrowRight className="w-5 h-5 text-[#1351aa] mt-4 opacity-0 group-hover:opacity-100 transition-opacity" />
+                  <div className="mt-auto text-sm font-semibold flex items-center gap-1.5 text-white">
+                    Get started
+                    <ArrowRight className="w-4 h-4 opacity-0 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all" />
+                  </div>
                 </motion.button>
               ))}
             </div>
@@ -1021,7 +1086,7 @@ function SignupSection() {
                 <ChevronDown className="w-4 h-4 rotate-90" />
                 Back to role selection
               </button>
-              <Card className="bg-white/10 backdrop-blur-sm border-white/20 p-6">
+              <Card className="bg-white/10 backdrop-blur-sm border-white/20 p-6" style={{ borderRadius: 50 }}>
                 <Form {...form}>
                   <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
                     <div className="grid grid-cols-2 gap-4">
