@@ -20,6 +20,7 @@ import bagCartImage from "@assets/bag_cart_1773417992382.png";
 import celineBagImage from "@assets/celine_bag_1773420370038.png";
 import iphoneFrameTransparent from "@assets/iphone_frame_transparent.png";
 import tabletFrameTransparent from "@assets/tablet_frame_transparent.png";
+import chromeTabletFrame from "@/assets/chrome_tablet_frame_no_bg.png";
 import { COUNTRIES } from "@shared/schema";
 import { Play, ChevronDown, Users, DollarSign, TrendingUp, ShoppingBag, ArrowRight, Star, Smartphone, Monitor, Video, Volume2, VolumeX, CircleUserRound } from "lucide-react";
 import { DemoPopup } from "@/components/DemoPopup";
@@ -32,6 +33,7 @@ import materializedLogo from "@assets/MTRLZD_Logo_white_transparent.png";
 
 const streetStyleVideo = "https://res.cloudinary.com/dvj7ayoot/video/upload/v1775609784/materialized/public/street-style-ss26.mp4";
 const mtrlzdVideoBanner = "https://res.cloudinary.com/dvj7ayoot/video/upload/v1784819097/materialized/landing/mtrlzd-video-banner.mp4";
+const miroMisljenDressVideo = "https://res.cloudinary.com/dvj7ayoot/video/upload/v1775609824/materialized/public/miro-misljen-dress.mp4";
 
 const formSchema = z.object({
   role: z.enum(["creator", "brand", "publisher"]),
@@ -620,64 +622,9 @@ function ParallaxImageSection() {
   );
 }
 
-function VideoOfTheWeekSection() {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const [activeProduct, setActiveProduct] = useState<number | null>(null);
-
-  const sceneProducts = [
-    {
-      id: 0,
-      name: "Aesop",
-      detail: "Hand & Body Wash",
-      price: `${CURRENCY_SYMBOL}33`,
-      cta: "BUY NOW",
-      href: null,
-      color: "#c8a97e",
-      windows: [{ start: 1, end: 9 }, { start: 25, end: 33 }, { start: 49, end: 57 }],
-    },
-    {
-      id: 1,
-      name: "High Stay Paris",
-      detail: "Corporate Leasing",
-      price: null,
-      cta: "BOOK NOW",
-      href: "https://www.highstay.com",
-      color: "#1351aa",
-      windows: [{ start: 9, end: 17 }, { start: 33, end: 41 }, { start: 57, end: 65 }],
-    },
-    {
-      id: 2,
-      name: "GHD Air Wrap",
-      detail: "Professional Styler",
-      price: `${CURRENCY_SYMBOL}649`,
-      cta: "BUY NOW",
-      href: null,
-      color: "#8a7090",
-      windows: [{ start: 17, end: 25 }, { start: 41, end: 49 }, { start: 65, end: 73 }],
-    },
-  ];
-
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
-    const handleTimeUpdate = () => {
-      const t = video.currentTime;
-      let found: number | null = null;
-      for (const p of sceneProducts) {
-        if (p.windows.some(w => t >= w.start && t < w.end)) { found = p.id; break; }
-      }
-      setActiveProduct(prev => prev !== found ? found : prev);
-    };
-    video.addEventListener("timeupdate", handleTimeUpdate);
-    return () => video.removeEventListener("timeupdate", handleTimeUpdate);
-  }, []);
-
-  const engagementBubbles = [
-    { label: "Clicks", value: "12.4K", top: "10%", left: "5%", delay: 0, size: 90 },
-    { label: "Sales", value: "$8,200", top: "30%", right: "5%", delay: 0.5, size: 100 },
-    { label: "Shares", value: "3.2K", bottom: "20%", left: "10%", delay: 1.0, size: 90 },
-    { label: "ROI", value: "420%", bottom: "10%", right: "10%", delay: 1.5, size: 85 },
-  ];
+function DataAnalyticsSection() {
+  const [miroMuted, setMiroMuted] = useState(true);
+  const miroVideoRef = useRef<HTMLVideoElement>(null);
 
   const chromeBlobs: Array<{
     size: number;
@@ -736,192 +683,174 @@ function VideoOfTheWeekSection() {
   ];
 
   return (
-    <section className="py-20 px-4 bg-white dark:bg-[#1a1a1a]">
-      <div className="max-w-4xl mx-auto">
-        <motion.h2
-          initial={{ opacity: 0, y: 20 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true }}
-          className="md:text-4xl font-bold text-center mb-4 text-[#43484D] dark:text-white text-[22px]"
-         
-        >
-          Video of the Week
-        </motion.h2>
-        <p className="text-center text-muted-foreground mb-12">
-          See how top creators drive engagement with shoppable content
-        </p>
+    <section className="relative min-h-screen overflow-hidden bg-[#1a1a1a]">
+      {/* Chrome blobs */}
+      {chromeBlobs.map((blob, i) => (
         <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          whileInView={{ opacity: 1, scale: 1 }}
-          viewport={{ once: true }}
-          className="relative flex justify-center"
+          key={i}
+          animate={{ x: blob.travelX, y: blob.travelY }}
+          transition={{ duration: blob.travelDuration, repeat: Infinity, ease: "easeInOut", repeatType: "loop" }}
+          className="absolute pointer-events-none select-none"
+          style={{ top: blob.anchor.top, bottom: blob.anchor.bottom, left: blob.anchor.left, right: blob.anchor.right, zIndex: 0 }}
         >
-          {/* Chrome blobs — travel diagonally, spin independently, behind phone + bubbles */}
-          {chromeBlobs.map((blob, i) => (
+          <motion.img
+            src={chromeBlobIcon}
+            alt=""
+            aria-hidden="true"
+            animate={{ rotate: [0, blob.dir * 360] }}
+            transition={{ duration: blob.rotateDuration, repeat: Infinity, ease: "linear" }}
+            style={{ width: blob.size, height: blob.size, opacity: 0.14, display: "block" }}
+          />
+        </motion.div>
+      ))}
+
+      {/* Two-column content */}
+      <div className="relative z-10 flex items-center min-h-screen px-6 pt-20 pb-12">
+        <div className="max-w-6xl mx-auto w-full flex flex-col lg:flex-row items-center gap-10 lg:gap-20">
+
+          {/* Left: Data Analytics text */}
+          <motion.div
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.8 }}
+            className="flex-1 text-center lg:text-left"
+          >
+            <p className="text-[#6b8fd6] text-xs font-semibold tracking-[0.25em] uppercase mb-6">
+              Data &amp; Analytics
+            </p>
+            <h2 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl font-bold text-white mb-6">
+              <TypewriterText />
+            </h2>
+            <p className="text-lg md:text-xl text-white/70 max-w-xl mb-10">
+              The all-in-one platform for creators, brands, and publishers to monetize video content with AI-powered product detection and seamless affiliate tracking.
+            </p>
             <motion.div
-              key={i}
-              animate={{ x: blob.travelX, y: blob.travelY }}
-              transition={{
-                duration: blob.travelDuration,
-                repeat: Infinity,
-                ease: "easeInOut",
-                repeatType: "loop",
-              }}
-              className="absolute pointer-events-none select-none"
-              style={{
-                top: blob.anchor.top,
-                bottom: blob.anchor.bottom,
-                left: blob.anchor.left,
-                right: blob.anchor.right,
-                zIndex: 0,
-              }}
+              whileHover={{ scale: 1.08 }}
+              whileTap={{ scale: 0.97 }}
+              transition={{ type: "spring", stiffness: 300, damping: 18 }}
+              className="inline-flex"
             >
-              <motion.img
-                src={chromeBlobIcon}
-                alt=""
-                aria-hidden="true"
-                animate={{ rotate: [0, blob.dir * 360] }}
-                transition={{
-                  duration: blob.rotateDuration,
-                  repeat: Infinity,
-                  ease: "linear",
-                }}
-                style={{
-                  width: blob.size,
-                  height: blob.size,
-                  opacity: 0.22,
-                  mixBlendMode: "multiply",
-                  display: "block",
-                }}
-              />
+              <Button
+                onClick={() => document.getElementById("signup")?.scrollIntoView({ behavior: "smooth" })}
+                size="lg"
+                className="text-white font-semibold rounded-full border-0"
+                style={{ paddingLeft: "30px", paddingRight: "30px", paddingTop: "15px", paddingBottom: "15px", background: "#1351aa47", backdropFilter: "blur(8px)" }}
+                data-testid="button-analytics-cta"
+              >
+                Try Now
+              </Button>
             </motion.div>
-          ))}
+          </motion.div>
 
-          {/* Mobile Phone Frame */}
-          <div className="relative w-[280px] md:w-[320px]" style={{ zIndex: 1 }}>
-            {/* Phone bezel */}
-            <div className="relative bg-[#1a1a1a] rounded-[3rem] p-3 shadow-2xl">
-              {/* Notch */}
-              <div className="absolute top-0 left-1/2 -translate-x-1/2 w-24 h-7 bg-[#1a1a1a] rounded-b-2xl z-20" />
-              {/* Screen */}
-              <div className="relative rounded-[2.25rem] overflow-hidden bg-black">
-                <video
-                  ref={videoRef}
-                  autoPlay
-                  loop
-                  muted
-                  playsInline
-                  className="w-full aspect-[9/16] object-cover"
-                  aria-label="Discovery Packs video"
+          {/* Right: Miro Misljen product video in tablet */}
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            whileInView={{ opacity: 1, scale: 1 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.9, delay: 0.2 }}
+            className="flex-1 flex justify-center overflow-hidden px-4 sm:px-0"
+          >
+            <div className="relative w-full max-w-[520px] mx-auto overflow-hidden">
+              {/* Chrome tablet frame, rotated to vertical/portrait orientation, enlarged 1.5x */}
+              <div
+                className="relative mx-auto origin-top scale-[0.58] sm:scale-[0.78] lg:scale-100 -mb-[278px] sm:-mb-[146px] lg:mb-0"
+                style={{ width: 450, height: 663 }}
+              >
+                {/* Frame graphic (landscape source image, rotated to appear portrait) */}
+                <div
+                  className="absolute top-1/2 left-1/2 pointer-events-none select-none"
+                  style={{ width: 663, height: 450, transform: "translate(-50%, -50%) rotate(-90deg)" }}
                 >
-                  <source src={discoveryPacksVideo} type="video/mp4" />
-                </video>
-
-                {/* Timed product bubbles */}
-                <AnimatePresence mode="wait">
-                  {activeProduct !== null && (() => {
-                    const p = sceneProducts[activeProduct];
-                    return (
-                      <motion.div
-                        key={p.id}
-                        initial={{ opacity: 0, y: 18, scale: 0.92 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        exit={{ opacity: 0, y: -10, scale: 0.95 }}
-                        transition={{ type: "spring", stiffness: 340, damping: 28 }}
-                        className="absolute left-2.5 right-2.5 z-10"
-                        style={{ bottom: "68px" }}
+                  <img
+                    src={chromeTabletFrame}
+                    alt=""
+                    aria-hidden="true"
+                    className="absolute inset-0 w-full h-full"
+                    style={{ objectFit: "fill", filter: "drop-shadow(0 50px 120px rgba(0,0,0,0.45)) drop-shadow(0 15px 40px rgba(0,0,0,0.3))" }}
+                  />
+                </div>
+                {/* Video with product carousel fitted into the frame's screen area */}
+                <div
+                  className="absolute overflow-hidden bg-black"
+                  style={{ left: "8.98%", top: "6.51%", width: "81.64%", height: "86.13%", borderRadius: 30 }}
+                >
+                  <button
+                    onClick={() => {
+                      const v = miroVideoRef.current;
+                      if (!v) return;
+                      const next = !miroMuted;
+                      v.muted = next;
+                      setMiroMuted(next);
+                    }}
+                    className="absolute top-3 left-3 z-30 bg-black/50 hover:bg-black/70 text-white rounded-full p-2 transition-colors backdrop-blur-sm"
+                    data-testid="button-miro-audio-toggle"
+                    title={miroMuted ? "Enable audio" : "Mute"}
+                  >
+                    {miroMuted ? <VolumeX className="h-3.5 w-3.5" /> : <Volume2 className="h-3.5 w-3.5" />}
+                  </button>
+                  <video
+                    ref={miroVideoRef}
+                    src={miroMisljenDressVideo}
+                    autoPlay
+                    loop
+                    playsInline
+                    muted={miroMuted}
+                    className="w-full h-full object-cover"
+                    data-testid="video-miro-misljen"
+                    onLoadedMetadata={(e) => {
+                      const v = e.currentTarget;
+                      v.currentTime = 3;
+                      v.play().catch(() => {});
+                    }}
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-br from-white/4 via-transparent to-transparent pointer-events-none" />
+                  {/* Product carousel card, fitted inside the video/frame */}
+                  <div className="absolute bottom-3 right-3 z-30">
+                    <motion.div
+                      animate={{ y: [0, -10, 0] }}
+                      transition={{ duration: 4.5, repeat: Infinity, ease: "easeInOut" }}
+                    >
+                      <a
+                        href="https://www.etsy.com/listing/4438945876/mixed-media-deconstructed-patchwork?ls=s&ga_order=most_relevant&ga_search_type=all&ga_view_type=gallery&ga_search_query=miro+misljen&ref=sr_gallery-1-7"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block no-underline"
+                        style={{ width: "clamp(148px, 18vw, 196px)" }}
+                        data-testid="link-miro-product-card"
                       >
                         <div
-                          className="rounded-2xl px-3 py-2 flex items-center gap-2.5"
+                          className="rounded-2xl overflow-hidden"
                           style={{
-                            background: "rgba(0,0,0,0.55)",
-                            backdropFilter: "blur(12px)",
-                            border: `1px solid ${p.color}55`,
-                            boxShadow: `0 0 12px ${p.color}33`,
+                            background: "rgba(0,0,0,0.52)",
+                            backdropFilter: "blur(14px)",
+                            border: "1px solid rgba(255,255,255,0.13)",
+                            boxShadow: "0 24px 60px rgba(0,0,0,0.45), 0 0 0 0.5px rgba(255,255,255,0.06)",
                           }}
                         >
-                          {/* Colour dot */}
-                          <div
-                            className="w-2 h-2 rounded-full flex-shrink-0"
-                            style={{ background: p.color }}
-                          />
-                          <div className="flex-1 min-w-0">
-                            <div className="text-white font-semibold text-[10px] leading-tight truncate">{p.name}</div>
-                            <div className="text-white/55 text-[8px] leading-tight">{p.detail}</div>
+                          <div className="p-3 space-y-2.5">
+                            <div className="space-y-0.5">
+                              <div className="text-white/45 text-[7.5px] uppercase tracking-widest font-medium">MIRO MISLJEN</div>
+                              <div className="text-white text-[11px] font-semibold leading-tight">Deconstructed Patchwork Dress</div>
+                              <div className="text-white font-bold text-base leading-tight">{CURRENCY_SYMBOL}1,129</div>
+                            </div>
+                            <div
+                              className="w-full text-center text-[8.5px] font-black tracking-widest text-[#1a1a1a] py-2 rounded-xl"
+                              style={{ background: "rgba(255,255,255,0.92)" }}
+                            >
+                              BUY NOW
+                            </div>
                           </div>
-                          {p.price && (
-                            <div className="text-white font-bold text-xs flex-shrink-0">{p.price}</div>
-                          )}
-                          {p.href ? (
-                            <a
-                              href={p.href}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="flex-shrink-0 text-[7px] font-black tracking-wide px-2 py-1 rounded-lg text-white"
-                              style={{ background: p.color }}
-                            >
-                              {p.cta}
-                            </a>
-                          ) : (
-                            <button
-                              className="flex-shrink-0 text-[7px] font-black tracking-wide px-2 py-1 rounded-lg text-white"
-                              style={{ background: p.color }}
-                            >
-                              {p.cta}
-                            </button>
-                          )}
                         </div>
-                      </motion.div>
-                    );
-                  })()}
-                </AnimatePresence>
-
-                {/* Video overlay info */}
-                <div className="absolute bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black/80 to-transparent">
-                  <div className="text-white font-semibold text-sm">Discovery Packs</div>
-                  <div className="text-white/70 text-xs">@join.materialized</div>
+                      </a>
+                    </motion.div>
+                  </div>
                 </div>
               </div>
-              {/* Home indicator */}
-              <div className="absolute bottom-2 left-1/2 -translate-x-1/2 w-32 h-1 bg-white/30 rounded-full" />
             </div>
-          </div>
-          {engagementBubbles.map((bubble, index) => (
-            <motion.div
-              key={bubble.label}
-              initial={{ opacity: 0, scale: 0 }}
-              whileInView={{ opacity: 1, scale: 1 }}
-              viewport={{ once: true }}
-              whileHover={{
-                scale: [1, 1.2, 1],
-                transition: {
-                  duration: 0.6,
-                  repeat: Infinity,
-                  ease: "easeInOut",
-                },
-              }}
-              transition={{
-                delay: bubble.delay,
-                type: "spring",
-                stiffness: 200,
-              }}
-              className="absolute bg-white shadow-lg flex flex-col items-center justify-center cursor-pointer"
-              style={{
-                top: bubble.top,
-                left: bubble.left,
-                right: bubble.right,
-                bottom: bubble.bottom,
-                width: bubble.size,
-                height: bubble.size,
-                borderRadius: "50%",
-                zIndex: 2,
-              }}
-            >
-              <div className="text-base font-bold text-[#43484D] leading-tight">{bubble.value}</div>
-              <div className="text-[10px] text-muted-foreground leading-tight">{bubble.label}</div>
-            </motion.div>
-          ))}
-        </motion.div>
+          </motion.div>
+
+        </div>
       </div>
     </section>
   );
@@ -1585,7 +1514,7 @@ export default function Landing() {
         className="overflow-hidden relative"
         style={{ borderRadius: 50, background: "#1a1a1a", boxShadow: "0 20px 70px rgba(0,0,0,0.55), 0 6px 20px rgba(0,0,0,0.3)" }}
       >
-        <VideoOfTheWeekSection />
+        <DataAnalyticsSection />
       </div>
 
       </div>
