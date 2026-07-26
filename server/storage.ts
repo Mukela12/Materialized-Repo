@@ -243,7 +243,7 @@ export interface IStorage {
   getCampaignAffiliatesByUser(affiliateId: string): Promise<CampaignAffiliate[]>;
   createCampaignAffiliate(assignment: InsertCampaignAffiliate): Promise<CampaignAffiliate>;
   updateCampaignAffiliateStats(id: string, stats: Partial<CampaignAffiliate>): Promise<CampaignAffiliate | undefined>;
-  getAffiliatePublishersAnalytics(): Promise<{
+  getAffiliatePublishersAnalytics(creatorId?: string): Promise<{
     id: string;
     affiliateId: string;
     affiliateName: string;
@@ -1356,7 +1356,7 @@ export class MemStorage implements IStorage {
     return updated;
   }
 
-  async getAffiliatePublishersAnalytics(): Promise<{
+  async getAffiliatePublishersAnalytics(creatorId?: string): Promise<{
     id: string;
     affiliateId: string;
     affiliateName: string;
@@ -1382,7 +1382,10 @@ export class MemStorage implements IStorage {
     for (const ca of this.campaignAffiliates.values()) {
       const user = this.users.get(ca.affiliateId);
       if (!user) continue;
-      
+      // Scope to the creator's own videos when a creatorId is supplied (see the
+      // DatabaseStorage implementation for why this matters).
+      if (creatorId && this.videos.get(ca.videoId)?.creatorId !== creatorId) continue;
+
       const existing = affiliateMap.get(ca.affiliateId);
       if (existing) {
         existing.totalClicks += ca.totalClicks || 0;
@@ -2587,7 +2590,11 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
-  async getAffiliatePublishersAnalytics(): Promise<{
+  // Publishers who reposted videos, aggregated per publisher. `creatorId` scopes the
+  // result to publishers reposting THAT creator's videos — without it a creator would
+  // see every publisher on the platform (name + email included). Only an admin may
+  // omit the scope.
+  async getAffiliatePublishersAnalytics(creatorId?: string): Promise<{
     id: string;
     affiliateId: string;
     affiliateName: string;
@@ -2611,6 +2618,8 @@ export class DatabaseStorage implements IStorage {
       })
       .from(campaignAffiliates)
       .leftJoin(users, eq(campaignAffiliates.affiliateId, users.id))
+      .innerJoin(videos, eq(campaignAffiliates.videoId, videos.id))
+      .where(creatorId ? eq(videos.creatorId, creatorId) : undefined)
       .groupBy(campaignAffiliates.affiliateId, users.displayName, users.email);
 
     return results.map(r => ({

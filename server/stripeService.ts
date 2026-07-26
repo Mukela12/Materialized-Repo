@@ -103,6 +103,10 @@ export class StripeService {
     });
   }
 
+  /**
+   * `amount` is in MAJOR UNITS (e.g. 45.00 = €45.00) — it is multiplied by 100 here.
+   * Never pass cents; doing so overcharges by 100x.
+   */
   async createPaymentIntent(amount: number, currency: string = getPlatformCurrency(), metadata?: Record<string, string>) {
     const stripe = await getUncachableStripeClient();
     return await stripe.paymentIntents.create({
@@ -110,6 +114,20 @@ export class StripeService {
       currency,
       metadata,
     });
+  }
+
+  /**
+   * Fetch a PaymentIntent so the server can confirm a payment really succeeded
+   * instead of trusting a client-supplied id. Returns null if it can't be read.
+   */
+  async retrievePaymentIntent(paymentIntentId: string) {
+    try {
+      const stripe = await getUncachableStripeClient();
+      return await stripe.paymentIntents.retrieve(paymentIntentId);
+    } catch (error) {
+      console.error("[Stripe] retrievePaymentIntent failed:", (error as Error)?.message);
+      return null;
+    }
   }
 
   async createConnectAccount(email: string, userId: string) {

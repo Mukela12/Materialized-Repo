@@ -1042,16 +1042,25 @@ export async function registerRoutes(
     }
   });
 
-  // Get affiliate publishers analytics with sorting
+  // Get affiliate publishers analytics with sorting. Returns publisher names and
+  // email addresses, so it must be authenticated AND scoped: a creator only sees
+  // publishers who reposted their own videos. Admins see the whole platform.
   app.get("/api/analytics/affiliate-publishers", async (req, res) => {
     try {
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ error: "Authentication required" });
+      const actor = await storage.getUser(sessionUserId);
+      if (!actor) return res.status(401).json({ error: "User not found" });
+
       const { sortBy = "earnings", order = "desc" } = req.query;
       const validSortFields = ["earnings", "clicks", "conversions", "revenue", "conversionRate"];
       const sortField = validSortFields.includes(sortBy as string) ? sortBy as string : "earnings";
       const sortOrder = order === "asc" ? "asc" : "desc";
-      
-      // Get all campaign affiliates with user info
-      const affiliatePublishers = await storage.getAffiliatePublishersAnalytics();
+
+      // Get campaign affiliates with user info, scoped to the caller unless admin
+      const affiliatePublishers = await storage.getAffiliatePublishersAnalytics(
+        actor.isAdmin ? undefined : sessionUserId,
+      );
       
       // Sort based on the requested field
       const sorted = [...affiliatePublishers].sort((a, b) => {
@@ -1218,8 +1227,9 @@ export async function registerRoutes(
     }
   });
 
-  // Get all subscriber intakes (admin)
-  app.get("/api/subscriber-intakes", async (req, res) => {
+  // Get all subscriber intakes. Returns the full signup list (name, email, social
+  // handles, city) — admin only.
+  app.get("/api/subscriber-intakes", requireAdmin, async (req, res) => {
     try {
       const intakes = await storage.getSubscriberIntakes();
       res.json(intakes);
@@ -3089,12 +3099,29 @@ Identify which products from the catalog are most likely to appear or be feature
     }
   });
 
-  // Confirm library listing payment
+  // Confirm library listing payment. Must be the listing's owner, and the payment
+  // is verified against Stripe — never trust the client to say it paid.
   app.post("/api/library/:id/confirm-payment", async (req, res) => {
     try {
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ error: "Authentication required" });
       const listing = await storage.getGlobalVideoListing(req.params.id);
       if (!listing) {
         return res.status(404).json({ error: "Listing not found" });
+      }
+      const actor = await storage.getUser(sessionUserId);
+      if (!actor?.isAdmin && listing.creatorId !== sessionUserId) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+
+      // The listing's PaymentIntent was recorded when the listing was created;
+      // confirm with Stripe that it actually succeeded before publishing.
+      if (!listing.stripePaymentIntentId) {
+        return res.status(400).json({ error: "No payment on record for this listing" });
+      }
+      const intent = await stripeService.retrievePaymentIntent(listing.stripePaymentIntentId);
+      if (!intent || intent.status !== "succeeded") {
+        return res.status(402).json({ error: "Payment not completed" });
       }
 
       await storage.updateGlobalVideoListing(listing.id, {
@@ -3248,10 +3275,12 @@ Identify which products from the catalog are most likely to appear or be feature
       const items = await storage.getPlaylistItems(playlistId);
       if (items.length === 0) return res.status(400).json({ error: "Playlist has no videos" });
 
-      const LICENSE_FEE_PER_VIDEO = 4500; // €45.00 in cents
-      const totalCents = items.length * LICENSE_FEE_PER_VIDEO;
+      // createPaymentIntent takes MAJOR UNITS (it multiplies by 100 internally).
+      // This previously passed cents, which billed 100x — €4,500 for one video.
+      const LICENSE_FEE_PER_VIDEO = 45.0; // €45.00
+      const totalAmount = items.length * LICENSE_FEE_PER_VIDEO;
 
-      const paymentIntent = await stripeService.createPaymentIntent(totalCents, "eur", {
+      const paymentIntent = await stripeService.createPaymentIntent(totalAmount, "eur", {
         playlistId: String(playlistId),
         userId: user.id,
         videoCount: String(items.length),
@@ -3260,14 +3289,14 @@ Identify which products from the catalog are most likely to appear or be feature
       const updated = await storage.updatePlaylist(playlistId, {
         status: "pending_payment",
         stripePaymentIntentId: paymentIntent.id,
-        licenseFeeTotal: (totalCents / 100).toFixed(2),
+        licenseFeeTotal: totalAmount.toFixed(2),
       });
 
       res.json({
         clientSecret: paymentIntent.client_secret,
         paymentIntentId: paymentIntent.id,
-        totalCents,
-        totalEur: (totalCents / 100).toFixed(2),
+        totalCents: Math.round(totalAmount * 100),
+        totalEur: totalAmount.toFixed(2),
         videoCount: items.length,
         playlist: updated,
       });
@@ -3356,15 +3385,33 @@ Identify which products from the catalog are most likely to appear or be feature
     }
   });
 
-  // Confirm license purchase payment
+  // Confirm license purchase payment. Must be the buyer, and the payment is
+  // verified against Stripe — previously any anonymous caller could mark any
+  // purchase "paid" with a client-supplied id, i.e. free licences.
   app.post("/api/purchases/:id/confirm-payment", async (req, res) => {
     try {
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ error: "Authentication required" });
       const purchase = await storage.getVideoLicensePurchase(req.params.id);
       if (!purchase) {
         return res.status(404).json({ error: "Purchase not found" });
       }
+      const actor = await storage.getUser(sessionUserId);
+      if (!actor?.isAdmin && purchase.affiliateId !== sessionUserId) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
 
-      await storage.updateVideoLicensePurchaseStatus(purchase.id, "paid", req.body.paymentIntentId);
+      // Verify against Stripe using the intent recorded on the purchase, not
+      // whatever id the client sent.
+      if (!purchase.stripePaymentIntentId) {
+        return res.status(400).json({ error: "No payment on record for this purchase" });
+      }
+      const intent = await stripeService.retrievePaymentIntent(purchase.stripePaymentIntentId);
+      if (!intent || intent.status !== "succeeded") {
+        return res.status(402).json({ error: "Payment not completed" });
+      }
+
+      await storage.updateVideoLicensePurchaseStatus(purchase.id, "paid", purchase.stripePaymentIntentId);
 
       // Get listing and video for embed code generation
       const listing = await storage.getGlobalVideoListing(purchase.globalListingId);
