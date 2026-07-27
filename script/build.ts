@@ -54,7 +54,14 @@ async function buildAll() {
   });
 }
 
-buildAll().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+buildAll()
+  .then(() => {
+    // vite/esbuild leave background service daemons running, which keep Node's
+    // event loop alive — without this the process hangs indefinitely after the
+    // artifacts are written (and any CI that waits for it stalls until timeout).
+    process.exit(0);
+  })
+  .catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
