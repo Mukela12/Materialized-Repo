@@ -1,4 +1,5 @@
 import { CURRENCY_SYMBOL } from "@/lib/currency";
+import { LICENSE_FEE_PER_VIDEO } from "@shared/pricing";
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -9,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { ListVideo, Plus, Loader2, CheckCircle2, CreditCard, Save, Euro, Film } from "lucide-react";
+import { ListVideo, Plus, Loader2, CheckCircle2, CreditCard, Save, DollarSign, Film } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 
@@ -25,7 +26,7 @@ const PLATFORMS = [
   { value: "other",     label: "Other" },
 ];
 
-const LICENSE_FEE = 45;
+const LICENSE_FEE = LICENSE_FEE_PER_VIDEO;
 
 type PlaylistEntry = { id: number; name: string; description: string | null; itemCount: number; status?: string };
 type Step = "form" | "payment" | "done";
@@ -95,7 +96,7 @@ export function AddToPlaylistModal({ open, onClose, selectedListingIds }: Props)
       const res = await apiRequest("POST", `/api/playlists/${playlistId}/checkout`, {});
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Checkout failed");
-      setPaymentTotal(data.totalEur);
+      setPaymentTotal(data.total ?? data.totalEur);
       return data;
     },
     onSuccess: () => {
@@ -333,7 +334,7 @@ export function AddToPlaylistModal({ open, onClose, selectedListingIds }: Props)
               {/* Licensing cost summary */}
               <div className="rounded-xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 p-3 space-y-1.5">
                 <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-700 dark:text-amber-400">
-                  <Euro className="h-3.5 w-3.5" />
+                  <DollarSign className="h-3.5 w-3.5" />
                   Licensing Fee
                 </div>
                 <div className="flex justify-between items-center text-sm">

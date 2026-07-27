@@ -34,7 +34,7 @@ async function loginUser(page: Page, email: string, password: string, redirectPa
 
 async function getCheckoutSession(
   page: Page,
-  plan: 'starter' | 'pro',
+  plan: 'creator' | 'starter' | 'pro',
   role: 'creator' | 'brand'
 ): Promise<{ url: string; sessionId: string }> {
   const endpoint = role === 'creator'

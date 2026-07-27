@@ -1,6 +1,7 @@
 import { randomUUID } from "crypto";
 import { eq, desc, sql, and, inArray } from "drizzle-orm";
 import { db } from "./db";
+import { LICENSE_FEE_DECIMAL } from "@shared/pricing";
 import {
   type User, type InsertUser,
   type Brand, type InsertBrand,
@@ -1439,7 +1440,7 @@ export class MemStorage implements IStorage {
       id,
       videoId: listing.videoId,
       creatorId: listing.creatorId,
-      licenseFee: listing.licenseFee ?? "45.00",
+      licenseFee: listing.licenseFee ?? LICENSE_FEE_DECIMAL,
       publishStatus: "unpublished",
       stripePaymentIntentId: null,
       listingTitle: listing.listingTitle ?? null,
@@ -2748,7 +2749,7 @@ export class DatabaseStorage implements IStorage {
     const totalCredits = rewards.reduce((sum, r) => sum + (r.creditsAmount || 0), 0);
     const redeemedCredits = rewards.filter(r => r.status === "redeemed").reduce((sum, r) => sum + (r.creditsAmount || 0), 0);
     const availableCredits = rewards.filter(r => r.status === "credited").reduce((sum, r) => sum + (r.creditsAmount || 0), 0);
-    const euroValue = availableCredits; // 1 credit = €1
+    const euroValue = availableCredits; // 1 credit = 1 unit of the platform currency ($1)
     return { totalCredits, availableCredits, redeemedCredits, euroValue };
   }
 

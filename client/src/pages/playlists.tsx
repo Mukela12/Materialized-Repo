@@ -1,4 +1,5 @@
 import { CURRENCY_SYMBOL } from "@/lib/currency";
+import { LICENSE_FEE_PER_VIDEO } from "@shared/pricing";
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -137,7 +138,7 @@ export default function PlaylistsPage() {
       return data;
     },
     onSuccess: (data) => {
-      setCheckoutTotal(data.totalEur);
+      setCheckoutTotal(data.total ?? data.totalEur);
       setCheckoutCount(data.videoCount);
       queryClient.invalidateQueries({ queryKey: ["/api/playlists"] });
       queryClient.invalidateQueries({ queryKey: ["/api/playlists", openPlaylistId] });
@@ -293,7 +294,7 @@ export default function PlaylistsPage() {
                 {currentStatus === "pending_payment" && (detail?.licenseFeeTotal || checkoutTotal) && (
                   <>
                     <p className="text-sm text-muted-foreground">
-                      Payment pending for {detail?.itemCount ?? checkoutCount} video{(detail?.itemCount ?? checkoutCount) !== 1 ? "s" : ""} at {CURRENCY_SYMBOL}45 each.
+                      Payment pending for {detail?.itemCount ?? checkoutCount} video{(detail?.itemCount ?? checkoutCount) !== 1 ? "s" : ""} at {CURRENCY_SYMBOL}{LICENSE_FEE_PER_VIDEO} each.
                     </p>
                     <Button
                       className="w-full"
@@ -313,7 +314,7 @@ export default function PlaylistsPage() {
                 {currentStatus === "draft" && !checkoutTotal && (
                   <>
                     <p className="text-sm text-muted-foreground">
-                      License fee: {CURRENCY_SYMBOL}45 per video × {detail?.itemCount ?? 0} videos = <strong>{CURRENCY_SYMBOL}{(detail?.itemCount ?? 0) * 45}</strong>
+                      License fee: {CURRENCY_SYMBOL}{LICENSE_FEE_PER_VIDEO} per video × {detail?.itemCount ?? 0} videos = <strong>{CURRENCY_SYMBOL}{(detail?.itemCount ?? 0) * LICENSE_FEE_PER_VIDEO}</strong>
                     </p>
                     <Button
                       className="w-full"
@@ -324,7 +325,7 @@ export default function PlaylistsPage() {
                       {checkoutMutation.isPending
                         ? <Loader2 className="h-4 w-4 animate-spin mr-2" />
                         : <CreditCard className="h-4 w-4 mr-2" />}
-                      Pay {CURRENCY_SYMBOL}{(detail?.itemCount ?? 0) * 45} to Publish
+                      Pay {CURRENCY_SYMBOL}{(detail?.itemCount ?? 0) * LICENSE_FEE_PER_VIDEO} to Publish
                     </Button>
                   </>
                 )}

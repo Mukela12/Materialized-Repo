@@ -10,6 +10,7 @@ import { recordSaleCommissions, clawbackSaleCommissions } from "./commissions";
 import { appendUtm } from "./embedUtils";
 import { resolveFeeConfig, userRateOr, centsToAmount, formatMoney } from "./feeConfig";
 import { buildNotifications, countUnread, parseMailboxId, type MailboxSources } from "./mailbox";
+import { LICENSE_FEE, LICENSE_FEE_PER_VIDEO } from "@shared/pricing";
 import { executePayouts } from "./payouts";
 import { verifyStoreHmac, extractShopifyAttribution, extractWooAttribution, type OrderAttribution } from "./storeWebhooks";
 import { 
@@ -59,7 +60,7 @@ import { detectAiGeneratedContent } from "./replit_integrations/detection/aiCont
 import { sampleVideoFrames } from "./frameSampler";
 // Object storage removed — using Cloudinary instead
 import type Stripe from "stripe";
-import { stripeService } from "./stripeService";
+import { stripeService, PLAN_CONFIG, PLAN_KEYS, isPlanKey, isAllowedPlan, BRAND_PLANS, CREATOR_PLANS, type PlanKey } from "./stripeService";
 import { getStripePublishableKey, getUncachableStripeClient } from "./stripeClient";
 import { dispatchStripeEvent } from "./webhookHandlers";
 import { resolveSigningUrl } from "./docusignHelper";
@@ -122,14 +123,17 @@ export async function registerRoutes(
   // ─── Creator Subscription (mirrors brand subscription flow) ──────────────────
 
   // Creator subscription checkout
+  // Sells CREATOR_PLANS only (see shared/plans.ts — `plan` gates no entitlement,
+  // so this allowlist is what stops cross-tier underpayment).
   app.post("/api/creator/subscription/checkout", async (req, res) => {
     try {
       const userId = (req.session as any)?.userId;
       if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
       const { plan } = req.body;
-      if (!plan || !["starter", "pro"].includes(plan)) {
-        return res.status(400).json({ error: "Plan must be 'starter' or 'pro'" });
+      // Permissive: legacy creators hold 'starter'/'pro' and must still transact.
+      if (!isAllowedPlan(plan, CREATOR_PLANS)) {
+        return res.status(400).json({ error: `Plan must be one of: ${CREATOR_PLANS.join(", ")}` });
       }
 
       const user = await storage.getUser(userId);
@@ -145,7 +149,7 @@ export async function registerRoutes(
       const origin = req.headers.origin ?? `${req.protocol}://${req.headers.host}`;
       const session = await stripeService.createSubscriptionCheckout(
         customerId,
-        plan as "starter" | "pro",
+        plan,
         `${origin}/creator/settings/subscription?checkout=success`,
         `${origin}/creator/settings/subscription?checkout=cancelled`,
         { userId, plan },
@@ -3071,10 +3075,11 @@ Identify which products from the catalog are most likely to appear or be feature
 
       const listing = await storage.createGlobalVideoListing(validatedData);
 
-      // Create Stripe payment intent for listing fee
+      // Create Stripe payment intent for listing fee.
+      // Currency omitted on purpose → falls back to getPlatformCurrency() ("usd").
       const paymentIntent = await stripeService.createPaymentIntent(
-        45.00,
-        "eur",
+        LICENSE_FEE,
+        undefined,
         { listingId: listing.id, userId: user.id, type: "library_listing" }
       );
 
@@ -3276,11 +3281,12 @@ Identify which products from the catalog are most likely to appear or be feature
       if (items.length === 0) return res.status(400).json({ error: "Playlist has no videos" });
 
       // createPaymentIntent takes MAJOR UNITS (it multiplies by 100 internally).
-      // This previously passed cents, which billed 100x — €4,500 for one video.
-      const LICENSE_FEE_PER_VIDEO = 45.0; // €45.00
+      // This previously passed cents, which billed 100x — 4,500 for one video.
+      // Playlist curation is charged per video at LICENSE_FEE_PER_VIDEO ($49).
       const totalAmount = items.length * LICENSE_FEE_PER_VIDEO;
 
-      const paymentIntent = await stripeService.createPaymentIntent(totalAmount, "eur", {
+      // Currency omitted on purpose → falls back to getPlatformCurrency() ("usd").
+      const paymentIntent = await stripeService.createPaymentIntent(totalAmount, undefined, {
         playlistId: String(playlistId),
         userId: user.id,
         videoCount: String(items.length),
@@ -3296,6 +3302,9 @@ Identify which products from the catalog are most likely to appear or be feature
         clientSecret: paymentIntent.client_secret,
         paymentIntentId: paymentIntent.id,
         totalCents: Math.round(totalAmount * 100),
+        // `total` is the platform-currency amount. Kept alongside the legacy
+        // `totalEur` alias so any client still reading the old field keeps working.
+        total: totalAmount.toFixed(2),
         totalEur: totalAmount.toFixed(2),
         videoCount: items.length,
         playlist: updated,
@@ -3365,10 +3374,11 @@ Identify which products from the catalog are most likely to appear or be feature
         commissionRate: commissionRate || "10.00",
       });
 
-      // Create Stripe payment intent
+      // Create Stripe payment intent.
+      // Currency omitted on purpose → falls back to getPlatformCurrency() ("usd").
       const paymentIntent = await stripeService.createPaymentIntent(
         Number(listing.licenseFee),
-        "eur",
+        undefined,
         { purchaseId: purchase.id, userId: user.id, type: "license_purchase" }
       );
 
@@ -4327,8 +4337,10 @@ Identify which products from the catalog are most likely to appear or be feature
       if (!userId) return res.status(401).json({ error: "Unauthorized" });
 
       const { plan } = req.body;
-      if (!plan || !["starter", "pro"].includes(plan)) {
-        return res.status(400).json({ error: "Plan must be 'starter' or 'pro'" });
+      // Must NOT accept 'creator' — a brand buying the $149 tier would receive the
+      // full Brand/Publisher feature set (entitlement keys off status, not tier).
+      if (!isAllowedPlan(plan, BRAND_PLANS)) {
+        return res.status(400).json({ error: `Plan must be one of: ${BRAND_PLANS.join(", ")}` });
       }
 
       const user = await storage.getUser(userId);
@@ -4344,7 +4356,7 @@ Identify which products from the catalog are most likely to appear or be feature
       const origin = req.headers.origin ?? `${req.protocol}://${req.headers.host}`;
       const session = await stripeService.createSubscriptionCheckout(
         customerId,
-        plan as "starter" | "pro",
+        plan,
         `${origin}/brand/settings/subscription?checkout=success`,
         `${origin}/brand/settings/subscription?checkout=cancelled`,
         { userId, plan },
@@ -4635,11 +4647,10 @@ Identify which products from the catalog are most likely to appear or be feature
     app.post("/api/dev/stripe/ensure-plans", async (req, res) => {
       if (!await requireDevAdmin(req, res)) return;
       try {
-        const [starterId, proId] = await Promise.all([
-          stripeService.findOrCreateSubscriptionPrice('starter'),
-          stripeService.findOrCreateSubscriptionPrice('pro'),
-        ]);
-        res.json({ starter: starterId, pro: proId });
+        const priceIds = await Promise.all(
+          PLAN_KEYS.map(async (planKey) => [planKey, await stripeService.findOrCreateSubscriptionPrice(planKey)] as const),
+        );
+        res.json(Object.fromEntries(priceIds));
       } catch (e: any) {
         res.status(500).json({ error: e?.message ?? "Failed to ensure plans" });
       }
@@ -4655,7 +4666,7 @@ Identify which products from the catalog are most likely to appear or be feature
           const planName =
             (price.metadata as Record<string, string>)?.plan ||
             ((price.product as Stripe.Product)?.metadata as Record<string, string>)?.plan;
-          if (!planName || !["starter", "pro"].includes(planName)) continue;
+          if (!isPlanKey(planName)) continue;
           plans.push({
             id: price.id,
             plan: planName,
@@ -4709,10 +4720,13 @@ Identify which products from the catalog are most likely to appear or be feature
       try {
         const { userId, plan = "starter", eventType = "checkout.session.completed" } = req.body as {
           userId: string;
-          plan?: "starter" | "pro";
+          plan?: PlanKey;
           eventType?: string;
         };
         if (!userId) return res.status(400).json({ error: "userId is required" });
+        if (!isPlanKey(plan)) {
+          return res.status(400).json({ error: `Plan must be one of: ${PLAN_KEYS.join(", ")}` });
+        }
 
         const user = await storage.getUser(userId);
         if (!user) return res.status(404).json({ error: "User not found" });
@@ -4811,7 +4825,7 @@ Identify which products from the catalog are most likely to appear or be feature
               data: [{
                 price: {
                   metadata: { plan },
-                  product: { name: plan === "pro" ? "Pro" : "Starter" },
+                  product: { name: PLAN_CONFIG[plan].name },
                 },
               }],
             },

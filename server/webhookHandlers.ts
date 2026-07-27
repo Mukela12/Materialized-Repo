@@ -2,11 +2,20 @@ import Stripe from 'stripe';
 import { getUncachableStripeClient } from './stripeClient';
 import { storage } from './storage';
 import { toCents, centsToAmount } from './feeConfig';
+import { PLAN_CONFIG, isPlanKey, type PlanKey } from './stripeService';
 
-export const PLAN_AMOUNT_FALLBACK: Record<number, 'starter' | 'pro'> = {
-  24900: 'starter',
-  49900: 'pro',
-};
+export const DEFAULT_PLAN: PlanKey = 'starter';
+
+/**
+ * Amount (in cents) → plan key. Derived from PLAN_CONFIG so a new tier can never
+ * be added to the catalogue without the webhook fallback learning about it —
+ * a missing entry here silently records the subscriber on DEFAULT_PLAN.
+ */
+export const PLAN_AMOUNT_FALLBACK: Record<number, PlanKey> = Object.fromEntries(
+  (Object.entries(PLAN_CONFIG) as [PlanKey, { amount: number }][]).map(
+    ([plan, config]) => [config.amount, plan],
+  ),
+) as Record<number, PlanKey>;
 
 export function mapStripeStatus(stripeStatus: string): 'active' | 'past_due' | 'cancelled' {
   switch (stripeStatus) {
@@ -23,13 +32,13 @@ export function mapStripeStatus(stripeStatus: string): 'active' | 'past_due' | '
   }
 }
 
-async function planFromSubscription(subscription: Stripe.Subscription): Promise<'starter' | 'pro'> {
+export async function planFromSubscription(subscription: Stripe.Subscription): Promise<PlanKey> {
   const item = subscription.items?.data?.[0];
-  if (!item) return 'starter';
+  if (!item) return DEFAULT_PLAN;
 
   const price = item.price as Stripe.Price;
 
-  if (price.metadata?.plan === 'starter' || price.metadata?.plan === 'pro') {
+  if (isPlanKey(price.metadata?.plan)) {
     return price.metadata.plan;
   }
 
@@ -37,19 +46,28 @@ async function planFromSubscription(subscription: Stripe.Subscription): Promise<
     try {
       const stripe = await getUncachableStripeClient();
       const product = await stripe.products.retrieve(price.product);
-      if (product.metadata?.plan === 'starter' || product.metadata?.plan === 'pro') {
+      if (isPlanKey(product.metadata?.plan)) {
         return product.metadata.plan;
       }
     } catch {
     }
   } else if (price.product && typeof price.product === 'object') {
     const product = price.product as Stripe.Product;
-    if (product.metadata?.plan === 'starter' || product.metadata?.plan === 'pro') {
+    if (isPlanKey(product.metadata?.plan)) {
       return product.metadata.plan;
     }
   }
 
-  return PLAN_AMOUNT_FALLBACK[price.unit_amount ?? 0] ?? 'starter';
+  const byAmount = PLAN_AMOUNT_FALLBACK[price.unit_amount ?? 0];
+  if (byAmount) return byAmount;
+
+  // No metadata and no amount match — this used to resolve silently to 'starter'.
+  // Log it: a wrong tier here is invisible in the app but keeps billing correctly.
+  console.warn(
+    `[Webhook] planFromSubscription: could not resolve plan for price ${price.id} ` +
+    `(unit_amount=${price.unit_amount}); defaulting to '${DEFAULT_PLAN}'`,
+  );
+  return DEFAULT_PLAN;
 }
 
 export function subscriptionPeriodEnd(subscription: Stripe.Subscription): Date {
@@ -86,7 +104,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session): Promis
   }
 
   const metaUserId = session.metadata?.userId;
-  const metaPlan = session.metadata?.plan as 'starter' | 'pro' | undefined;
+  const metaPlan = isPlanKey(session.metadata?.plan) ? session.metadata.plan : undefined;
 
   let userId: string | undefined = metaUserId;
   if (!userId) {
@@ -157,7 +175,7 @@ async function handleSubscriptionDeleted(subscription: Stripe.Subscription): Pro
 
   await storage.upsertBrandSubscription({
     userId: user.id,
-    plan: (existing?.plan ?? 'starter') as 'starter' | 'pro',
+    plan: (existing?.plan ?? DEFAULT_PLAN) as PlanKey,
     status: 'cancelled',
     stripeSubscriptionId: subscription.id,
     currentPeriodEnd: undefined,
@@ -218,7 +236,7 @@ async function handleInvoicePaymentFailed(invoice: Stripe.Invoice): Promise<void
 
   await storage.upsertBrandSubscription({
     userId: user.id,
-    plan: (existing?.plan ?? 'starter') as 'starter' | 'pro',
+    plan: (existing?.plan ?? DEFAULT_PLAN) as PlanKey,
     status: 'past_due',
     stripeSubscriptionId: existing?.stripeSubscriptionId ?? invoiceSubscriptionId ?? undefined,
     currentPeriodEnd: existing?.currentPeriodEnd ?? undefined,
@@ -379,7 +397,7 @@ async function handleChargeRefunded(charge: Stripe.Charge): Promise<void> {
 
   await storage.upsertBrandSubscription({
     userId: user.id,
-    plan: (existing?.plan ?? 'starter') as 'starter' | 'pro',
+    plan: (existing?.plan ?? DEFAULT_PLAN) as PlanKey,
     status: 'cancelled',
     stripeSubscriptionId: existing?.stripeSubscriptionId ?? undefined,
     currentPeriodEnd: undefined,
@@ -426,7 +444,7 @@ async function handleChargeDisputeCreated(dispute: Stripe.Dispute): Promise<void
 
   await storage.upsertBrandSubscription({
     userId: user.id,
-    plan: (existing?.plan ?? 'starter') as 'starter' | 'pro',
+    plan: (existing?.plan ?? DEFAULT_PLAN) as PlanKey,
     status: 'past_due',
     stripeSubscriptionId: existing?.stripeSubscriptionId ?? undefined,
     currentPeriodEnd: existing?.currentPeriodEnd ?? undefined,

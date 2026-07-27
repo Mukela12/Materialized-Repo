@@ -1,8 +1,12 @@
 /**
  * Stripe test-mode price/product validation.
- * Verifies that the starter (€249/mo) and pro (€499/mo) prices exist in Stripe
- * test mode with correct amounts, currency, interval, and plan metadata.
+ * Verifies that the creator ($149/mo), starter/Brand ($249/mo) and pro/Publisher
+ * ($499/mo) prices exist in Stripe test mode with correct amounts, currency,
+ * interval, and plan metadata.
  * All assertions run against the real Stripe API via the server's dev endpoint.
+ *
+ * Currency is asserted against the platform currency rather than a hardcoded
+ * literal — see getPlatformCurrency() in server/feeConfig.ts (defaults to "usd").
  *
  * Dev endpoints require admin authentication — tests login as admin first.
  */
@@ -11,6 +15,7 @@ import { describe, it, expect, beforeAll } from 'vitest';
 const BASE = process.env.API_BASE_URL ?? 'http://localhost:5000';
 const ADMIN_EMAIL = process.env.TEST_ADMIN_EMAIL;
 const ADMIN_PASSWORD = process.env.TEST_ADMIN_PASSWORD;
+const EXPECTED_CURRENCY = (process.env.PLATFORM_CURRENCY ?? 'usd').toLowerCase();
 
 if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
   throw new Error('TEST_ADMIN_EMAIL and TEST_ADMIN_PASSWORD environment variables are required to run these tests');
@@ -40,10 +45,11 @@ describe('Stripe Plan Prices — Test-Mode Integration', () => {
       headers: { Cookie: adminCookie },
     });
     expect(ensureRes.status, 'ensure-plans').toBe(200);
-    const { starter, pro } = await ensureRes.json();
+    const { creator, starter, pro } = await ensureRes.json();
+    expect(creator).toMatch(/^price_/);
     expect(starter).toMatch(/^price_/);
     expect(pro).toMatch(/^price_/);
-    console.log(`[Setup] Starter price: ${starter}, Pro price: ${pro}`);
+    console.log(`[Setup] Creator price: ${creator}, Starter price: ${starter}, Pro price: ${pro}`);
   }, 30_000);
 
   it('GET /api/dev/stripe/plans returns both starter and pro prices', async () => {
@@ -54,11 +60,12 @@ describe('Stripe Plan Prices — Test-Mode Integration', () => {
     expect(plans.length).toBeGreaterThanOrEqual(2);
 
     const planNames: string[] = plans.map((p: { plan: string }) => p.plan);
+    expect(planNames).toContain('creator');
     expect(planNames).toContain('starter');
     expect(planNames).toContain('pro');
   }, 15_000);
 
-  it('Starter plan price has amount=24900 EUR, monthly recurring, and plan metadata', async () => {
+  it('Starter/Brand plan price has amount=24900, monthly recurring, and plan metadata', async () => {
     const res = await adminGet('/api/dev/stripe/plans');
     expect(res.status).toBe(200);
     const { plans } = await res.json();
@@ -66,7 +73,7 @@ describe('Stripe Plan Prices — Test-Mode Integration', () => {
 
     expect(starter).toBeDefined();
     expect(starter.unit_amount).toBe(24900);
-    expect(starter.currency).toBe('eur');
+    expect(starter.currency).toBe(EXPECTED_CURRENCY);
     expect(starter.recurring?.interval).toBe('month');
     expect(starter.recurring?.interval_count).toBe(1);
 
@@ -76,7 +83,7 @@ describe('Stripe Plan Prices — Test-Mode Integration', () => {
     console.log(`[Stripe] starter price ID: ${starter.id}, product: ${starter.product_id}`);
   }, 15_000);
 
-  it('Pro plan price has amount=49900 EUR, monthly recurring, and plan metadata', async () => {
+  it('Pro/Publisher plan price has amount=49900, monthly recurring, and plan metadata', async () => {
     const res = await adminGet('/api/dev/stripe/plans');
     expect(res.status).toBe(200);
     const { plans } = await res.json();
@@ -84,7 +91,7 @@ describe('Stripe Plan Prices — Test-Mode Integration', () => {
 
     expect(pro).toBeDefined();
     expect(pro.unit_amount).toBe(49900);
-    expect(pro.currency).toBe('eur');
+    expect(pro.currency).toBe(EXPECTED_CURRENCY);
     expect(pro.recurring?.interval).toBe('month');
     expect(pro.recurring?.interval_count).toBe(1);
 
@@ -92,6 +99,24 @@ describe('Stripe Plan Prices — Test-Mode Integration', () => {
     expect(meta.plan).toBe('pro');
 
     console.log(`[Stripe] pro price ID: ${pro.id}, product: ${pro.product_id}`);
+  }, 15_000);
+
+  it('Creator plan price has amount=14900, monthly recurring, and plan metadata', async () => {
+    const res = await adminGet('/api/dev/stripe/plans');
+    expect(res.status).toBe(200);
+    const { plans } = await res.json();
+    const creator = plans.find((p: { plan: string }) => p.plan === 'creator');
+
+    expect(creator).toBeDefined();
+    expect(creator.unit_amount).toBe(14900);
+    expect(creator.currency).toBe(EXPECTED_CURRENCY);
+    expect(creator.recurring?.interval).toBe('month');
+    expect(creator.recurring?.interval_count).toBe(1);
+
+    const meta: Record<string, string> = creator.metadata ?? {};
+    expect(meta.plan).toBe('creator');
+
+    console.log(`[Stripe] creator price ID: ${creator.id}, product: ${creator.product_id}`);
   }, 15_000);
 
   it('Starter and Pro prices have distinct price IDs', async () => {

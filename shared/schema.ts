@@ -2,6 +2,7 @@ import { sql, relations } from "drizzle-orm";
 import { pgTable, text, varchar, integer, decimal, numeric, serial, timestamp, boolean, pgEnum, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+import { LICENSE_FEE_DECIMAL } from "./pricing";
 
 // Enums
 export const userRoleEnum = pgEnum("user_role", ["creator", "brand", "affiliate"]);
@@ -356,7 +357,7 @@ export const globalVideoLibrary = pgTable("global_video_library", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   videoId: varchar("video_id").notNull().references(() => videos.id),
   creatorId: varchar("creator_id").notNull().references(() => users.id),
-  licenseFee: decimal("license_fee", { precision: 10, scale: 2 }).notNull().default("45.00"),
+  licenseFee: decimal("license_fee", { precision: 10, scale: 2 }).notNull().default(LICENSE_FEE_DECIMAL),
   publishStatus: videoPublishStatusEnum("publish_status").default("unpublished"),
   stripePaymentIntentId: text("stripe_payment_intent_id"),
   listingTitle: text("listing_title"),
@@ -821,7 +822,7 @@ export const brandBillingRecords = pgTable("brand_billing_records", {
   userId: varchar("user_id").notNull().references(() => users.id),
   type: text("type").notNull(), // "invoice" | "payout" | "payment"
   amount: numeric("amount", { precision: 10, scale: 2 }).notNull(),
-  currency: text("currency").default("EUR"),
+  currency: text("currency").default("USD"),
   status: text("status").notNull().default("pending"), // "paid" | "pending" | "failed"
   description: text("description"),
   reference: text("reference"),

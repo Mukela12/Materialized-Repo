@@ -5,6 +5,9 @@ const BASE = process.env.API_BASE_URL ?? 'http://localhost:5000';
 // Admin credentials — set TEST_ADMIN_EMAIL and TEST_ADMIN_PASSWORD env vars before running
 const ADMIN_EMAIL = process.env.TEST_ADMIN_EMAIL;
 const ADMIN_PASSWORD = process.env.TEST_ADMIN_PASSWORD;
+// Asserted against the platform currency rather than a literal — see
+// getPlatformCurrency() in server/feeConfig.ts (defaults to "usd").
+const EXPECTED_CURRENCY = (process.env.PLATFORM_CURRENCY ?? 'usd').toLowerCase();
 
 if (!ADMIN_EMAIL || !ADMIN_PASSWORD) {
   throw new Error('TEST_ADMIN_EMAIL and TEST_ADMIN_PASSWORD environment variables are required to run these tests');
@@ -135,12 +138,12 @@ describe('Creator Checkout — Authenticated with Stripe session internals', () 
     expect(session.line_items.length).toBeGreaterThanOrEqual(1);
 
     const lineItem = session.line_items[0];
-    expect(lineItem.currency).toBe('eur');
+    expect(lineItem.currency).toBe(EXPECTED_CURRENCY);
     expect(lineItem.price.unit_amount).toBe(24900);
     expect(lineItem.price.recurring?.interval).toBe('month');
   }, 30_000);
 
-  it('Stripe checkout session (pro) has mode=subscription with €499 line item', async () => {
+  it('Stripe checkout session (pro) has mode=subscription with $499 line item', async () => {
     const checkoutRes = await postWithSession('/api/creator/subscription/checkout', { plan: 'pro' }, sessionCookie);
     expect(checkoutRes.status).toBe(200);
     const { sessionId } = await checkoutRes.json();
@@ -152,7 +155,7 @@ describe('Creator Checkout — Authenticated with Stripe session internals', () 
     expect(session.metadata).toHaveProperty('userId', adminUserId);
 
     const lineItem = session.line_items[0];
-    expect(lineItem.currency).toBe('eur');
+    expect(lineItem.currency).toBe(EXPECTED_CURRENCY);
     expect(lineItem.price.unit_amount).toBe(49900);
     expect(lineItem.price.recurring?.interval).toBe('month');
   }, 30_000);
@@ -195,12 +198,12 @@ describe('Brand Checkout — Authenticated with Stripe session internals', () =>
     expect(session.line_items.length).toBeGreaterThanOrEqual(1);
 
     const lineItem = session.line_items[0];
-    expect(lineItem.currency).toBe('eur');
+    expect(lineItem.currency).toBe(EXPECTED_CURRENCY);
     expect(lineItem.price.unit_amount).toBe(24900);
     expect(lineItem.price.recurring?.interval).toBe('month');
   }, 30_000);
 
-  it('Stripe brand checkout session (pro) has mode=subscription with €499 line item and metadata', async () => {
+  it('Stripe brand checkout session (pro) has mode=subscription with $499 line item and metadata', async () => {
     const checkoutRes = await postWithSession('/api/brand/subscription/checkout', { plan: 'pro' }, sessionCookie);
     expect(checkoutRes.status).toBe(200);
     const { sessionId } = await checkoutRes.json();
@@ -212,7 +215,7 @@ describe('Brand Checkout — Authenticated with Stripe session internals', () =>
     expect(session.metadata).toHaveProperty('userId', adminUserId);
 
     const lineItem = session.line_items[0];
-    expect(lineItem.currency).toBe('eur');
+    expect(lineItem.currency).toBe(EXPECTED_CURRENCY);
     expect(lineItem.price.unit_amount).toBe(49900);
     expect(lineItem.price.recurring?.interval).toBe('month');
   }, 30_000);

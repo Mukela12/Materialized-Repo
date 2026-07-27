@@ -4,7 +4,8 @@ import { Card, CardDescription, CardFooter, CardHeader, CardTitle } from "@/comp
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
-import { ShoppingBag, Play, Search, CheckSquare, Square, ListVideo, X, DollarSign, Users } from "lucide-react";
+import { ShoppingBag, Play, Search, CheckSquare, Square, ListVideo, X, Users } from "lucide-react";
+import { CURRENCY_SYMBOL } from "@/lib/currency";
 import { AddToPlaylistModal } from "@/components/AddToPlaylistModal";
 import { WishlistHeart } from "@/components/WishlistHeart";
 
@@ -195,8 +196,7 @@ export default function AffiliateLibrary() {
                         <span>{listing.totalLicenses} licenses sold</span>
                       </div>
                       <div className="flex items-center gap-1 font-semibold text-primary">
-                        <DollarSign className="w-4 h-4" />
-                        <span>{listing.licenseFee}</span>
+                        <span>{CURRENCY_SYMBOL}{listing.licenseFee}</span>
                       </div>
                     </div>
                   </div>

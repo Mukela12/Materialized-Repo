@@ -1,13 +1,17 @@
 import { getUncachableStripeClient } from './stripeClient';
 import { getPlatformCurrency } from './feeConfig';
 
-const PLAN_CONFIG = {
-  starter: { name: 'Materialized Starter Plan', amount: 24900 },
-  pro:     { name: 'Materialized Pro Plan',     amount: 49900 },
-} as const;
+// Plan catalogue lives in shared/ so the client renders exactly the amounts the
+// server charges. See shared/plans.ts for why the keys must never be renamed.
+export {
+  PLAN_CONFIG, PLAN_KEYS, isPlanKey, planPriceMajor,
+  BRAND_PLANS, CREATOR_PLANS, isAllowedPlan,
+  type PlanKey,
+} from '../shared/plans';
+import { PLAN_CONFIG, type PlanKey } from '../shared/plans';
 
 export class StripeService {
-  async findOrCreateSubscriptionPrice(plan: 'starter' | 'pro'): Promise<string> {
+  async findOrCreateSubscriptionPrice(plan: PlanKey): Promise<string> {
     const stripe = await getUncachableStripeClient();
     const config = PLAN_CONFIG[plan];
 
@@ -21,7 +25,10 @@ export class StripeService {
       });
     }
 
-    const prices = await stripe.prices.list({ product: product.id, active: true, limit: 10 });
+    // limit must stay well above the number of prices a product can accumulate
+    // across currency/amount changes — a miss here mints a duplicate price on
+    // every checkout.
+    const prices = await stripe.prices.list({ product: product.id, active: true, limit: 100 });
     const existing = prices.data.find(p => p.recurring?.interval === 'month' && p.unit_amount === config.amount && p.currency === getPlatformCurrency());
 
     if (existing) return existing.id;
@@ -38,7 +45,7 @@ export class StripeService {
 
   async createSubscriptionCheckout(
     customerId: string,
-    plan: 'starter' | 'pro',
+    plan: PlanKey,
     successUrl: string,
     cancelUrl: string,
     metadata?: Record<string, string>,
@@ -104,7 +111,7 @@ export class StripeService {
   }
 
   /**
-   * `amount` is in MAJOR UNITS (e.g. 45.00 = €45.00) — it is multiplied by 100 here.
+   * `amount` is in MAJOR UNITS (e.g. 49.00 = $49.00) — it is multiplied by 100 here.
    * Never pass cents; doing so overcharges by 100x.
    */
   async createPaymentIntent(amount: number, currency: string = getPlatformCurrency(), metadata?: Record<string, string>) {

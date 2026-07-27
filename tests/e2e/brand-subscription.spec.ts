@@ -70,8 +70,8 @@ test.describe('Brand Subscription Page — Authenticated Brand User', () => {
   });
 
   test('renders plan card with price and status badge', async ({ page }) => {
-    await expect(page.getByText('Starter Plan').or(page.getByText('Pro Plan'))).toBeVisible();
-    const pricePattern = /€249|€499/;
+    await expect(page.getByText('Brand Plan').or(page.getByText('Publisher Plan'))).toBeVisible();
+    const pricePattern = /\$249|\$499/;
     await expect(page.getByText(pricePattern)).toBeVisible();
   });
 
@@ -90,14 +90,14 @@ test.describe('Brand Subscription Page — Authenticated Brand User', () => {
     const surplusEl = page.getByTestId('text-total-surplus');
     await expect(surplusEl).toBeVisible();
     const surplusText = await surplusEl.textContent();
-    // Sliders default to views=5000, minutes=60, publishers=3 → total > €0
-    expect(surplusText).toMatch(/€\d+/);
+    // Sliders default to views=5000, minutes=60, publishers=3 → total > $0
+    expect(surplusText).toMatch(/\$\d+/);
     await expect(page.getByTestId('button-pay-surplus')).toBeEnabled();
   });
 
   test('surplus calculator shows rate information', async ({ page }) => {
-    await expect(page.getByText('€0.05 / view')).toBeVisible();
-    await expect(page.getByText('€0.15 / minute')).toBeVisible();
+    await expect(page.getByText('$0.05 / view')).toBeVisible();
+    await expect(page.getByText('$0.15 / minute')).toBeVisible();
   });
 
   test('surplus calculator shows view/minute/publisher sliders with labels', async ({ page }) => {
@@ -106,22 +106,22 @@ test.describe('Brand Subscription Page — Authenticated Brand User', () => {
     await expect(page.getByTestId('text-publishers-value')).toBeVisible();
   });
 
-  test('opens plan selector dialog with Starter and Pro options', async ({ page }) => {
+  test('opens plan selector dialog with Brand and Publisher options', async ({ page }) => {
     await page.getByTestId('button-upgrade-plan').click();
 
     await expect(page.getByRole('dialog')).toBeVisible();
     await expect(page.getByText('Choose your plan')).toBeVisible();
 
-    await expect(page.getByText('Starter')).toBeVisible();
-    await expect(page.getByText('€249')).toBeVisible();
-    await expect(page.getByText('Pro')).toBeVisible();
-    await expect(page.getByText('€499')).toBeVisible();
+    await expect(page.getByText('Brand', { exact: true })).toBeVisible();
+    await expect(page.getByText('$249')).toBeVisible();
+    await expect(page.getByText('Publisher', { exact: true })).toBeVisible();
+    await expect(page.getByText('$499')).toBeVisible();
 
     await expect(page.getByTestId('button-select-plan-starter')).toBeVisible();
     await expect(page.getByTestId('button-select-plan-pro')).toBeVisible();
   });
 
-  test('plan dialog shows "Popular" badge on Pro plan', async ({ page }) => {
+  test('plan dialog shows "Popular" badge on Publisher plan', async ({ page }) => {
     await page.getByTestId('button-upgrade-plan').click();
     await expect(page.getByRole('dialog')).toBeVisible();
     await expect(page.getByText('Popular')).toBeVisible();
@@ -135,7 +135,7 @@ test.describe('Brand Subscription Page — Authenticated Brand User', () => {
     await expect(page.getByRole('dialog')).not.toBeVisible();
   });
 
-  test('clicking Starter plan triggers checkout API and returns a Stripe URL', async ({ page }) => {
+  test('clicking Brand (starter) plan triggers checkout API and returns a Stripe URL', async ({ page }) => {
     const [response] = await Promise.all([
       page.waitForResponse(
         r => r.url().includes('/api/brand/subscription/checkout') && r.request().method() === 'POST',
@@ -155,7 +155,7 @@ test.describe('Brand Subscription Page — Authenticated Brand User', () => {
     expect(body.url).toMatch(/^https:\/\//);
   });
 
-  test('clicking Pro plan triggers checkout API and returns a Stripe URL with cs_test_ sessionId', async ({ page }) => {
+  test('clicking Publisher (pro) plan triggers checkout API and returns a Stripe URL with cs_test_ sessionId', async ({ page }) => {
     const [response] = await Promise.all([
       page.waitForResponse(
         r => r.url().includes('/api/brand/subscription/checkout') && r.request().method() === 'POST',
@@ -227,7 +227,7 @@ test.describe('Brand Subscription — Post-Webhook State Verification', () => {
 
     await adminCtx.close();
 
-    // --- Brand context: verify the UI shows Active badge and Pro Plan label ---
+    // --- Brand context: verify the UI shows Active badge and Publisher Plan label ---
     const brandCtx = await browser.newContext();
     const brandPage = await brandCtx.newPage();
     await brandPage.goto(`${BASE}/login`);
@@ -243,8 +243,9 @@ test.describe('Brand Subscription — Post-Webhook State Verification', () => {
     const badge = brandPage.getByTestId('badge-subscription-status');
     await expect(badge).toBeVisible();
     await expect(badge).toHaveText('Active');
-    // Pro checkout was completed → UI must show "Pro Plan" label
-    await expect(brandPage.getByText('Pro Plan')).toBeVisible();
+    // Pro checkout was completed → UI must show the "Publisher Plan" label
+    // (plan id stays 'pro'; only the customer-facing label changed)
+    await expect(brandPage.getByText('Publisher Plan')).toBeVisible();
 
     await brandCtx.close();
   });

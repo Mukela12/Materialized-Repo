@@ -12,28 +12,33 @@ import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { BrandSubscription } from "@shared/schema";
 import { CURRENCY_SYMBOL, PLATFORM_CURRENCY_CODE } from "@/lib/currency";
+import { planPriceMajor, type PlanKey } from "@shared/plans";
 
-const PLANS = [
+const price = (plan: PlanKey) => `${CURRENCY_SYMBOL}${planPriceMajor(plan)}`;
+
+/**
+ * Creators are offered the Creator tier. `starter` / `pro` stay in the array as
+ * `legacy` rows purely so an EXISTING subscriber on one of those plans still sees
+ * their real plan and price — `currentPlan` below falls back to PLANS[0] for any
+ * id it can't find, which would otherwise show them the wrong tier. Legacy rows
+ * are filtered out of the picker, so they can't be newly purchased here.
+ */
+const PLANS: {
+  id: PlanKey;
+  label: string;
+  price: string;
+  period: string;
+  description: string;
+  popular?: boolean;
+  legacy?: boolean;
+  features: string[];
+}[] = [
   {
-    id: "starter" as const,
-    label: "Starter",
-    price: `${CURRENCY_SYMBOL}249`,
+    id: "creator",
+    label: "Creator",
+    price: price("creator"),
     period: "/ month",
-    description: "For creators monetising their first campaigns",
-    features: [
-      "Up to 10 shoppable videos",
-      "30 minutes data storage",
-      "5 active campaigns",
-      "Affiliate payouts ledger",
-      "Basic analytics",
-    ],
-  },
-  {
-    id: "pro" as const,
-    label: "Pro",
-    price: `${CURRENCY_SYMBOL}499`,
-    period: "/ month",
-    description: "For scaling creators with unlimited reach",
+    description: "For creators monetising their videos",
     popular: true,
     features: [
       "Unlimited shoppable videos",
@@ -43,7 +48,40 @@ const PLANS = [
       "Advanced analytics & API access",
     ],
   },
+  {
+    id: "starter",
+    label: "Brand",
+    price: price("starter"),
+    period: "/ month",
+    legacy: true,
+    description: "For brands running video commerce campaigns",
+    features: [
+      "Up to 10 shoppable videos",
+      "30 minutes data storage",
+      "5 active campaigns",
+      "Affiliate payouts ledger",
+      "Basic analytics",
+    ],
+  },
+  {
+    id: "pro",
+    label: "Publisher",
+    price: price("pro"),
+    period: "/ month",
+    legacy: true,
+    description: "For publishers distributing at scale",
+    features: [
+      "Unlimited shoppable videos",
+      "Unlimited data storage",
+      "Unlimited campaigns",
+      "Full affiliate payouts + surplus billing",
+      "Advanced analytics & API access",
+    ],
+  },
 ];
+
+/** Plans a creator can actually buy from this page. */
+const OFFERED_PLANS = PLANS.filter((p) => !p.legacy);
 
 const RATE_PER_VIEW   = 0.05;
 const RATE_PER_MINUTE = 0.15;
@@ -60,7 +98,7 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 function fmt(n: number) {
-  return n.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 interface TrialStatus {
@@ -88,7 +126,7 @@ export default function CreatorSettingsSubscription() {
   });
 
   const checkoutMut = useMutation({
-    mutationFn: async (plan: "starter" | "pro") => {
+    mutationFn: async (plan: PlanKey) => {
       const res = await apiRequest("POST", "/api/creator/subscription/checkout", { plan });
       return res.json() as Promise<{ url: string; sessionId: string }>;
     },
@@ -123,7 +161,8 @@ export default function CreatorSettingsSubscription() {
   const minutesCost  = minutes * RATE_PER_MINUTE * publishers;
   const totalSurplus = viewsCost + minutesCost;
 
-  const currentPlan = PLANS.find(p => p.id === (sub?.plan ?? "starter")) ?? PLANS[0];
+  // Falls back to the offered tier only when the stored plan is unknown.
+  const currentPlan = PLANS.find(p => p.id === sub?.plan) ?? OFFERED_PLANS[0];
   const isSuccess   = location.includes("checkout=success");
   const isCancelled = location.includes("checkout=cancelled");
   const isOnTrial   = !trial?.hasActiveSubscription;
@@ -318,7 +357,9 @@ export default function CreatorSettingsSubscription() {
                 onClick={() => setPlanDialogOpen(true)}
               >
                 <Zap className="h-4 w-4" />
-                {isOnTrial ? "Start Subscription" : (sub?.plan === "pro" ? "Manage Plan" : "Upgrade Plan")}
+                {isOnTrial
+                  ? "Start Subscription"
+                  : (OFFERED_PLANS.some(p => p.id === sub?.plan) ? "Manage Plan" : "Upgrade Plan")}
               </Button>
               {!isOnTrial && (
                 <Button
@@ -347,8 +388,8 @@ export default function CreatorSettingsSubscription() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="grid grid-cols-2 gap-3 pt-2">
-            {PLANS.map((plan) => {
+          <div className={`grid gap-3 pt-2 ${OFFERED_PLANS.length > 1 ? "grid-cols-2" : "grid-cols-1"}`}>
+            {OFFERED_PLANS.map((plan) => {
               const isCurrent = !isOnTrial && sub?.plan === plan.id;
               return (
                 <div

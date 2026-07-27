@@ -7,6 +7,7 @@ import { Slider } from "@/components/ui/slider";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { CURRENCY_SYMBOL, PLATFORM_CURRENCY_CODE } from "@/lib/currency";
+import { planPriceMajor, type PlanKey } from "@shared/plans";
 import {
   Dialog,
   DialogContent,
@@ -24,11 +25,26 @@ import { useToast } from "@/hooks/use-toast";
 import type { BrandSubscription } from "@shared/schema";
 
 // ─── Plan catalogue ───────────────────────────────────────────────────────────
-const PLANS = [
+// Plan ids are the stable Stripe/DB keys (see shared/plans.ts) — `label` carries
+// the customer-facing naming, so relabelling never touches billing.
+// `legacy: true` keeps a plan renderable for an existing subscriber while hiding
+// it from the picker.
+const price = (plan: PlanKey) => `${CURRENCY_SYMBOL}${planPriceMajor(plan)}`;
+
+const PLANS: {
+  id: PlanKey;
+  label: string;
+  price: string;
+  period: string;
+  description: string;
+  popular?: boolean;
+  legacy?: boolean;
+  features: string[];
+}[] = [
   {
-    id: "starter" as const,
-    label: "Starter",
-    price: `${CURRENCY_SYMBOL}249`,
+    id: "starter",
+    label: "Brand",
+    price: price("starter"),
     period: "/ month",
     description: "For brands getting started with video commerce",
     features: [
@@ -40,9 +56,9 @@ const PLANS = [
     ],
   },
   {
-    id: "pro" as const,
-    label: "Pro",
-    price: `${CURRENCY_SYMBOL}499`,
+    id: "pro",
+    label: "Publisher",
+    price: price("pro"),
     period: "/ month",
     description: "For scaling brands with unlimited reach",
     popular: true,
@@ -54,7 +70,27 @@ const PLANS = [
       "Priority support",
     ],
   },
+  {
+    // Not offered here — present only so a user already on the Creator tier
+    // renders their real plan and price instead of falling back to PLANS[0].
+    id: "creator",
+    label: "Creator",
+    price: price("creator"),
+    period: "/ month",
+    legacy: true,
+    description: "For creators monetising their videos",
+    features: [
+      "Unlimited shoppable videos",
+      "Unlimited data storage",
+      "Unlimited campaigns",
+      "Full affiliate payouts + surplus billing",
+      "Advanced analytics & API access",
+    ],
+  },
 ];
+
+/** Plans a brand can actually buy from this page. */
+const OFFERED_PLANS = PLANS.filter((p) => !p.legacy);
 
 // Surplus pricing constants
 const RATE_PER_VIEW   = 0.05;
@@ -76,7 +112,7 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 function fmt(n: number) {
-  return n.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 export default function BrandSettingsSubscription() {
@@ -92,7 +128,7 @@ export default function BrandSettingsSubscription() {
   });
 
   const checkoutMut = useMutation({
-    mutationFn: async (plan: "starter" | "pro") => {
+    mutationFn: async (plan: PlanKey) => {
       const res = await apiRequest("POST", "/api/brand/subscription/checkout", { plan });
       return res.json() as Promise<{ url: string; sessionId: string }>;
     },
@@ -138,7 +174,8 @@ export default function BrandSettingsSubscription() {
   const minutesCost  = minutes * RATE_PER_MINUTE * publishers;
   const totalSurplus = viewsCost + minutesCost;
 
-  const currentPlan = PLANS.find(p => p.id === (sub?.plan ?? "starter")) ?? PLANS[0];
+  // Falls back to the entry-level offered tier only when the stored plan is unknown.
+  const currentPlan = PLANS.find(p => p.id === sub?.plan) ?? OFFERED_PLANS[0];
 
   const isSuccess   = location.includes("checkout=success");
   const isCancelled = location.includes("checkout=cancelled");
@@ -327,8 +364,8 @@ export default function BrandSettingsSubscription() {
             </DialogDescription>
           </DialogHeader>
 
-          <div className="grid grid-cols-2 gap-3 pt-2">
-            {PLANS.map((plan) => {
+          <div className={`grid gap-3 pt-2 ${OFFERED_PLANS.length > 1 ? "grid-cols-2" : "grid-cols-1"}`}>
+            {OFFERED_PLANS.map((plan) => {
               const isCurrent = sub?.plan === plan.id;
               return (
                 <div
