@@ -172,10 +172,14 @@ export default function Dashboard() {
                     subtitle="Video engagement"
                     icon={Eye}
                   />
+                  {/* Gross sales the creator's videos drove — NOT a Materialized
+                      balance. The platform creator commission rate is 0 by default
+                      (brands pay creators directly), so this must never be labelled
+                      "Revenue" or "Earnings". See server/feeConfig.ts. */}
                   <StatCard
-                    title="Total Revenue"
+                    title="Attributed Sales"
                     value={`$${stats.totalRevenue.toFixed(0)}`}
-                    subtitle="Sales generated"
+                    subtitle="Sales your videos drove"
                     icon={DollarSign}
                   />
                   <StatCard
@@ -194,12 +198,17 @@ export default function Dashboard() {
               ) : (
                 <>
                   <StatCard title="Total Views" value={0} subtitle="Video engagement" icon={Eye} />
-                  <StatCard title="Total Revenue" value="$0" subtitle="Sales generated" icon={DollarSign} />
+                  <StatCard title="Attributed Sales" value="$0" subtitle="Sales your videos drove" icon={DollarSign} />
                   <StatCard title="Charity Contributions" value="$0.00" subtitle="Total donated" icon={Heart} />
                   <StatCard title="Average CTR" value="0.00%" subtitle="Click-through rate" icon={MousePointer} />
                 </>
               )}
             </div>
+            <p className="mt-4 text-xs text-muted-foreground leading-relaxed" data-testid="text-attributed-sales-note">
+              <span className="font-medium text-foreground/80">Attributed Sales</span> is the value your
+              videos generated for brands. Your commission is paid to you directly by the brand you work
+              with, not through Materialized — use this as your performance record when agreeing rates.
+            </p>
           </CardContent>
         </Card>
       )}

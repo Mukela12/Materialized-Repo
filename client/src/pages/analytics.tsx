@@ -151,6 +151,11 @@ export default function Analytics() {
   const currentStats = stats || defaultStats;
   const embedTraces = currentStats.embedTraces || [];
   const isPublisherView = dashboardContext === "publisher";
+  // Creators are paid by brands directly (platform creator rate is 0 by default —
+  // see server/feeConfig.ts), so their revenue figure is ATTRIBUTED SALES, not an
+  // earnings balance. Publishers really do earn their 2% through the platform, so
+  // "Your earnings" stays correct for them.
+  const isCreatorView = dashboardContext === "creator";
 
   const filteredViewsByDay = useMemo(() => {
     const days = parseInt(timeRange);
@@ -235,9 +240,13 @@ export default function Analytics() {
           icon={MousePointer}
         />
         <StatCard
-          title={isPublisherView ? "My Revenue" : "Revenue"}
+          title={isPublisherView ? "My Revenue" : isCreatorView ? "Attributed Sales" : "Revenue"}
           value={fmtCurrency(currentStats.totalRevenue)}
-          subtitle={isPublisherView ? "Your earnings" : "Total earnings"}
+          subtitle={
+            isPublisherView ? "Your earnings"
+              : isCreatorView ? "Sales your videos drove"
+              : "Total earnings"
+          }
           icon={DollarSign}
         />
         <StatCard
@@ -274,6 +283,17 @@ export default function Analytics() {
           icon={DollarSign}
         />
       </div>
+
+      {isCreatorView && (
+        <p
+          className="text-xs text-muted-foreground leading-relaxed"
+          data-testid="text-attributed-sales-note"
+        >
+          <span className="font-medium text-foreground/80">Attributed Sales</span> is the value your
+          videos generated for brands. Your commission is paid to you directly by the brand you work
+          with, not through Materialized — use this as your performance record when agreeing rates.
+        </p>
+      )}
 
       <Tabs defaultValue="overview" className="space-y-6">
         <TabsList>
