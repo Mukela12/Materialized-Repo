@@ -9,7 +9,10 @@ interface DashboardTabsProps {
 const tabs = [
   { id: "stats", label: "Stats Overview", icon: BarChart3 },
   { id: "affiliate", label: "Affiliate Links", icon: Link2 },
-  { id: "charity", label: "Charity Support", icon: Heart },
+  // "Charity Support" is hidden until the feature is real. Nothing in the system
+  // ever writes users.charity_contribution and no donation is ever made, so the
+  // panel claimed money was being given to charity when none had been. See the
+  // charity block in pages/dashboard.tsx. Restore this entry when it is built.
   { id: "demo", label: "Video Demo", icon: PlayCircle },
   { id: "actions", label: "Quick Actions", icon: Zap },
   { id: "performance", label: "Performance", icon: TrendingUp },

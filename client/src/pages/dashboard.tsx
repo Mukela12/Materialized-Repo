@@ -10,7 +10,7 @@ import { AffiliateTable } from "@/components/AffiliateTable";
 import { VideoUploadModal } from "@/components/VideoUploadModal";
 import { AnnouncementBanner } from "@/components/AnnouncementBanner";
 import { CreatorRewardNotification } from "@/components/EarningsNotification";
-import { Eye, DollarSign, Heart, MousePointer, Upload, Play, TrendingUp } from "lucide-react";
+import { Eye, DollarSign, MousePointer, Upload, Play, TrendingUp } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useLocation } from "wouter";
@@ -44,8 +44,8 @@ export default function Dashboard() {
 
   const { data: stats } = useQuery<{
     totalViews: number;
+    totalClicks: number;
     totalRevenue: number;
-    charityContribution: number;
     averageCTR: number;
   }>({
     queryKey: ["/api/analytics/stats"],
@@ -183,10 +183,10 @@ export default function Dashboard() {
                     icon={DollarSign}
                   />
                   <StatCard
-                    title="Charity Contributions"
-                    value={`$${stats.charityContribution.toFixed(2)}`}
-                    subtitle="Total donated"
-                    icon={Heart}
+                    title="Total Clicks"
+                    value={stats.totalClicks}
+                    subtitle="Product interactions"
+                    icon={MousePointer}
                   />
                   <StatCard
                     title="Average CTR"
@@ -199,7 +199,7 @@ export default function Dashboard() {
                 <>
                   <StatCard title="Total Views" value={0} subtitle="Video engagement" icon={Eye} />
                   <StatCard title="Attributed Sales" value="$0" subtitle="Sales your videos drove" icon={DollarSign} />
-                  <StatCard title="Charity Contributions" value="$0.00" subtitle="Total donated" icon={Heart} />
+                  <StatCard title="Total Clicks" value={0} subtitle="Product interactions" icon={MousePointer} />
                   <StatCard title="Average CTR" value="0.00%" subtitle="Click-through rate" icon={MousePointer} />
                 </>
               )}
@@ -221,33 +221,16 @@ export default function Dashboard() {
         />
       )}
 
-      {activeTab === "charity" && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Heart className="h-5 w-5 text-red-500" />
-              Charity Support
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-center py-8">
-              <div className="h-20 w-20 mx-auto rounded-full bg-red-500/10 flex items-center justify-center mb-4">
-                <Heart className="h-10 w-10 text-red-500" />
-              </div>
-              <h3 className="text-xl font-semibold mb-2">
-                ${Number(currentUser?.charityContribution || 0).toFixed(2)} Contributed
-              </h3>
-              <p className="text-muted-foreground max-w-md mx-auto">
-                A portion of your earnings goes to charitable causes. Adjust your contribution rate in settings.
-              </p>
-              <Button variant="outline" className="mt-4 rounded-full" onClick={() => navigate("/creator/settings/subscription")}>
-                Manage Contributions
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
+      {/* Charity Support panel — HIDDEN, not deleted.
+          The feature is scaffolding: users.charity_contribution has a column and a
+          read path, but NOTHING in the codebase ever writes it (no endpoint, no
+          form, no admin field) and there is no donation ledger, recipient or
+          payout anywhere. It could only ever display $0.00, while telling the user
+          "a portion of your earnings goes to charitable causes" — a claim about
+          donating money that was never true. The "Manage Contributions" button also
+          pointed at the subscription page, which has no charity controls.
+          Restore this block, and the tab in components/DashboardTabs.tsx, once a
+          real contribution rate + donation mechanism exists. */}
       {activeTab === "demo" && (
         <Card>
           <CardHeader>

@@ -14,14 +14,15 @@
  *  This text MUST be reviewed and approved by the client and by a qualified
  *  lawyer before launch. It is NOT legal advice.
  *
- *  Before going live, replace every placeholder token:
- *      {{COMPANY_LEGAL_NAME}}   {{REGISTERED_ADDRESS}}   {{CONTACT_EMAIL}}
- *  and RE-VERIFY the table if any analytics, advertising or A/B-testing tool is
- *  added — adding one changes the consent obligations for this site.
+ *  Entity details are filled in from client/src/lib/company.ts (supplied by the
+ *  client 27 Jul 2026). RE-VERIFY the cookie table if any analytics, advertising
+ *  or A/B-testing tool is added — adding one changes the consent obligations for
+ *  this site.
  * ============================================================================
  */
 import { Link } from "wouter";
-import { LegalPage, LegalSection, LegalList, Placeholder } from "@/components/LegalPage";
+import { LegalPage, LegalSection, LegalList } from "@/components/LegalPage";
+import { COMPANY } from "@/lib/company";
 
 const LAST_UPDATED = "27 July 2026";
 
@@ -72,7 +73,7 @@ export default function Cookies() {
       intro={
         <p className="text-white/60 text-sm leading-relaxed">
           This Cookie Policy explains how{" "}
-          <Placeholder>{"{{COMPANY_LEGAL_NAME}}"}</Placeholder> ("Materialized", "we",
+          {COMPANY.legalName} ("Materialized", "we",
           "us") uses cookies and similar browser storage on the Materialized website and
           platform. It should be read alongside our{" "}
           <Link
@@ -213,9 +214,9 @@ export default function Cookies() {
       <LegalSection heading="8. Contact us">
         <p>
           Questions about this policy? Contact{" "}
-          <Placeholder>{"{{COMPANY_LEGAL_NAME}}"}</Placeholder> at{" "}
-          <Placeholder>{"{{CONTACT_EMAIL}}"}</Placeholder>,{" "}
-          <Placeholder>{"{{REGISTERED_ADDRESS}}"}</Placeholder>.
+          {COMPANY.legalName} at{" "}
+          {COMPANY.contactEmail},{" "}
+          {COMPANY.registeredAddress}.
         </p>
       </LegalSection>
     </LegalPage>

@@ -10,15 +10,16 @@
  *  It MUST be reviewed and approved by the client and by a qualified lawyer
  *  before launch. It is NOT legal advice and has not been reviewed by counsel.
  *
- *  Before going live, replace every placeholder token:
- *      {{COMPANY_LEGAL_NAME}}   {{REGISTERED_ADDRESS}}   {{CONTACT_EMAIL}}
- *      {{DPO_CONTACT}}          {{GOVERNING_JURISDICTION}}
+ *  Entity details are filled in from client/src/lib/company.ts (supplied by the
+ *  client 27 Jul 2026). The governing-law line there is INFERRED from the
+ *  registered address and still needs explicit confirmation.
  *  and confirm the "Last updated" date, the retention periods, and the list of
  *  sub-processors are accurate for the entity that is actually operating.
  * ============================================================================
  */
 import { Link } from "wouter";
-import { LegalPage, LegalSection, LegalList, Placeholder } from "@/components/LegalPage";
+import { LegalPage, LegalSection, LegalList } from "@/components/LegalPage";
+import { COMPANY } from "@/lib/company";
 
 const LAST_UPDATED = "27 July 2026";
 
@@ -33,7 +34,7 @@ export default function Privacy() {
       siblingTestId="link-privacy-cookies"
       intro={
         <p className="text-white/60 text-sm leading-relaxed">
-          This Privacy Policy explains how <Placeholder>{"{{COMPANY_LEGAL_NAME}}"}</Placeholder>{" "}
+          This Privacy Policy explains how {COMPANY.legalName}{" "}
           ("Materialized", "we", "us") collects, uses, shares and protects personal
           data when you visit our website, create an account, or use the Materialized
           video-commerce platform (together, the "Service").
@@ -43,14 +44,12 @@ export default function Privacy() {
       <LegalSection heading="1. Who we are">
         <p>
           The data controller for personal data described in this policy is{" "}
-          <Placeholder>{"{{COMPANY_LEGAL_NAME}}"}</Placeholder>, registered at{" "}
-          <Placeholder>{"{{REGISTERED_ADDRESS}}"}</Placeholder>.
+          {COMPANY.legalName}, registered at{" "}
+          {COMPANY.registeredAddress}.
         </p>
         <p>
           For any privacy question, or to exercise the rights described in section 9,
-          contact us at <Placeholder>{"{{CONTACT_EMAIL}}"}</Placeholder>. Where a data
-          protection officer or privacy representative has been appointed, they can be
-          reached at <Placeholder>{"{{DPO_CONTACT}}"}</Placeholder>.
+          contact us at {COMPANY.contactEmail}.
         </p>
       </LegalSection>
 
@@ -217,7 +216,7 @@ export default function Privacy() {
           those areas, we rely on appropriate safeguards such as UK/EU Standard
           Contractual Clauses, the UK International Data Transfer Addendum, or an
           adequacy decision. You can request details of the safeguards in place by
-          contacting <Placeholder>{"{{CONTACT_EMAIL}}"}</Placeholder>.
+          contacting {COMPANY.contactEmail}.
         </p>
       </LegalSection>
 
@@ -242,7 +241,7 @@ export default function Privacy() {
         </p>
         <p>
           To exercise any right, email{" "}
-          <Placeholder>{"{{CONTACT_EMAIL}}"}</Placeholder>. We will respond within the
+          {COMPANY.contactEmail}. We will respond within the
           period required by applicable law and may need to verify your identity first.
         </p>
       </LegalSection>
@@ -273,7 +272,7 @@ export default function Privacy() {
           The Service is not directed at children and is not intended for anyone under
           18. We do not knowingly collect personal data from children. If you believe a
           child has provided us with personal data, contact{" "}
-          <Placeholder>{"{{CONTACT_EMAIL}}"}</Placeholder> and we will delete it.
+          {COMPANY.contactEmail} and we will delete it.
         </p>
       </LegalSection>
 
@@ -288,15 +287,15 @@ export default function Privacy() {
 
       <LegalSection heading="14. Contact us">
         <p>
-          <Placeholder>{"{{COMPANY_LEGAL_NAME}}"}</Placeholder>
+          {COMPANY.legalName}
           <br />
-          <Placeholder>{"{{REGISTERED_ADDRESS}}"}</Placeholder>
+          {COMPANY.registeredAddress}
           <br />
-          <Placeholder>{"{{CONTACT_EMAIL}}"}</Placeholder>
+          {COMPANY.contactEmail}
         </p>
         <p className="text-white/40 text-xs">
           This policy is governed by the laws of{" "}
-          <Placeholder>{"{{GOVERNING_JURISDICTION}}"}</Placeholder>.
+          {COMPANY.governingLaw}.
         </p>
       </LegalSection>
     </LegalPage>
