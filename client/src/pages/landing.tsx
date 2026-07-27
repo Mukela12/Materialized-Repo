@@ -1619,6 +1619,24 @@ export default function Landing() {
             </a>
           </div>
 
+          <div className="flex flex-wrap justify-center items-center gap-x-4 gap-y-2 mb-3">
+            <Link
+              href="/privacy"
+              className="text-white/40 hover:text-white text-xs transition-colors"
+              data-testid="link-footer-privacy"
+            >
+              Privacy Policy
+            </Link>
+            <span className="text-white/20 text-xs" aria-hidden="true">&middot;</span>
+            <Link
+              href="/cookies"
+              className="text-white/40 hover:text-white text-xs transition-colors"
+              data-testid="link-footer-cookies"
+            >
+              Cookie Policy
+            </Link>
+          </div>
+
           <p className="text-white/40 text-xs text-center" data-testid="text-footer-copyright">
             &copy; 2026 Materialized. All rights reserved.
           </p>

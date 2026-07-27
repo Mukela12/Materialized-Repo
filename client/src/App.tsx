@@ -55,6 +55,8 @@ import VerifyEmail from "@/pages/verify-email";
 import ForgotPassword from "@/pages/forgot-password";
 import ResetPassword from "@/pages/reset-password";
 import AffiliateAccept from "@/pages/affiliate-accept";
+import Privacy from "@/pages/privacy";
+import Cookies from "@/pages/cookies";
 import { useCurrentUser, useLogout } from "@/hooks/useCurrentUser";
 import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
@@ -251,8 +253,11 @@ function AppContent() {
     location.startsWith("/verify-email") ||
     location.startsWith("/reset-password") ||
     location.startsWith("/affiliate/accept");
+  // Public legal pages — must render without AuthGuard so logged-out visitors
+  // (and payment-provider reviewers) aren't bounced to /login.
+  const isPolicyRoute = location === "/privacy" || location === "/cookies";
 
-  if (isAuthRoute) {
+  if (isAuthRoute || isPolicyRoute) {
     return (
       <Switch>
         <Route path="/login" component={Login} />
@@ -261,6 +266,8 @@ function AppContent() {
         <Route path="/forgot-password" component={ForgotPassword} />
         <Route path="/reset-password/:token" component={ResetPassword} />
         <Route path="/affiliate/accept/:token" component={AffiliateAccept} />
+        <Route path="/privacy" component={Privacy} />
+        <Route path="/cookies" component={Cookies} />
       </Switch>
     );
   }
@@ -377,12 +384,14 @@ function App() {
     location === "/forgot-password" ||
     location.startsWith("/verify-email") ||
     location.startsWith("/reset-password");
+  // Public legal pages — kept out of the authenticated shell entirely.
+  const isPolicyRoute = location === "/privacy" || location === "/cookies";
 
   return (
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         <TooltipProvider>
-          {(isLandingRoute || isAuthRoute) ? (
+          {(isLandingRoute || isAuthRoute || isPolicyRoute) ? (
             <Switch>
               <Route path="/" component={Landing} />
               <Route path="/login" component={Login} />
@@ -390,6 +399,8 @@ function App() {
               <Route path="/verify-email/:token" component={VerifyEmail} />
               <Route path="/forgot-password" component={ForgotPassword} />
               <Route path="/reset-password/:token" component={ResetPassword} />
+              <Route path="/privacy" component={Privacy} />
+              <Route path="/cookies" component={Cookies} />
             </Switch>
           ) : (
             <AppWithSidebar />
