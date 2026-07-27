@@ -15,8 +15,8 @@ beforeEach(() => {
 });
 
 describe('getFeeConfig', () => {
-  it('defaults to 15 / 8 / 2', () => {
-    expect(getFeeConfig()).toEqual({ marketplaceFeePct: 15, creatorPct: 8, publisherPct: 2 });
+  it('defaults to 15 / 0 / 2 (creator paid by the brand directly, not via MTRLZD)', () => {
+    expect(getFeeConfig()).toEqual({ marketplaceFeePct: 15, creatorPct: 0, publisherPct: 2 });
   });
 
   it('reads overrides from env', () => {
@@ -51,23 +51,32 @@ describe('money helpers', () => {
 });
 
 describe('computeSaleSplit — defaults', () => {
-  it('splits a €100 publisher sale into 85 / 8 / 2 / 5', () => {
+  it('splits a $100 publisher sale into 85 / 0 / 2 / 13', () => {
     const s = computeSaleSplit(10000, { hasPublisher: true });
     expect(s.brandCents).toBe(8500);
     expect(s.marketplaceFeeCents).toBe(1500);
-    expect(s.creatorCents).toBe(800);
+    expect(s.creatorCents).toBe(0);
     expect(s.publisherCents).toBe(200);
-    expect(s.platformCents).toBe(500);
-    expect(s.effectiveRates).toEqual({ marketplaceFeePct: 15, creatorPct: 8, publisherPct: 2 });
+    expect(s.platformCents).toBe(1300);
+    expect(s.effectiveRates).toEqual({ marketplaceFeePct: 15, creatorPct: 0, publisherPct: 2 });
   });
 
   it('gives the publisher 0 when none is attributed (platform keeps it)', () => {
     const s = computeSaleSplit(10000, { hasPublisher: false });
     expect(s.brandCents).toBe(8500);
-    expect(s.creatorCents).toBe(800);
+    expect(s.creatorCents).toBe(0);
     expect(s.publisherCents).toBe(0);
-    expect(s.platformCents).toBe(700); // 1500 fee − 800 creator − 0 publisher
+    expect(s.platformCents).toBe(1500); // whole fee: creator 0 by default, no publisher
     expect(s.effectiveRates.publisherPct).toBe(0);
+  });
+
+  // The creator share is 0 by platform default but fully supported when set.
+  it('still pays the creator when an explicit rate is supplied', () => {
+    const s = computeSaleSplit(10000, { hasPublisher: true, creatorPct: 8 });
+    expect(s.creatorCents).toBe(800);
+    expect(s.publisherCents).toBe(200);
+    expect(s.platformCents).toBe(500);
+    expect(s.effectiveRates.creatorPct).toBe(8);
   });
 });
 
@@ -89,8 +98,8 @@ describe('computeSaleSplit — conservation & rounding', () => {
     }
   }
 
-  it('handles a fractional-cent fee deterministically (€33.33)', () => {
-    const s = computeSaleSplit(3333, { hasPublisher: true });
+  it('handles a fractional-cent fee deterministically ($33.33)', () => {
+    const s = computeSaleSplit(3333, { hasPublisher: true, creatorPct: 8 });
     expect(s.marketplaceFeeCents).toBe(500); // round(3333*0.15)=round(499.95)
     expect(s.brandCents).toBe(2833);
     expect(s.creatorCents).toBe(267);        // round(266.64)
@@ -99,9 +108,11 @@ describe('computeSaleSplit — conservation & rounding', () => {
   });
 });
 
+// These pin creatorPct: 8 explicitly — they verify clamping BEHAVIOUR against a
+// creator share, which is independent of the platform default (now 0).
 describe('computeSaleSplit — overrides & clamping', () => {
   it('applies an admin per-repost publisher override', () => {
-    const s = computeSaleSplit(10000, { hasPublisher: true, publisherPct: 5 });
+    const s = computeSaleSplit(10000, { hasPublisher: true, publisherPct: 5, creatorPct: 8 });
     expect(s.publisherCents).toBe(500);
     expect(s.creatorCents).toBe(800);
     expect(s.platformCents).toBe(200); // 1500 − 800 − 500
@@ -109,14 +120,14 @@ describe('computeSaleSplit — overrides & clamping', () => {
   });
 
   it('supports a custom marketplace fee', () => {
-    const s = computeSaleSplit(10000, { hasPublisher: true, marketplaceFeePct: 30 });
+    const s = computeSaleSplit(10000, { hasPublisher: true, marketplaceFeePct: 30, creatorPct: 8 });
     expect(s.marketplaceFeeCents).toBe(3000);
     expect(s.brandCents).toBe(7000);
     expect(s.platformCents).toBe(3000 - 800 - 200);
   });
 
   it('caps total commission at the marketplace fee — publisher reduced first', () => {
-    const s = computeSaleSplit(10000, { hasPublisher: true, publisherPct: 20 });
+    const s = computeSaleSplit(10000, { hasPublisher: true, publisherPct: 20, creatorPct: 8 });
     // publisher clamped to the 15% fee, creator then clamped to 0
     expect(s.effectiveRates.publisherPct).toBe(15);
     expect(s.effectiveRates.creatorPct).toBe(0);
@@ -125,7 +136,7 @@ describe('computeSaleSplit — overrides & clamping', () => {
   });
 
   it('caps a raised publisher rate against the creator share', () => {
-    const s = computeSaleSplit(10000, { hasPublisher: true, publisherPct: 8 });
+    const s = computeSaleSplit(10000, { hasPublisher: true, publisherPct: 8, creatorPct: 8 });
     // 8 (pub) + 8 (creator) = 16 > 15 → creator trimmed to 7
     expect(s.effectiveRates.publisherPct).toBe(8);
     expect(s.effectiveRates.creatorPct).toBe(7);

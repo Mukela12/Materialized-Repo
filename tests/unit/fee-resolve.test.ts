@@ -22,9 +22,9 @@ describe('numOr', () => {
 });
 
 describe('resolveFeeConfig', () => {
-  it('uses env defaults (15/8/2) with no settings', () => {
-    expect(resolveFeeConfig(null)).toEqual({ marketplaceFeePct: 15, creatorPct: 8, publisherPct: 2 });
-    expect(resolveFeeConfig(undefined)).toEqual({ marketplaceFeePct: 15, creatorPct: 8, publisherPct: 2 });
+  it('uses env defaults (15/0/2) with no settings', () => {
+    expect(resolveFeeConfig(null)).toEqual({ marketplaceFeePct: 15, creatorPct: 0, publisherPct: 2 });
+    expect(resolveFeeConfig(undefined)).toEqual({ marketplaceFeePct: 15, creatorPct: 0, publisherPct: 2 });
   });
 
   it('layers admin DB settings (decimal strings) over defaults', () => {
@@ -34,7 +34,7 @@ describe('resolveFeeConfig', () => {
 
   it('falls back per-field when a setting is null/blank', () => {
     expect(resolveFeeConfig({ marketplaceFeePct: '18.00', creatorPct: null, publisherPct: undefined }))
-      .toEqual({ marketplaceFeePct: 18, creatorPct: 8, publisherPct: 2 });
+      .toEqual({ marketplaceFeePct: 18, creatorPct: 0, publisherPct: 2 });
   });
 });
 

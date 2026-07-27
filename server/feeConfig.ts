@@ -2,17 +2,30 @@
  * Marketplace fee & commission split.
  *
  * On a gross brand sale the platform takes a "marketplace fee" (default 15%);
- * the brand keeps the remainder (85%). Out of the marketplace fee the video's
- * creator earns a commission (default 8%) and — when the sale is attributed to a
- * publisher's repost — the publisher earns a commission (default 2%). Whatever is
- * left of the fee is the platform's margin (~5%).
+ * the brand keeps the remainder (85%). Out of the marketplace fee the publisher
+ * earns a commission when the sale is attributed to their repost (default 2%).
+ * Whatever is left of the fee is the platform's margin (~13%).
  *
  *   gross sale 100%
  *     ├─ brand            85%   (kept by the brand)
  *     └─ marketplace fee  15%
- *          ├─ creator      8%
+ *          ├─ creator      0%   (see below)
  *          ├─ publisher    2%   (0% when no publisher is attributed)
- *          └─ platform    ~5%   (remainder of the fee)
+ *          └─ platform   ~13%   (remainder of the fee)
+ *
+ * CREATOR RATE IS 0 BY DESIGN (client decision, 27 Jul 2026). Creators are paid
+ * by brands directly, outside MTRLZD, so the platform does not accrue a creator
+ * commission by default. The rationale: industry creator rates are 8-12%, which
+ * on top of the publisher's 2% would leave no margin inside a 15% fee.
+ *
+ * It remains fully supported, not removed — set CREATOR_COMMISSION_PCT, the
+ * platform_settings row, or a per-user commissionRateOverride to switch it on for
+ * a specific arrangement. A 0 rate simply means no creator commission row is
+ * written (recordSaleCommissions skips zero-value rows), so creators see no
+ * in-app earnings unless a rate is set for them.
+ *
+ * Historical rows are unaffected: the split is computed and stored per sale, so
+ * changing this default never rewrites past commissions.
  *
  * All money is handled in integer cents to avoid floating-point drift, and
  * converted to fixed(2) decimal strings only at the storage boundary
@@ -25,7 +38,7 @@
 export interface FeeConfig {
   /** Platform's total take of a gross sale, in percent. Default 15. */
   marketplaceFeePct: number;
-  /** Creator's share of a gross sale, in percent. Default 8. */
+  /** Creator's share of a gross sale, in percent. Default 0 — see the file header. */
   creatorPct: number;
   /** Publisher's share of a gross sale, in percent (when attributed). Default 2. */
   publisherPct: number;
@@ -42,7 +55,7 @@ function pctFromEnv(name: string, fallback: number): number {
 export function getFeeConfig(): FeeConfig {
   return {
     marketplaceFeePct: pctFromEnv("MARKETPLACE_FEE_PCT", 15),
-    creatorPct: pctFromEnv("CREATOR_COMMISSION_PCT", 8),
+    creatorPct: pctFromEnv("CREATOR_COMMISSION_PCT", 0),
     publisherPct: pctFromEnv("PUBLISHER_COMMISSION_PCT", 2),
   };
 }
