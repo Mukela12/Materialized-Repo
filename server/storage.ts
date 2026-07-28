@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import { eq, desc, sql, and, inArray } from "drizzle-orm";
+import { eq, desc, asc, sql, and, inArray, isNull } from "drizzle-orm";
 import { db } from "./db";
 import { LICENSE_FEE_DECIMAL } from "@shared/pricing";
 import {
@@ -82,7 +82,12 @@ import {
   platformSettings,
   type PlatformSettings,
   type InsertPlatformSettings,
+  tokenLedger,
+  type TokenLedgerEntry,
 } from "@shared/schema";
+// Types only — the wallet's money logic lives in server/wallet.ts. This layer
+// supplies the four transaction primitives it runs on and nothing more.
+import type { WalletTx, NewLedgerEntry } from "./wallet";
 
 // Scope for detailed-analytics aggregations. Creator scope filters events to a
 // set of the creator's video ids; publisher scope filters to a single affiliate;
@@ -284,13 +289,49 @@ export interface IStorage {
   createUserProfile(profile: InsertUserProfile): Promise<UserProfile>;
   updateUserProfile(userId: string, data: Partial<InsertUserProfile>): Promise<UserProfile | undefined>;
   
-  // Creator Rewards
+  // Creator Rewards — RETIRED, READ-ONLY. Superseded by the token wallet below.
+  // The write methods (createCreatorReward / redeemCreatorReward) have been REMOVED:
+  // createCreatorReward never had a caller, so the table is provably empty, and
+  // redeemCreatorReward was an unguarded `UPDATE ... SET status='redeemed'` with no
+  // predicate on the current status — i.e. the same reward could be redeemed an
+  // unlimited number of times. Do not reintroduce either. One credit system: the
+  // token wallet. These two readers remain only so the legacy /api/rewards GETs
+  // keep returning [] instead of 500ing.
   getCreatorRewards(creatorId: string): Promise<CreatorReward[]>;
-  getCreatorReward(id: string): Promise<CreatorReward | undefined>;
   getCreatorRewardsSummary(creatorId: string): Promise<{ totalCredits: number; availableCredits: number; redeemedCredits: number; euroValue: number }>;
-  createCreatorReward(reward: InsertCreatorReward): Promise<CreatorReward>;
-  redeemCreatorReward(rewardId: string, listingId: string, creatorId?: string): Promise<CreatorReward | undefined>;
-  
+
+  // ── Token wallet ──────────────────────────────────────────────────────────
+  // Money logic lives in server/wallet.ts; this layer only supplies primitives.
+  // TOKENS ARE NEVER CASHABLE — see the module doc there.
+
+  /**
+   * Brands owned by a user. MUST NOT filter on isActive: an inactive brand that
+   * pays for a subscription still earns its tagger a token, and quietly dropping
+   * it would make attribution depend on an unrelated flag.
+   */
+  getBrandsByOwnerId(ownerId: string): Promise<Brand[]>;
+  /**
+   * First-touch attribution in ONE indexed query: the earliest creator to tag
+   * `brandId`, ordered by videos.created_at ASC NULLS LAST, videos.id ASC.
+   * Done in SQL rather than by loading every tagging video — a popular brand can
+   * be tagged by thousands — and the tiebreak lives in exactly one place.
+   */
+  getEarliestTaggingCreatorForBrand(brandId: string): Promise<{ creatorId: string; videoId: string; taggedAt: Date | null } | undefined>;
+  /** Full history, oldest first. summarizeLedger() depends on that order. */
+  getTokenLedger(userId: string): Promise<TokenLedgerEntry[]>;
+  /** COALESCE(SUM(delta_tokens), 0). The only definition of a balance. */
+  getTokenBalance(userId: string): Promise<number>;
+  getTokenLedgerEntryBySpendRef(spendRefType: string, spendRefId: string): Promise<TokenLedgerEntry | undefined>;
+  /**
+   * The ONLY permitted UPDATE on token_ledger. Sets stripe_balance_txn_id, and
+   * only when it is still NULL. It never touches delta_tokens, so it provably
+   * cannot change any balance — which is why it does not break append-only.
+   */
+  attachStripeBalanceTxn(entryId: string, stripeBalanceTxnId: string): Promise<TokenLedgerEntry | undefined>;
+  /** BEGIN … COMMIT around the wallet primitives. Rolls back if `fn` throws. */
+  runWalletTransaction<T>(fn: (tx: WalletTx) => Promise<T>): Promise<T>;
+
+
   // Embed Deployments
   getEmbedDeployment(affiliateId: string, videoId: string, referrerDomain: string, utmCode: string): Promise<EmbedDeployment | undefined>;
   getEmbedDeploymentsByAffiliate(affiliateId: string): Promise<EmbedDeployment[]>;
@@ -1614,36 +1655,148 @@ export class MemStorage implements IStorage {
     return { totalCredits, availableCredits, redeemedCredits, euroValue };
   }
 
-  async createCreatorReward(reward: InsertCreatorReward): Promise<CreatorReward> {
-    const id = randomUUID();
-    const newReward: CreatorReward = {
-      id,
-      creatorId: reward.creatorId,
-      rewardType: reward.rewardType ?? "brand_referral",
-      creditsAmount: reward.creditsAmount ?? 45,
-      euroValue: reward.euroValue ?? "45.00",
-      status: reward.status ?? "credited",
-      brandReferralId: reward.brandReferralId ?? null,
-      description: reward.description ?? null,
-      redeemedForListingId: reward.redeemedForListingId ?? null,
-      earnedAt: new Date(),
-      redeemedAt: null,
-    };
-    this.creatorRewardsMap.set(id, newReward);
-    return newReward;
+  // createCreatorReward / redeemCreatorReward intentionally REMOVED — see IStorage.
+
+  // ── Token wallet ──────────────────────────────────────────────────────────
+  //
+  // HONEST CAVEAT, read before trusting a green test here: a MemStorage
+  // concurrency test proves nothing about Postgres. Node is single-threaded, so a
+  // read-check-insert with no `await` between the steps is trivially atomic in
+  // memory and would pass against a SQL design that loses updates. What this
+  // implementation gives you is (a) faithful UNIQUE-index semantics, so the
+  // one-token-per-conversion and one-debit-per-purchase paths are exercised, and
+  // (b) real interleaving, because every primitive below yields. The Postgres
+  // guarantees — pg_advisory_xact_lock plus the post-insert re-read — must be
+  // verified on staging against a real database.
+
+  private tokenLedgerRows: TokenLedgerEntry[] = [];
+  /** Coarse stand-in for the per-user advisory lock: one wallet txn at a time. */
+  private walletTxChain: Promise<unknown> = Promise.resolve();
+
+  /** Reject a row that would violate one of the four partial unique indexes. */
+  private assertTokenLedgerUnique(row: TokenLedgerEntry): void {
+    const clash = this.tokenLedgerRows.find((r) => {
+      if (row.reason === "brand_conversion" && r.reason === "brand_conversion") {
+        if (row.sourceBrandId && r.sourceBrandId === row.sourceBrandId) return true;
+        if (row.sourceSubscriptionUserId && r.sourceSubscriptionUserId === row.sourceSubscriptionUserId) return true;
+      }
+      if (row.spendRefId && r.spendRefId === row.spendRefId && r.spendRefType === row.spendRefType) return true;
+      if (row.stripeBalanceTxnId && r.stripeBalanceTxnId === row.stripeBalanceTxnId) return true;
+      return false;
+    });
+    if (clash) {
+      // Shaped like a pg error so isUniqueViolation() treats it identically.
+      throw Object.assign(new Error("duplicate key value violates unique constraint"), { code: "23505" });
+    }
   }
 
-  async getCreatorReward(id: string): Promise<CreatorReward | undefined> {
-    return this.creatorRewardsMap.get(id);
+  async runWalletTransaction<T>(fn: (tx: WalletTx) => Promise<T>): Promise<T> {
+    const run = this.walletTxChain.then(async () => {
+      // Rows written by THIS transaction, so a throw can roll them back.
+      const staged: string[] = [];
+      const tx: WalletTx = {
+        lockUser: async () => { await Promise.resolve(); },
+        sumBalance: async (userId: string) => {
+          await Promise.resolve();
+          return this.tokenLedgerRows
+            .filter((r) => r.userId === userId)
+            .reduce((sum, r) => sum + r.deltaTokens, 0);
+        },
+        // OLDEST FIRST — the FIFO grant-value walk in server/wallet.ts depends on it.
+        listRows: async (userId: string) => {
+          await Promise.resolve();
+          return this.tokenLedgerRows
+            .filter((r) => r.userId === userId)
+            .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+            .map((r) => ({ deltaTokens: r.deltaTokens, usdValueCents: r.usdValueCents }));
+        },
+        insertEntry: async (entry: NewLedgerEntry) => {
+          await Promise.resolve();
+          const row: TokenLedgerEntry = {
+            id: randomUUID(),
+            userId: entry.userId,
+            deltaTokens: entry.deltaTokens,
+            reason: entry.reason,
+            usdValueCents: entry.usdValueCents,
+            sourceBrandId: entry.sourceBrandId ?? null,
+            sourceSubscriptionUserId: entry.sourceSubscriptionUserId ?? null,
+            stripeSubscriptionId: entry.stripeSubscriptionId ?? null,
+            attributionMethod: entry.attributionMethod ?? null,
+            attributedVideoId: entry.attributedVideoId ?? null,
+            brandReferralId: entry.brandReferralId ?? null,
+            spendRefType: entry.spendRefType ?? null,
+            spendRefId: entry.spendRefId ?? null,
+            stripeBalanceTxnId: entry.stripeBalanceTxnId ?? null,
+            description: entry.description ?? null,
+            adminNote: entry.adminNote ?? null,
+            createdAt: new Date(),
+          };
+          if (row.deltaTokens === 0) throw new Error("token_ledger_delta_nonzero violated");
+          this.assertTokenLedgerUnique(row);
+          this.tokenLedgerRows.push(row);
+          staged.push(row.id);
+          return row;
+        },
+      };
+      try {
+        return await fn(tx);
+      } catch (err) {
+        // ROLLBACK: drop everything this transaction inserted.
+        this.tokenLedgerRows = this.tokenLedgerRows.filter((r) => !staged.includes(r.id));
+        throw err;
+      }
+    });
+    // Keep the chain alive even when this transaction rejects.
+    this.walletTxChain = run.catch(() => undefined);
+    return run;
   }
 
-  async redeemCreatorReward(rewardId: string, listingId: string, creatorId?: string): Promise<CreatorReward | undefined> {
-    const reward = this.creatorRewardsMap.get(rewardId);
-    if (!reward) return undefined;
-    if (creatorId !== undefined && reward.creatorId !== creatorId) return undefined;
-    const updated = { ...reward, status: "redeemed" as const, redeemedForListingId: listingId, redeemedAt: new Date() };
-    this.creatorRewardsMap.set(rewardId, updated);
+  async getTokenLedger(userId: string): Promise<TokenLedgerEntry[]> {
+    return this.tokenLedgerRows
+      .filter((r) => r.userId === userId)
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+  }
+
+  async getTokenBalance(userId: string): Promise<number> {
+    return this.tokenLedgerRows
+      .filter((r) => r.userId === userId)
+      .reduce((sum, r) => sum + r.deltaTokens, 0);
+  }
+
+  async getTokenLedgerEntryBySpendRef(spendRefType: string, spendRefId: string): Promise<TokenLedgerEntry | undefined> {
+    return this.tokenLedgerRows.find((r) => r.spendRefType === spendRefType && r.spendRefId === spendRefId);
+  }
+
+  async attachStripeBalanceTxn(entryId: string, stripeBalanceTxnId: string): Promise<TokenLedgerEntry | undefined> {
+    const idx = this.tokenLedgerRows.findIndex((r) => r.id === entryId && r.stripeBalanceTxnId === null);
+    if (idx === -1) return undefined;
+    const updated = { ...this.tokenLedgerRows[idx], stripeBalanceTxnId };
+    this.tokenLedgerRows[idx] = updated;
     return updated;
+  }
+
+  /** Deliberately UNFILTERED by isActive — see IStorage. */
+  async getBrandsByOwnerId(ownerId: string): Promise<Brand[]> {
+    return Array.from(this.brands.values()).filter((b) => b.ownerId === ownerId);
+  }
+
+  async getEarliestTaggingCreatorForBrand(
+    brandId: string,
+  ): Promise<{ creatorId: string; videoId: string; taggedAt: Date | null } | undefined> {
+    const tagged = Array.from(this.videoBrands.values())
+      .filter((vb) => vb.brandId === brandId)
+      .map((vb) => this.videos.get(vb.videoId))
+      .filter((v): v is Video => !!v)
+      // (created_at ASC NULLS LAST, id ASC) — must match the SQL exactly.
+      .sort((a, b) => {
+        const at = a.createdAt ? a.createdAt.getTime() : Number.POSITIVE_INFINITY;
+        const bt = b.createdAt ? b.createdAt.getTime() : Number.POSITIVE_INFINITY;
+        if (at !== bt) return at - bt;
+        return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+      });
+    const first = tagged[0];
+    if (!first) return undefined;
+    return { creatorId: first.creatorId, videoId: first.id, taggedAt: first.createdAt ?? null };
   }
 
   // Embed Deployments
@@ -2753,26 +2906,126 @@ export class DatabaseStorage implements IStorage {
     return { totalCredits, availableCredits, redeemedCredits, euroValue };
   }
 
-  async createCreatorReward(reward: InsertCreatorReward): Promise<CreatorReward> {
-    const [newReward] = await db.insert(creatorRewards).values(reward).returning();
-    return newReward;
+  // createCreatorReward / redeemCreatorReward intentionally REMOVED — see IStorage.
+  // creator_rewards now has NO write path anywhere in the application.
+
+  // ── Token wallet ──────────────────────────────────────────────────────────
+  // Primitives only. Every decision about who may spend what lives in
+  // server/wallet.ts. TOKENS ARE NEVER CASHABLE — see the module doc there.
+
+  async runWalletTransaction<T>(fn: (tx: WalletTx) => Promise<T>): Promise<T> {
+    // node-postgres driver (server/db.ts) → this is a real BEGIN/COMMIT, and a
+    // throw inside `fn` rolls the whole thing back.
+    return db.transaction(async (trx) => {
+      const tx: WalletTx = {
+        async lockUser(userId: string) {
+          // Transaction-scoped ADVISORY lock, released at COMMIT/ROLLBACK.
+          //
+          // Why not `SELECT ... FOR UPDATE`: Postgres refuses to combine FOR UPDATE
+          // with an aggregate, so the balance SUM cannot take the lock itself; and
+          // locking the user's EXISTING rows is unsound at READ COMMITTED because
+          // the lock does not cover rows a concurrent transaction INSERTS — which
+          // is exactly the double-spend case. A hash collision between two unrelated
+          // users only over-serializes; it can never under-serialize.
+          await trx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${userId}, 0))`);
+        },
+        async sumBalance(userId: string) {
+          const [row] = await trx
+            .select({ balance: sql<number>`COALESCE(SUM(${tokenLedger.deltaTokens}), 0)::int` })
+            .from(tokenLedger)
+            .where(eq(tokenLedger.userId, userId));
+          return row?.balance ?? 0;
+        },
+        async listRows(userId: string) {
+          // OLDEST FIRST, total order — the FIFO grant-value walk in
+          // server/wallet.ts prices a spend off this sequence, so two histories
+          // that differ only in tie-break order must not price differently.
+          return trx
+            .select({
+              deltaTokens: tokenLedger.deltaTokens,
+              usdValueCents: tokenLedger.usdValueCents,
+            })
+            .from(tokenLedger)
+            .where(eq(tokenLedger.userId, userId))
+            .orderBy(asc(tokenLedger.createdAt), asc(tokenLedger.id));
+        },
+        async insertEntry(entry: NewLedgerEntry) {
+          const [row] = await trx.insert(tokenLedger).values({
+            userId: entry.userId,
+            deltaTokens: entry.deltaTokens,
+            reason: entry.reason,
+            usdValueCents: entry.usdValueCents,
+            sourceBrandId: entry.sourceBrandId ?? null,
+            sourceSubscriptionUserId: entry.sourceSubscriptionUserId ?? null,
+            stripeSubscriptionId: entry.stripeSubscriptionId ?? null,
+            attributionMethod: entry.attributionMethod ?? null,
+            attributedVideoId: entry.attributedVideoId ?? null,
+            brandReferralId: entry.brandReferralId ?? null,
+            spendRefType: entry.spendRefType ?? null,
+            spendRefId: entry.spendRefId ?? null,
+            stripeBalanceTxnId: entry.stripeBalanceTxnId ?? null,
+            description: entry.description ?? null,
+            adminNote: entry.adminNote ?? null,
+          }).returning();
+          return row;
+        },
+      };
+      return fn(tx);
+    });
   }
 
-  async getCreatorReward(id: string): Promise<CreatorReward | undefined> {
-    const [reward] = await db.select().from(creatorRewards).where(eq(creatorRewards.id, id));
-    return reward;
+  async getTokenLedger(userId: string): Promise<TokenLedgerEntry[]> {
+    // Oldest first — summarizeLedger()'s FIFO valuation depends on it.
+    return db.select().from(tokenLedger)
+      .where(eq(tokenLedger.userId, userId))
+      .orderBy(asc(tokenLedger.createdAt), asc(tokenLedger.id));
   }
 
-  async redeemCreatorReward(rewardId: string, listingId: string, creatorId?: string): Promise<CreatorReward | undefined> {
-    const where = creatorId !== undefined
-      ? and(eq(creatorRewards.id, rewardId), eq(creatorRewards.creatorId, creatorId))
-      : eq(creatorRewards.id, rewardId);
-    const [updated] = await db.update(creatorRewards).set({
-      status: "redeemed",
-      redeemedForListingId: listingId,
-      redeemedAt: new Date(),
-    }).where(where).returning();
+  async getTokenBalance(userId: string): Promise<number> {
+    const [row] = await db
+      .select({ balance: sql<number>`COALESCE(SUM(${tokenLedger.deltaTokens}), 0)::int` })
+      .from(tokenLedger)
+      .where(eq(tokenLedger.userId, userId));
+    return row?.balance ?? 0;
+  }
+
+  async getTokenLedgerEntryBySpendRef(spendRefType: string, spendRefId: string): Promise<TokenLedgerEntry | undefined> {
+    const [row] = await db.select().from(tokenLedger).where(
+      and(eq(tokenLedger.spendRefType, spendRefType), eq(tokenLedger.spendRefId, spendRefId))
+    );
+    return row;
+  }
+
+  async attachStripeBalanceTxn(entryId: string, stripeBalanceTxnId: string): Promise<TokenLedgerEntry | undefined> {
+    // The `IS NULL` predicate is what makes this safe to retry and impossible to
+    // use for rewriting an already-settled row. delta_tokens is untouched.
+    const [updated] = await db.update(tokenLedger)
+      .set({ stripeBalanceTxnId })
+      .where(and(eq(tokenLedger.id, entryId), isNull(tokenLedger.stripeBalanceTxnId)))
+      .returning();
     return updated;
+  }
+
+  /** Deliberately UNFILTERED by isActive — see IStorage. */
+  async getBrandsByOwnerId(ownerId: string): Promise<Brand[]> {
+    return db.select().from(brands).where(eq(brands.ownerId, ownerId));
+  }
+
+  async getEarliestTaggingCreatorForBrand(
+    brandId: string,
+  ): Promise<{ creatorId: string; videoId: string; taggedAt: Date | null } | undefined> {
+    // videos.created_at is NULLABLE (defaulted, not notNull), hence NULLS LAST;
+    // videos.id ASC makes the ordering TOTAL, so the winner is deterministic.
+    // Needs migrations/0010's video_brands(brand_id) index — this is the reverse
+    // of the only direction video_brands is queried elsewhere.
+    const [row] = await db
+      .select({ creatorId: videos.creatorId, videoId: videos.id, taggedAt: videos.createdAt })
+      .from(videoBrands)
+      .innerJoin(videos, eq(videos.id, videoBrands.videoId))
+      .where(eq(videoBrands.brandId, brandId))
+      .orderBy(sql`${videos.createdAt} ASC NULLS LAST`, asc(videos.id))
+      .limit(1);
+    return row ? { creatorId: row.creatorId, videoId: row.videoId, taggedAt: row.taggedAt ?? null } : undefined;
   }
 
   // Embed Deployments

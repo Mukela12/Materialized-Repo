@@ -10,7 +10,12 @@ import { recordSaleCommissions, clawbackSaleCommissions } from "./commissions";
 import { appendUtm } from "./embedUtils";
 import { resolveFeeConfig, userRateOr, centsToAmount, formatMoney } from "./feeConfig";
 import { buildNotifications, countUnread, parseMailboxId, type MailboxSources } from "./mailbox";
-import { LICENSE_FEE, LICENSE_FEE_PER_VIDEO } from "@shared/pricing";
+import { LICENSE_FEE, LICENSE_FEE_PER_VIDEO, tokensForFee } from "@shared/pricing";
+import { isPlaylistLocked, playlistLockedMessage } from "@shared/playlists";
+import {
+  spendTokens, creditTokens, revokeTokens, summarizeLedger, ledgerRowValues,
+} from "./wallet";
+import { applyTokenSubsidy } from "./subscriptionSubsidy";
 import { executePayouts } from "./payouts";
 import { verifyStoreHmac, extractShopifyAttribution, extractWooAttribution, type OrderAttribution } from "./storeWebhooks";
 import { 
@@ -3073,6 +3078,59 @@ Identify which products from the catalog are most likely to appear or be feature
         return res.status(400).json({ error: "Video already listed in library" });
       }
 
+      // ── Pay with wallet tokens ────────────────────────────────────────────
+      // Balance is pre-checked BEFORE the listing row is created so the common
+      // "not enough tokens" case doesn't leave an orphan listing behind (which
+      // would then block a retry via the "already listed" check above). The
+      // pre-check is advisory only — the authoritative check is inside the
+      // transaction in spendTokens(); losing that race just means the listing
+      // exists unpublished and can be retried via /api/library/:id/pay-with-tokens.
+      const payWithTokens = req.body?.payWith === "tokens";
+      if (payWithTokens) {
+        const required = tokensForFee(LICENSE_FEE);
+        if (required === null) {
+          return res.status(409).json({
+            error: "This listing fee cannot be paid with tokens",
+            detail: `Fee of ${LICENSE_FEE} is not a whole multiple of the token value`,
+          });
+        }
+        const balance = await storage.getTokenBalance(user.id);
+        if (balance < required) {
+          return res.status(402).json({ error: "Insufficient tokens", balance, required });
+        }
+
+        const tokenListing = await storage.createGlobalVideoListing(validatedData);
+        const spend = await spendTokens(storage, {
+          userId: user.id,
+          tokens: required,
+          reason: "spend_library_listing",
+          spendRefType: "global_video_listing",
+          spendRefId: tokenListing.id,
+          description: "Global Video Library listing fee",
+        });
+        if (!spend.ok) {
+          return res.status(402).json({
+            error: "Token payment failed",
+            reason: spend.error,
+            listingId: tokenListing.id,
+            detail: "The listing was saved unpublished — retry with POST /api/library/:id/pay-with-tokens",
+          });
+        }
+
+        const published = await storage.updateGlobalVideoListing(tokenListing.id, {
+          publishStatus: "published",
+          listedAt: new Date(),
+        });
+        // No paymentIntent key: a token listing has no PaymentIntent and must NOT
+        // be routed through /confirm-payment, which would 402 on the Stripe check.
+        return res.status(201).json({
+          listing: published ?? tokenListing,
+          paidWith: "tokens",
+          tokensSpent: required,
+          balanceAfter: spend.balanceAfter,
+        });
+      }
+
       const listing = await storage.createGlobalVideoListing(validatedData);
 
       // Create Stripe payment intent for listing fee.
@@ -3137,6 +3195,72 @@ Identify which products from the catalog are most likely to appear or be feature
       res.json({ success: true, listing: await storage.getGlobalVideoListing(listing.id) });
     } catch (error) {
       res.status(500).json({ error: "Failed to confirm payment" });
+    }
+  });
+
+  // Pay an EXISTING unpublished listing with wallet tokens. Owner only — the
+  // wallet debited is always the session user's, never a client-supplied id.
+  // Exists so a token payment that failed midway through /api/library/list is
+  // retryable instead of leaving the listing permanently stuck.
+  app.post("/api/library/:id/pay-with-tokens", async (req, res) => {
+    try {
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ error: "Authentication required" });
+      const listing = await storage.getGlobalVideoListing(req.params.id);
+      if (!listing) return res.status(404).json({ error: "Listing not found" });
+      // Deliberately NOT admin-overridable: an admin must not spend someone
+      // else's tokens. Owner only.
+      if (listing.creatorId !== sessionUserId) return res.status(403).json({ error: "Forbidden" });
+      if (listing.publishStatus === "published") {
+        return res.status(400).json({ error: "Listing already published" });
+      }
+
+      const required = tokensForFee(LICENSE_FEE);
+      if (required === null) {
+        return res.status(409).json({ error: "This listing fee cannot be paid with tokens" });
+      }
+
+      const spend = await spendTokens(storage, {
+        userId: sessionUserId,
+        tokens: required,
+        reason: "spend_library_listing",
+        spendRefType: "global_video_listing",
+        spendRefId: listing.id,
+        description: "Global Video Library listing fee",
+      });
+
+      if (!spend.ok && spend.error === "duplicate_spend") {
+        // Already paid for on a previous attempt — publish and report success.
+        const published = await storage.updateGlobalVideoListing(listing.id, {
+          publishStatus: "published",
+          listedAt: listing.listedAt ?? new Date(),
+        });
+        return res.json({ success: true, listing: published, paidWith: "tokens", alreadyPaid: true });
+      }
+      if (!spend.ok) {
+        return res.status(402).json({
+          error: "Token payment failed",
+          reason: spend.error,
+          ...(spend.error === "insufficient_tokens"
+            ? { balance: spend.balance, required: spend.required }
+            : {}),
+        });
+      }
+
+      const published = await storage.updateGlobalVideoListing(listing.id, {
+        publishStatus: "published",
+        listedAt: new Date(),
+      });
+      res.json({
+        success: true,
+        listing: published,
+        paidWith: "tokens",
+        tokensSpent: required,
+        balanceAfter: spend.balanceAfter,
+      });
+    } catch (error) {
+      console.error("Library token payment error:", error);
+      res.status(500).json({ error: "Failed to pay with tokens" });
     }
   });
 
@@ -3211,6 +3335,15 @@ Identify which products from the catalog are most likely to appear or be feature
       if (!user) return res.status(401).json({ error: "User not found" });
       const pl = await storage.getPlaylist(Number(req.params.id));
       if (!pl || pl.userId !== user.id) return res.status(404).json({ error: "Playlist not found" });
+      // A playlist is priced PER VIDEO, and it is priced ONCE. Adding videos after
+      // it has been paid for is buying 100 licences for the price of 1: the token
+      // path debits at /checkout and the card path sizes its PaymentIntent there
+      // too, and neither can be re-run afterwards (checkout 400s on a published
+      // playlist), so the extra videos would simply be free. The contents are
+      // frozen from the moment money is committed.
+      if (isPlaylistLocked(pl.status)) {
+        return res.status(409).json({ error: playlistLockedMessage(pl.status), status: pl.status });
+      }
       const { listingIds, utmSource, utmMedium, utmCampaign, utmContent } = req.body;
       if (!Array.isArray(listingIds) || listingIds.length === 0) {
         return res.status(400).json({ error: "listingIds must be a non-empty array" });
@@ -3256,6 +3389,14 @@ Identify which products from the catalog are most likely to appear or be feature
       if (!actor?.isAdmin && playlist.userId !== sessionUserId) {
         return res.status(403).json({ error: "Forbidden" });
       }
+      // Symmetrical with the add guard. Removing a video from a paid playlist would
+      // shrink it below what was charged, and — because /checkout is keyed on the
+      // playlist id and cannot be re-run — leave a permanent add/remove channel for
+      // swapping the published contents after payment. Admins are exempt: a takedown
+      // of infringing content must not be blocked by a billing rule.
+      if (!actor?.isAdmin && isPlaylistLocked(playlist.status)) {
+        return res.status(409).json({ error: playlistLockedMessage(playlist.status), status: playlist.status });
+      }
       await storage.removePlaylistItem(Number(req.params.itemId), playlistId, playlist.userId);
       res.json({ success: true });
     } catch {
@@ -3284,6 +3425,78 @@ Identify which products from the catalog are most likely to appear or be feature
       // This previously passed cents, which billed 100x — 4,500 for one video.
       // Playlist curation is charged per video at LICENSE_FEE_PER_VIDEO ($49).
       const totalAmount = items.length * LICENSE_FEE_PER_VIDEO;
+
+      // ── Pay with wallet tokens ────────────────────────────────────────────
+      // Curation is PER VIDEO, so a 5-video playlist costs 5 tokens. There is no
+      // partial-token spend: the wallet deals in whole $49 units.
+      if (req.body?.payWith === "tokens") {
+        const perVideo = tokensForFee(LICENSE_FEE_PER_VIDEO);
+        if (perVideo === null) {
+          return res.status(409).json({
+            error: "This curation fee cannot be paid with tokens",
+            detail: `Per-video fee of ${LICENSE_FEE_PER_VIDEO} is not a whole multiple of the token value`,
+          });
+        }
+        const required = perVideo * items.length;
+
+        const spend = await spendTokens(storage, {
+          userId: user.id,
+          tokens: required,
+          reason: "spend_playlist",
+          spendRefType: "playlist",
+          spendRefId: String(playlistId),
+          description: `Playlist curation — ${items.length} video(s)`,
+        });
+
+        if (!spend.ok && spend.error === "insufficient_tokens") {
+          return res.status(402).json({
+            error: "Insufficient tokens",
+            balance: spend.balance,
+            required: spend.required,
+            videoCount: items.length,
+          });
+        }
+        if (!spend.ok && spend.error !== "duplicate_spend") {
+          return res.status(400).json({ error: "Token payment failed", reason: spend.error });
+        }
+        if (!spend.ok && spend.error === "duplicate_spend") {
+          // Already paid for on a previous attempt — but re-verify the playlist
+          // hasn't GROWN since. If updatePlaylist failed after the debit committed
+          // the playlist stays "draft" (and therefore unlocked), so videos could be
+          // added and this path re-run to publish them all for the original price.
+          // The card path guards exactly this by comparing the PaymentIntent amount.
+          const paidEntry = await storage.getTokenLedgerEntryBySpendRef("playlist", String(playlistId));
+          const paidFor = paidEntry ? Math.abs(paidEntry.deltaTokens) : 0;
+          if (required > paidFor) {
+            return res.status(409).json({
+              error: "Playlist has more videos than were paid for",
+              paidForTokens: paidFor,
+              requiredTokens: required,
+              videoCount: items.length,
+            });
+          }
+        }
+        // Safe to fall through: either we just debited, or the existing debit
+        // covers the current video count. Publishing is idempotent.
+
+        const tokenEmbedCode = buildPlaylistEmbedCode(playlistId, user.id);
+        const publishedPlaylist = await storage.updatePlaylist(playlistId, {
+          status: "published",
+          embedCode: tokenEmbedCode,
+          publishedAt: new Date(),
+          licenseFeeTotal: totalAmount.toFixed(2),
+        });
+
+        return res.json({
+          playlist: publishedPlaylist,
+          embedCode: tokenEmbedCode,
+          paidWith: "tokens",
+          tokensSpent: spend.ok ? required : 0,
+          alreadyPaid: !spend.ok,
+          videoCount: items.length,
+          // No clientSecret: nothing to confirm, the playlist is already published.
+        });
+      }
 
       // Currency omitted on purpose → falls back to getPlatformCurrency() ("usd").
       const paymentIntent = await stripeService.createPaymentIntent(totalAmount, undefined, {
@@ -3329,11 +3542,39 @@ Identify which products from the catalog are most likely to appear or be feature
       if (playlist.userId !== user.id) return res.status(403).json({ error: "Forbidden" });
       if (playlist.status === "published") return res.status(400).json({ error: "Already published" });
 
-      const baseUrl = process.env.REPLIT_DEV_DOMAIN
-        ? `https://${process.env.REPLIT_DEV_DOMAIN}`
-        : "https://your-app.replit.dev";
+      // PRE-EXISTING REVENUE BUG, fixed here alongside the token path: this
+      // endpoint used to publish unconditionally — it never read
+      // stripePaymentIntentId and never called Stripe — so any owner could POST
+      // /checkout then /confirm-payment and publish for free. Adding a token gate
+      // next to an already-open door would have been decoration, so the card
+      // branch is verified the same way /api/library/:id/confirm-payment is
+      // (routes.ts, retrievePaymentIntent + status === "succeeded").
+      //
+      // NOTE FOR THE CLIENT: playlists paid by CARD now require a real succeeded
+      // PaymentIntent. There is no card UI in client/src today (nothing consumes
+      // the returned clientSecret), so in practice the token path is the working
+      // publish path until that UI lands.
+      if (!playlist.stripePaymentIntentId) {
+        return res.status(400).json({ error: "No payment on record for this playlist" });
+      }
+      const intent = await stripeService.retrievePaymentIntent(playlist.stripePaymentIntentId);
+      if (!intent || intent.status !== "succeeded") {
+        return res.status(402).json({ error: "Payment not completed" });
+      }
+      // Items can be added between /checkout and /confirm-payment. Without this,
+      // an 8-video playlist could be published against a 1-video PaymentIntent.
+      const confirmItems = await storage.getPlaylistItems(playlistId);
+      const expectedCents = Math.round(confirmItems.length * LICENSE_FEE_PER_VIDEO * 100);
+      if (intent.amount < expectedCents) {
+        return res.status(402).json({
+          error: "Payment does not cover the current playlist",
+          paidCents: intent.amount,
+          requiredCents: expectedCents,
+          videoCount: confirmItems.length,
+        });
+      }
 
-      const embedCode = `<div id="mat-playlist-${playlistId}" data-playlist="${playlistId}" data-user="${user.id}"></div>\n<script src="${baseUrl}/embed/playlist.js" async></script>`;
+      const embedCode = buildPlaylistEmbedCode(playlistId, user.id);
 
       const updated = await storage.updatePlaylist(playlistId, {
         status: "published",
@@ -3381,6 +3622,14 @@ Identify which products from the catalog are most likely to appear or be feature
         undefined,
         { purchaseId: purchase.id, userId: user.id, type: "license_purchase" }
       );
+
+      // PRE-EXISTING BUG, fixed here: the PaymentIntent id was never written back
+      // onto the purchase (insertVideoLicensePurchaseSchema omits it), so
+      // purchase.stripePaymentIntentId was always NULL and
+      // /api/purchases/:id/confirm-payment hard-failed with "No payment on record
+      // for this purchase" — i.e. a licence purchase could never complete.
+      // /api/library/list already persisted its intent id; this path did not.
+      await storage.updateVideoLicensePurchaseStatus(purchase.id, "pending", paymentIntent.id);
 
       res.status(201).json({
         purchase,
@@ -3598,7 +3847,186 @@ Identify which products from the catalog are most likely to appear or be feature
     }
   });
 
-  // ==================== CREATOR REWARDS ROUTES ====================
+  // ==================== TOKEN WALLET ROUTES ====================
+  //
+  // 1 token = $49 of PREPAID PLATFORM CREDIT. TOKENS ARE NEVER CASHABLE — see the
+  // module doc at the top of server/wallet.ts for the full statement and for the
+  // cash path (commissions → payouts → Stripe transfers) these routes do not touch.
+  //
+  // Every route below is session-authenticated and scoped to the CALLER'S OWN
+  // wallet: the userId passed to the wallet is always `req.session.userId`, never
+  // anything from the request body, params or query. Admin overrides are the only
+  // exception and they live behind requireAdmin.
+
+  // Wallet balance + full ledger history for the signed-in user.
+  app.get("/api/wallet", async (req, res) => {
+    try {
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ error: "Authentication required" });
+
+      const entries = await storage.getTokenLedger(sessionUserId);
+      const summary = summarizeLedger(entries);
+      // Exact per-row value from ONE FIFO replay: a credit is worth its own grant
+      // price, a debit is worth the lots it retired. Derived rather than read off
+      // usd_value_cents so the rows sum to `balanceUsdCents` to the cent, even
+      // when a spend straddled a reprice and its unit price had to be rounded.
+      const rowValues = ledgerRowValues(entries);
+      res.json({
+        ...summary,
+        // Per-row USD value is the row's OWN captured value, never today's price.
+        entries: entries.map((e) => ({
+          id: e.id,
+          deltaTokens: e.deltaTokens,
+          reason: e.reason,
+          usdValueCents: e.usdValueCents,
+          rowUsdCents: rowValues.get(e.id) ?? Math.abs(e.deltaTokens) * e.usdValueCents,
+          description: e.description,
+          attributionMethod: e.attributionMethod,
+          sourceBrandId: e.sourceBrandId,
+          attributedVideoId: e.attributedVideoId,
+          spendRefType: e.spendRefType,
+          spendRefId: e.spendRefId,
+          createdAt: e.createdAt,
+        })),
+      });
+    } catch (error) {
+      console.error("Wallet read error:", error);
+      res.status(500).json({ error: "Failed to get wallet" });
+    }
+  });
+
+  // Balance-only view, for badges and dashboard tiles.
+  app.get("/api/wallet/summary", async (req, res) => {
+    try {
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ error: "Authentication required" });
+      const entries = await storage.getTokenLedger(sessionUserId);
+      res.json(summarizeLedger(entries));
+    } catch (error) {
+      res.status(500).json({ error: "Failed to get wallet summary" });
+    }
+  });
+
+  /**
+   * Subsidise the caller's own monthly subscription fee with tokens.
+   *
+   * Mechanism: a NEGATIVE Stripe customer balance transaction — a credit Stripe
+   * drains automatically at the next invoice finalization. Not a coupon (recurs,
+   * needs promo-code plumbing) and not a discounted price (forks the price
+   * catalogue). See stripeService.applyCustomerCreditCents for the sign warning.
+   *
+   * THIS HANDLER IS A THIN ADAPTER ON PURPOSE. All of the money logic — the
+   * debit-then-Stripe ordering, the idempotency reuse rules and the compensating
+   * refund that used to be an unbounded mint — lives in
+   * server/subscriptionSubsidy.ts, behind injected dependencies, so the
+   * Stripe-failure branch is reachable from a unit test instead of only from a
+   * live Stripe outage. See tests/unit/wallet-subsidy-refund.test.ts.
+   *
+   * `idempotencyKey` is REQUIRED: (spend_ref_type, spend_ref_id) is UNIQUE, so a
+   * double-submit with the same key returns the original result instead of
+   * debiting twice. It is namespaced by user id so keys cannot collide across
+   * accounts.
+   */
+  app.post("/api/wallet/subsidise-subscription", async (req, res) => {
+    try {
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ error: "Authentication required" });
+      const user = await storage.getUser(sessionUserId);
+      if (!user) return res.status(401).json({ error: "User not found" });
+
+      const body = z.object({
+        tokens: z.number().int().positive().max(50),
+        idempotencyKey: z.string().min(8).max(128),
+      }).parse(req.body);
+
+      if (!user.stripeCustomerId) {
+        return res.status(400).json({
+          error: "No billing account on file. Please subscribe first.",
+        });
+      }
+
+      const result = await applyTokenSubsidy(
+        {
+          store: storage,
+          applyCustomerCredit: (customerId, cents, description, key, metadata) =>
+            stripeService.applyCustomerCreditCents(customerId, cents, description, key, metadata),
+        },
+        {
+          // ALWAYS the session user — never anything from the body.
+          userId: sessionUserId,
+          stripeCustomerId: user.stripeCustomerId,
+          tokens: body.tokens,
+          idempotencyKey: body.idempotencyKey,
+        },
+      );
+
+      switch (result.outcome) {
+        case "applied":
+          return res.json({
+            success: true,
+            tokensSpent: result.tokensSpent,
+            creditCents: result.creditCents,
+            balanceAfter: result.balanceAfter,
+            stripeBalanceTxnId: result.stripeBalanceTxnId,
+          });
+        case "already_applied":
+          return res.json({
+            success: true,
+            alreadyApplied: true,
+            tokensSpent: result.tokensSpent,
+            creditCents: result.creditCents,
+            stripeBalanceTxnId: result.stripeBalanceTxnId,
+          });
+        case "already_refunded":
+          // 409, not 200: this key is spent. The client rotates its key on this
+          // code, which turns the refusal back into a retry the user can make.
+          return res.status(409).json({
+            error: "That attempt failed and your tokens were already refunded. Please try again — it will start a fresh application.",
+            code: "spend_already_refunded",
+            walletEntryId: result.walletEntryId,
+            tokensRefunded: result.tokensRefunded,
+          });
+        case "key_conflict":
+          return res.status(409).json({
+            error: "This idempotency key was already used for a different number of tokens.",
+            code: "idempotency_key_conflict",
+            tokensOnRecord: result.tokensOnRecord,
+          });
+        case "insufficient_tokens":
+          return res.status(402).json({
+            error: "Insufficient tokens",
+            balance: result.balance,
+            required: result.required,
+          });
+        case "spend_failed":
+          return res.status(400).json({ error: "Token spend failed", reason: result.reason });
+        case "stripe_failed":
+          return res.status(502).json({
+            error: "Could not apply the credit with Stripe",
+            tokensRefunded: result.tokensRefunded,
+            walletEntryId: result.walletEntryId,
+          });
+      }
+    } catch (error) {
+      if (error instanceof z.ZodError) return res.status(400).json({ error: error.errors });
+      console.error("Wallet subsidy error:", error);
+      res.status(500).json({ error: "Failed to apply tokens" });
+    }
+  });
+
+  // ==================== CREATOR REWARDS ROUTES (RETIRED) ====================
+  //
+  // creator_rewards is superseded by the token wallet above. Nothing has ever
+  // written to it (createCreatorReward had zero callers), so these two readers
+  // return [] / zeroes and exist only so the legacy client page keeps rendering
+  // while it is repointed at /api/wallet.
+  //
+  // POST /api/rewards/:id/redeem HAS BEEN DELETED. It called
+  // storage.redeemCreatorReward, an `UPDATE ... SET status = 'redeemed'` whose
+  // WHERE clause had no predicate on the current status — so two concurrent
+  // redeems of the same reward both "succeeded". That is exactly the double-spend
+  // this wallet exists to prevent, and it had no client caller. Spending now
+  // happens at the point of purchase, not as a standalone redeem.
 
   // Get creator rewards
   app.get("/api/rewards", async (req, res) => {
@@ -3632,30 +4060,7 @@ Identify which products from the catalog are most likely to appear or be feature
     }
   });
 
-  // Redeem reward for video listing (owner or admin only)
-  app.post("/api/rewards/:id/redeem", async (req, res) => {
-    try {
-      const sessionUserId = (req.session as any)?.userId;
-      if (!sessionUserId) return res.status(401).json({ error: "Authentication required" });
-      const { listingId } = req.body;
-      if (!listingId) {
-        return res.status(400).json({ error: "Listing ID required" });
-      }
-      const existing = await storage.getCreatorReward(req.params.id);
-      if (!existing) return res.status(404).json({ error: "Reward not found" });
-      const actor = await storage.getUser(sessionUserId);
-      if (!actor?.isAdmin && existing.creatorId !== sessionUserId) {
-        return res.status(403).json({ error: "Forbidden" });
-      }
-      const reward = await storage.redeemCreatorReward(req.params.id, listingId, existing.creatorId);
-      if (!reward) {
-        return res.status(404).json({ error: "Reward not found" });
-      }
-      res.json(reward);
-    } catch (error) {
-      res.status(500).json({ error: "Failed to redeem reward" });
-    }
-  });
+  // POST /api/rewards/:id/redeem intentionally REMOVED — see the note above.
 
   // ==================== PUBLIC CONTACT FORM ====================
 
@@ -3839,6 +4244,99 @@ Identify which products from the catalog are most likely to appear or be feature
   });
 
   // ==================== ADMIN ROUTES ====================
+
+  // ── Admin: token wallet override ──────────────────────────────────────────
+  //
+  // First-touch attribution (server/wallet.ts) is OUR rule, not the client's, and
+  // it is a business call — so it has to be correctable by a human. Correcting it
+  // means APPENDING two rows, never editing the original:
+  //
+  //     POST /api/admin/wallet/revoke  { userId: <wrong creator>, tokens: 1, note }
+  //     POST /api/admin/wallet/grant   { userId: <right creator>, tokens: 1, note }
+  //
+  // Both go through the same locked, balance-re-verified path as a user spend, so
+  // an override can never drive a balance negative. The one-token-per-brand unique
+  // index only constrains `brand_conversion` rows, so the corrective pair inserts
+  // cleanly beside the original mint and the audit trail stays intact.
+
+  // Read any user's wallet (admin, read-only).
+  app.get("/api/admin/wallet/:userId", requireAdmin, async (req, res) => {
+    try {
+      const entries = await storage.getTokenLedger(req.params.userId);
+      res.json({ userId: req.params.userId, ...summarizeLedger(entries), entries });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to read wallet" });
+    }
+  });
+
+  app.post("/api/admin/wallet/grant", requireAdmin, async (req, res) => {
+    try {
+      const body = z.object({
+        userId: z.string().min(1),
+        tokens: z.number().int().positive().max(50),
+        // Required, not optional: an unexplained grant of platform credit is not
+        // something the ledger should be able to represent.
+        note: z.string().min(3).max(500),
+      }).parse(req.body);
+
+      const target = await storage.getUser(body.userId);
+      if (!target) return res.status(404).json({ error: "User not found" });
+
+      const result = await creditTokens(storage, {
+        userId: body.userId,
+        tokens: body.tokens,
+        reason: "admin_grant",
+        description: "Admin grant / attribution override",
+        adminNote: `${body.note} (by admin ${(req as any).user?.id})`,
+      });
+      if (!result.ok) return res.status(400).json({ error: "Grant failed", reason: result.error });
+
+      console.log(`[Wallet] Admin ${(req as any).user?.id} granted ${body.tokens} token(s) to ${body.userId}`);
+      res.json({ success: true, entry: result.entry, balanceAfter: result.balanceAfter });
+    } catch (error) {
+      if (error instanceof z.ZodError) return res.status(400).json({ error: error.errors });
+      console.error("Admin wallet grant error:", error);
+      res.status(500).json({ error: "Failed to grant tokens" });
+    }
+  });
+
+  app.post("/api/admin/wallet/revoke", requireAdmin, async (req, res) => {
+    try {
+      const body = z.object({
+        userId: z.string().min(1),
+        tokens: z.number().int().positive().max(50),
+        note: z.string().min(3).max(500),
+      }).parse(req.body);
+
+      const result = await revokeTokens(storage, {
+        userId: body.userId,
+        tokens: body.tokens,
+        description: "Admin revoke / attribution override",
+        adminNote: `${body.note} (by admin ${(req as any).user?.id})`,
+      });
+
+      if (!result.ok) {
+        if (result.error === "insufficient_tokens") {
+          // The wrongly-credited user already spent it. The non-negative balance
+          // invariant is absolute, so this is refused rather than forced through —
+          // recovering already-consumed value is a business action, not a ledger edit.
+          return res.status(409).json({
+            error: "Cannot revoke — balance would go negative (tokens already spent)",
+            balance: result.balance,
+            required: result.required,
+          });
+        }
+        return res.status(400).json({ error: "Revoke failed", reason: result.error });
+      }
+
+      console.log(`[Wallet] Admin ${(req as any).user?.id} revoked ${body.tokens} token(s) from ${body.userId}`);
+      res.json({ success: true, entry: result.entry, balanceAfter: result.balanceAfter });
+    } catch (error) {
+      if (error instanceof z.ZodError) return res.status(400).json({ error: error.errors });
+      console.error("Admin wallet revoke error:", error);
+      res.status(500).json({ error: "Failed to revoke tokens" });
+    }
+  });
 
   // Admin dashboard overview stats
   app.get("/api/admin/dashboard", requireAdmin, async (req, res) => {
@@ -5043,6 +5541,18 @@ Identify which products from the catalog are most likely to appear or be feature
   });
 
   return httpServer;
+}
+
+/**
+ * Playlist embed snippet. Extracted so the card branch and the token branch of
+ * playlist publishing emit byte-identical markup — two copies of this string
+ * would silently drift.
+ */
+function buildPlaylistEmbedCode(playlistId: number, userId: string): string {
+  const baseUrl = process.env.REPLIT_DEV_DOMAIN
+    ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+    : "https://your-app.replit.dev";
+  return `<div id="mat-playlist-${playlistId}" data-playlist="${playlistId}" data-user="${userId}"></div>\n<script src="${baseUrl}/embed/playlist.js" async></script>`;
 }
 
 // Helper function to generate embed code

@@ -50,6 +50,27 @@ export function isPlanKey(value: unknown): value is PlanKey {
 export const BRAND_PLANS: readonly PlanKey[] = ['starter', 'pro'];
 export const CREATOR_PLANS: readonly PlanKey[] = ['creator', 'starter', 'pro'];
 
+/**
+ * Which subscription tiers mint a wallet token for the creator who introduced the
+ * subscriber. See server/wallet.ts.
+ *
+ * The client's words are: "reward Creators for tagging a Brand who completes a
+ * $249 monthly subscription" — that is 'starter' and only 'starter'.
+ *
+ *   - 'creator' ($149) is EXCLUDED: it is the tier a creator buys for themselves.
+ *     Minting against it funds a $49 reward out of a $149 subscription, and (with
+ *     CREATOR_PLANS being deliberately permissive) is the self-mint a creator
+ *     could arrange by tagging their own brand.
+ *   - 'pro' ($499, Publisher) is EXCLUDED: a publisher is a different counterparty
+ *     than the "Brand" the client described. This is the only arguable inclusion;
+ *     it is left out because adding a tier later is additive and reversible, while
+ *     clawing back already-minted tokens is neither.
+ *
+ * Adding a plan here is a ONE-LINE, reviewable business decision — which is the
+ * whole point of it being a constant rather than an inline literal.
+ */
+export const TOKEN_QUALIFYING_PLANS: readonly PlanKey[] = ['starter'];
+
 /** True iff `value` is a plan the given endpoint is allowed to sell. */
 export function isAllowedPlan(value: unknown, allowed: readonly PlanKey[]): value is PlanKey {
   return isPlanKey(value) && allowed.includes(value);

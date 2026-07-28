@@ -12,6 +12,7 @@ import {
   Receipt,
   ArrowLeftRight,
   Wallet,
+  Coins,
   Building2,
   KeyRound,
   LogOut,
@@ -39,6 +40,8 @@ function buildSections(role: string) {
     : isCreator
     ? [
         { label: "Subscription & Billing", icon: CalendarDays, path: "/creator/settings/subscription" },
+        // Mobile has no sidebar, so the wallet needs a home here too.
+        { label: "Token Wallet", icon: Coins, path: "/creator/wallet" },
       ]
     : [];
 

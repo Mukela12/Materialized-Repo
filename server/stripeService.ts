@@ -81,6 +81,51 @@ export class StripeService {
   }
 
 
+  /**
+   * Apply a CREDIT to a customer's Stripe balance — the mechanism behind
+   * "subsidise the monthly subscription fee with tokens".
+   *
+   * ⚠ SIGN. Stripe's convention (node_modules/stripe/types/CustomerBalanceTransactions.d.ts):
+   * "A negative value is a credit for the customer's balance, and a positive value
+   * is a debit." So a $49 subsidy is `amount: -4900`. Passing +4900 would BILL the
+   * customer an extra $49 — the most expensive one-character mistake available on
+   * this path. `creditCents` is taken as a POSITIVE number here and negated below,
+   * so no caller ever has to reason about the sign; a unit test pins it.
+   *
+   * Why a customer credit balance and not a coupon or a discounted price: a coupon
+   * is a discount on the PRICE and recurs (or needs per-customer promo-code
+   * plumbing); a discounted price forks the catalogue and breaks
+   * findOrCreateSubscriptionPrice's `unit_amount === config.amount` match, minting
+   * a duplicate price on every checkout. The credit balance is a customer-level
+   * ledger Stripe drains automatically at invoice finalization, leaves the
+   * subscription price untouched, and rolls any excess to the next invoice.
+   *
+   * `idempotencyKey` (the wallet ledger row id) makes a retry after a timeout
+   * return the ORIGINAL balance transaction rather than double-crediting.
+   */
+  async applyCustomerCreditCents(
+    customerId: string,
+    creditCents: number,
+    description: string,
+    idempotencyKey: string,
+    metadata?: Record<string, string>,
+  ) {
+    if (!Number.isInteger(creditCents) || creditCents <= 0) {
+      throw new Error(`applyCustomerCreditCents: creditCents must be a positive integer, got ${creditCents}`);
+    }
+    const stripe = await getUncachableStripeClient();
+    return await stripe.customers.createBalanceTransaction(
+      customerId,
+      {
+        amount: -creditCents, // NEGATIVE = credit. See the sign warning above.
+        currency: getPlatformCurrency(),
+        description,
+        ...(metadata ? { metadata } : {}),
+      },
+      { idempotencyKey },
+    );
+  }
+
   async createCustomer(email: string, userId: string, name?: string) {
     const stripe = await getUncachableStripeClient();
     return await stripe.customers.create({

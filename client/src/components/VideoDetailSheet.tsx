@@ -12,10 +12,14 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Eye, MousePointer, DollarSign, Image, CheckSquare, Square, Plus, Trash2, Link, ExternalLink, Layers, Clock } from "lucide-react";
+import { Eye, MousePointer, DollarSign, Image, CheckSquare, Square, Plus, Trash2, Link, ExternalLink, Layers, Clock, Library, CheckCircle2 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { Video, VideoProductOverlay } from "@shared/schema";
+import { LICENSE_FEE, tokensForFee } from "@shared/pricing";
+import { CURRENCY_SYMBOL } from "@/lib/currency";
+import { TokenPayOption } from "@/components/TokenPayOption";
+import { walletPost, useInvalidateWallet, tokenLabel } from "@/hooks/useWallet";
 
 const POSITIONS = [
   { value: "bottom", label: "Bottom Center" },
@@ -42,6 +46,12 @@ function parseCategories(raw: string | null | undefined): string[] {
   if (!raw) return [];
   try { return JSON.parse(raw); } catch { return []; }
 }
+
+/** Whole tokens to list one video. null would mean "not payable in tokens". */
+const TOKENS_TO_LIST = tokensForFee(LICENSE_FEE);
+
+/** Only the fields this component needs off GET /api/library. */
+type LibraryListingRef = { id: string; videoId: string; publishStatus: string | null };
 
 interface ManualProduct {
   id: string;
@@ -112,6 +122,67 @@ export function VideoDetailSheet({ video, open, onOpenChange }: Props) {
   });
 
   const manualProducts: ManualProduct[] = carouselData?.products ?? [];
+
+  // ── Global Video Library listing ──────────────────────────────────────────
+  const invalidateWallet = useInvalidateWallet();
+
+  const { data: libraryListings = [] } = useQuery<LibraryListingRef[]>({
+    queryKey: ["/api/library"],
+    enabled: open,
+  });
+
+  const existingListing = libraryListings.find((l) => l.videoId === video?.id);
+  const isListed = existingListing?.publishStatus === "published";
+
+  /**
+   * List this video in the Global Video Library, paid in tokens.
+   *
+   * Two endpoints, because a token payment can fail AFTER the listing row is
+   * created (the listing then sits unpublished, and POST /api/library/list would
+   * reject the retry with "already listed"). If we can see such a row, pay it off
+   * through the retry endpoint instead of trying to create a second one.
+   */
+  const listWithTokensMutation = useMutation({
+    mutationFn: async () => {
+      const pending = existingListing && existingListing.publishStatus !== "published"
+        ? existingListing
+        : null;
+
+      const { ok, data } = pending
+        ? await walletPost(`/api/library/${pending.id}/pay-with-tokens`, {})
+        : await walletPost("/api/library/list", {
+            videoId: video!.id,
+            payWith: "tokens",
+            listingTitle: title.trim() || undefined,
+            category: categories[0],
+          });
+
+      if (!ok) {
+        if (data.balance !== undefined && data.required !== undefined) {
+          throw new Error(
+            `You have ${tokenLabel(data.balance)} — listing costs ${tokenLabel(data.required)}.`,
+          );
+        }
+        throw new Error(data.error || "Couldn't list this video");
+      }
+      return data;
+    },
+    onSuccess: (data: any) => {
+      invalidateWallet();
+      queryClient.invalidateQueries({ queryKey: ["/api/library"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/videos"] });
+      toast({
+        title: data?.alreadyPaid ? "Listing published" : "Listed in the Global Video Library",
+        description: data?.alreadyPaid
+          ? "This listing had already been paid for and is now live."
+          : `${tokenLabel(data?.tokensSpent ?? TOKENS_TO_LIST ?? 1)} used. Affiliates can now license this video.`,
+      });
+    },
+    onError: (e: Error) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/library"] });
+      toast({ title: "Couldn't list this video", description: e.message, variant: "destructive" });
+    },
+  });
 
   const mutation = useMutation({
     mutationFn: async (payload: Record<string, unknown>) =>
@@ -347,6 +418,62 @@ export function VideoDetailSheet({ video, open, onOpenChange }: Props) {
                 );
               })}
             </div>
+          </div>
+
+          {/* Global Video Library listing — the $49 / 1-token flow */}
+          <div className="space-y-3 border border-border rounded-xl p-4 bg-muted/30">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Library className="h-4 w-4 text-primary" />
+                <Label className="text-sm font-semibold">Global Video Library</Label>
+              </div>
+              {isListed && (
+                <Badge className="bg-green-600 hover:bg-green-600 text-white border-0 gap-1" data-testid="badge-video-listed">
+                  <CheckCircle2 className="h-3 w-3" />
+                  Listed
+                </Badge>
+              )}
+            </div>
+
+            {isListed ? (
+              <p className="text-xs text-muted-foreground">
+                This video is live in the Global Video Library — affiliates and publishers can license
+                it. Nothing further to pay.
+              </p>
+            ) : TOKENS_TO_LIST === null ? (
+              <p className="text-xs text-muted-foreground">
+                Listing costs {CURRENCY_SYMBOL}{LICENSE_FEE}. This fee can't be settled in whole
+                tokens, so it has to be paid by card.
+              </p>
+            ) : (
+              <>
+                <p className="text-xs text-muted-foreground">
+                  Listing makes this video licensable by affiliates and publishers, who then drive
+                  commission back to you. One-off fee of {CURRENCY_SYMBOL}{LICENSE_FEE}.
+                </p>
+                <TokenPayOption
+                  required={TOKENS_TO_LIST}
+                  usdAmount={LICENSE_FEE}
+                  title="List with tokens"
+                  breakdown={
+                    existingListing
+                      ? "This listing was created but never paid for — one token completes it."
+                      : undefined
+                  }
+                  onPay={() => listWithTokensMutation.mutate()}
+                  isPending={listWithTokensMutation.isPending}
+                  testId="library-token-pay"
+                >
+                  {/* States the real product position instead of rendering a card
+                      button that leads nowhere — nothing in the client consumes the
+                      clientSecret that /api/library/list returns. */}
+                  <p className="text-[11px] text-muted-foreground">
+                    Card checkout for library listings isn't available in the app yet — tokens are the
+                    self-serve option today.
+                  </p>
+                </TokenPayOption>
+              </>
+            )}
           </div>
 
           {/* Product Carousel Links */}

@@ -1,5 +1,7 @@
 import { CURRENCY_SYMBOL } from "@/lib/currency";
-import { LICENSE_FEE_PER_VIDEO } from "@shared/pricing";
+import { LICENSE_FEE_PER_VIDEO, tokensForFee } from "@shared/pricing";
+import { TokenPayOption } from "@/components/TokenPayOption";
+import { walletPost, useInvalidateWallet, tokenLabel } from "@/hooks/useWallet";
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -96,8 +98,33 @@ function StatusBadge({ status }: { status: PlaylistSummary["status"] }) {
   return <span className={`text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full ${className}`}>{label}</span>;
 }
 
+/**
+ * Tokens per video for playlist curation. `tokensForFee` returns null when the fee
+ * is not a whole multiple of the token value — in that case the token option is
+ * not offered at all rather than rounded, which would over- or under-charge.
+ */
+const TOKENS_PER_VIDEO = tokensForFee(LICENSE_FEE_PER_VIDEO);
+
+/**
+ * CARD PUBLISHING IS OFF, and these buttons say so instead of failing.
+ *
+ * POST /api/playlists/:id/confirm-payment used to publish unconditionally — it
+ * never read stripePaymentIntentId and never called Stripe, so checkout-then-
+ * confirm published for FREE. It now requires a genuinely succeeded
+ * PaymentIntent, which is correct; but nothing in the client consumes the
+ * `clientSecret` that /checkout returns, so no PaymentIntent can ever succeed and
+ * every one of these buttons can only return 402 "Payment not completed".
+ *
+ * They are disabled rather than left to fail, and the SERVER CHECK STAYS. Re-enable
+ * by mounting Stripe Elements on the clientSecret — never by loosening the server.
+ */
+const CARD_PUBLISH_ENABLED = false;
+const CARD_PUBLISH_NOTE =
+  "Card checkout isn't available yet — the payment form is still being wired up. Publish with tokens above; your playlist stays saved either way.";
+
 export default function PlaylistsPage() {
   const { toast } = useToast();
+  const invalidateWallet = useInvalidateWallet();
   const [openPlaylistId, setOpenPlaylistId] = useState<number | null>(null);
   const [showEmbed, setShowEmbed] = useState(false);
   const [checkoutTotal, setCheckoutTotal] = useState<string | null>(null);
@@ -148,6 +175,47 @@ export default function PlaylistsPage() {
     },
   });
 
+  /**
+   * Publish with wallet tokens. Same endpoint as the card path — `payWith: "tokens"`
+   * is the only difference — so the server does the debit and the publish inside one
+   * request and there is nothing to "confirm" afterwards.
+   *
+   * `walletPost` is used instead of `apiRequest` because a 402 carries the structured
+   * `{ balance, required }` we want to show the user, and `apiRequest` throws it away
+   * as a string.
+   */
+  const tokenPublishMutation = useMutation({
+    mutationFn: async (playlistId: number) => {
+      const { ok, data } = await walletPost(`/api/playlists/${playlistId}/checkout`, {
+        payWith: "tokens",
+      });
+      if (!ok) {
+        if (data.balance !== undefined && data.required !== undefined) {
+          throw new Error(
+            `You have ${tokenLabel(data.balance)} — this playlist costs ${tokenLabel(data.required)}.`,
+          );
+        }
+        throw new Error(data.error || "Token payment failed");
+      }
+      return data;
+    },
+    onSuccess: (data) => {
+      invalidateWallet();
+      queryClient.invalidateQueries({ queryKey: ["/api/playlists"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/playlists", openPlaylistId] });
+      setCheckoutTotal(null);
+      toast({
+        title: "Published!",
+        description: data.alreadyPaid
+          ? "This playlist was already paid for. It's live — embed code is ready."
+          : `${tokenLabel(data.tokensSpent ?? 0)} used. Your playlist is live — embed code is ready.`,
+      });
+    },
+    onError: (e: Error) => {
+      toast({ title: "Couldn't pay with tokens", description: e.message, variant: "destructive" });
+    },
+  });
+
   const confirmPaymentMutation = useMutation({
     mutationFn: async (playlistId: number) => {
       const res = await apiRequest("POST", `/api/playlists/${playlistId}/confirm-payment`, {});
@@ -168,6 +236,9 @@ export default function PlaylistsPage() {
 
   const openDetail = playlists.find((p) => p.id === openPlaylistId);
   const currentStatus = detail?.status ?? openDetail?.status ?? "draft";
+  // The list summary already knows the count, so the token price is correct on the
+  // first frame instead of jumping from "0 tokens" once the detail query lands.
+  const itemCount = detail?.itemCount ?? openDetail?.itemCount ?? 0;
 
   const handleOpenPlaylist = (id: number) => {
     setOpenPlaylistId(id);
@@ -277,18 +348,45 @@ export default function PlaylistsPage() {
 
           <div className="mt-4 space-y-5">
 
+            {/* ── Pay with tokens ──
+                Offered first because it is the option that costs the creator
+                nothing new. It is rendered whenever the playlist is unpublished —
+                if the balance is short it disables itself and says why, rather
+                than disappearing and leaving the user unaware tokens exist. */}
+            {currentStatus !== "published" && !detailLoading && TOKENS_PER_VIDEO !== null && (
+              <TokenPayOption
+                required={TOKENS_PER_VIDEO * itemCount}
+                usdAmount={itemCount * LICENSE_FEE_PER_VIDEO}
+                title="Publish with tokens"
+                breakdown={
+                  itemCount > 0
+                    ? `${itemCount} video${itemCount !== 1 ? "s" : ""} × ${tokenLabel(TOKENS_PER_VIDEO)} (${CURRENCY_SYMBOL}${LICENSE_FEE_PER_VIDEO}) each. Tokens are spent whole — there is no part-token.`
+                    : undefined
+                }
+                onPay={() => openPlaylistId !== null && tokenPublishMutation.mutate(openPlaylistId)}
+                isPending={tokenPublishMutation.isPending}
+                blockedReason={itemCount === 0 ? "Add at least one video to this playlist first." : null}
+                testId="playlist-token-pay"
+              />
+            )}
+
             {/* ── Payment / Publish section ── */}
             {currentStatus !== "published" && !detailLoading && (
               <div className="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/20 p-4 space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <CreditCard className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-                    <span className="font-semibold text-sm">License to Publish</span>
+                    <span className="font-semibold text-sm">Or pay by card</span>
                   </div>
                   {detail?.licenseFeeTotal && (
                     <span className="font-bold text-lg">{CURRENCY_SYMBOL}{detail.licenseFeeTotal}</span>
                   )}
                 </div>
+
+                {/* See CARD_PUBLISH_ENABLED. */}
+                <p className="text-[11px] text-muted-foreground" data-testid="text-card-unavailable">
+                  {CARD_PUBLISH_NOTE}
+                </p>
 
                 {/* Pending payment — show confirm button */}
                 {currentStatus === "pending_payment" && (detail?.licenseFeeTotal || checkoutTotal) && (
@@ -299,7 +397,8 @@ export default function PlaylistsPage() {
                     <Button
                       className="w-full"
                       onClick={() => openPlaylistId && confirmPaymentMutation.mutate(openPlaylistId)}
-                      disabled={confirmPaymentMutation.isPending}
+                      disabled={!CARD_PUBLISH_ENABLED || confirmPaymentMutation.isPending}
+                      title={CARD_PUBLISH_ENABLED ? undefined : CARD_PUBLISH_NOTE}
                       data-testid="button-confirm-payment-sheet"
                     >
                       {confirmPaymentMutation.isPending
@@ -319,7 +418,8 @@ export default function PlaylistsPage() {
                     <Button
                       className="w-full"
                       onClick={() => openPlaylistId && checkoutMutation.mutate(openPlaylistId)}
-                      disabled={checkoutMutation.isPending || !detail?.itemCount}
+                      disabled={!CARD_PUBLISH_ENABLED || checkoutMutation.isPending || !detail?.itemCount}
+                      title={CARD_PUBLISH_ENABLED ? undefined : CARD_PUBLISH_NOTE}
                       data-testid="button-pay-to-publish"
                     >
                       {checkoutMutation.isPending
@@ -335,7 +435,8 @@ export default function PlaylistsPage() {
                   <Button
                     className="w-full"
                     onClick={() => openPlaylistId && confirmPaymentMutation.mutate(openPlaylistId)}
-                    disabled={confirmPaymentMutation.isPending}
+                    disabled={!CARD_PUBLISH_ENABLED || confirmPaymentMutation.isPending}
+                    title={CARD_PUBLISH_ENABLED ? undefined : CARD_PUBLISH_NOTE}
                     data-testid="button-confirm-payment-after-checkout"
                   >
                     {confirmPaymentMutation.isPending

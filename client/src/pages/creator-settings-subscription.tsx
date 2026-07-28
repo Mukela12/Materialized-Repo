@@ -6,13 +6,18 @@ import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { ArrowLeft, CalendarDays, CheckCircle, Clock, Zap, TrendingUp, ExternalLink, CreditCard, AlertTriangle, Video, Badge as BadgeIcon } from "lucide-react";
+import { ArrowLeft, CalendarDays, CheckCircle, Clock, Zap, TrendingUp, ExternalLink, CreditCard, AlertTriangle, Video, Badge as BadgeIcon, Coins, Minus, Plus, Loader2, Info } from "lucide-react";
 import { format } from "date-fns";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { BrandSubscription } from "@shared/schema";
 import { CURRENCY_SYMBOL, PLATFORM_CURRENCY_CODE } from "@/lib/currency";
 import { planPriceMajor, type PlanKey } from "@shared/plans";
+import { TokenBalancePill, NotCashableNote } from "@/components/TokenPayOption";
+import {
+  useTokenBalance, walletPost, useInvalidateWallet, tokenLabel, usdWhole, TOKEN_USD,
+} from "@/hooks/useWallet";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 
 const price = (plan: PlanKey) => `${CURRENCY_SYMBOL}${planPriceMajor(plan)}`;
 
@@ -86,6 +91,20 @@ const OFFERED_PLANS = PLANS.filter((p) => !p.legacy);
 const RATE_PER_VIEW   = 0.05;
 const RATE_PER_MINUTE = 0.15;
 
+/** Mirrors the server cap on POST /api/wallet/subsidise-subscription (`.max(50)`). */
+const MAX_TOKENS_PER_APPLY = 50;
+
+/**
+ * One idempotency key per confirmed attempt. (spend_ref_type, spend_ref_id) is
+ * UNIQUE server-side, so re-sending the SAME key returns the original result
+ * instead of debiting twice — which is exactly what a double-click, a flaky
+ * connection or an impatient retry produces.
+ */
+function newIdempotencyKey(): string {
+  const rand = globalThis.crypto?.randomUUID?.();
+  return rand ?? `sub-credit-${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
+}
+
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, { label: string; className: string }> = {
     active:    { label: "Active",    className: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400" },
@@ -116,6 +135,13 @@ export default function CreatorSettingsSubscription() {
   const [views,      setViews]      = useState(5000);
   const [minutes,    setMinutes]    = useState(60);
   const [publishers, setPublishers] = useState(3);
+
+  // ── Token subsidy state ──
+  const [tokensToApply, setTokensToApply] = useState(1);
+  const [idempotencyKey, setIdempotencyKey] = useState(newIdempotencyKey);
+  const { data: currentUser } = useCurrentUser();
+  const { balance: tokenBalance, isLoading: walletLoading } = useTokenBalance();
+  const invalidateWallet = useInvalidateWallet();
 
   const { data: sub, isLoading: subLoading } = useQuery<BrandSubscription | null>({
     queryKey: ["/api/brand/subscription"],
@@ -155,6 +181,67 @@ export default function CreatorSettingsSubscription() {
       toast({ title: "Surplus invoice created", description: "Check your email or the link above to pay." });
     },
     onError: (err: any) => toast({ title: "Couldn't create invoice", description: err?.message, variant: "destructive" }),
+  });
+
+  // ── Token subsidy, derived ──
+  // The wallet is the ceiling; the server also caps a single request at 50.
+  const maxApplicable = Math.min(tokenBalance, MAX_TOKENS_PER_APPLY);
+  // Clamp so a stale state value can never quote — or SPEND — more than is available.
+  // `applying` is what the button says AND what gets sent; they must not diverge.
+  const applying = maxApplicable < 1 ? 0 : Math.max(1, Math.min(tokensToApply, maxApplicable));
+  const creditValue = applying * TOKEN_USD;
+  const hasBillingAccount = !!currentUser?.stripeCustomerId;
+  const subsidyBlockedReason = !hasBillingAccount
+    ? "Tokens apply to a Stripe invoice, so you need an active subscription first. Start one below and your tokens will be waiting."
+    : !walletLoading && tokenBalance < 1
+      ? `You have no tokens yet. You earn 1 token (${usdWhole(TOKEN_USD)} of credit) when a brand you introduced pays for its first ${usdWhole(planPriceMajor("starter"))}/month subscription.`
+      : null;
+
+  /**
+   * Spend tokens as a credit against the next invoice.
+   *
+   * The server debits the wallet FIRST and commits, then asks Stripe for a negative
+   * customer balance transaction; if Stripe fails it appends a compensating refund
+   * row. So a failure here never silently eats tokens — but it does mean the toast
+   * must not promise a discount the API did not confirm.
+   */
+  const subsidyMut = useMutation({
+    mutationFn: async () => {
+      const { ok, data } = await walletPost("/api/wallet/subsidise-subscription", {
+        tokens: applying,
+        idempotencyKey,
+      });
+      if (!ok) {
+        // The attempt is SPENT. Either Stripe failed and the server appended a
+        // compensating refund (502, tokensRefunded), or a previous attempt on this
+        // key was already refunded (409 spend_already_refunded). Either way the
+        // wallet is whole and this key must never be sent again: re-sending it made
+        // the server issue another refund against the same debit — a credit with no
+        // debit behind it. The server now refuses that outright; rotating here is
+        // what turns the refusal back into a retry the user can actually make.
+        if (data.tokensRefunded !== undefined || data.code === "spend_already_refunded" || data.code === "idempotency_key_conflict") {
+          setIdempotencyKey(newIdempotencyKey());
+          invalidateWallet();
+        }
+        if (data.balance !== undefined && data.required !== undefined) {
+          throw new Error(`You have ${tokenLabel(data.balance)} — ${tokenLabel(data.required)} requested.`);
+        }
+        throw new Error(data.error || "Couldn't apply your tokens");
+      }
+      return data as { tokensSpent: number; creditCents: number; alreadyApplied?: boolean };
+    },
+    onSuccess: (data) => {
+      invalidateWallet();
+      // A fresh key so the NEXT application is a new spend rather than a replay of this one.
+      setIdempotencyKey(newIdempotencyKey());
+      setTokensToApply(1);
+      toast({
+        title: data.alreadyApplied ? "Already applied" : "Credit applied",
+        description: `${CURRENCY_SYMBOL}${(data.creditCents / 100).toFixed(2)} of credit is on your billing account and comes off your next invoice automatically.`,
+      });
+    },
+    onError: (err: any) =>
+      toast({ title: "Couldn't apply tokens", description: err?.message, variant: "destructive" }),
   });
 
   const viewsCost    = views   * RATE_PER_VIEW   * publishers;
@@ -377,6 +464,105 @@ export default function CreatorSettingsSubscription() {
           </CardContent>
         </Card>
       )}
+
+      {/* ── Pay part of your bill with tokens ──
+          Always rendered, never hidden: when it can't be used it says why, so a
+          creator knows the option exists and what unlocks it. */}
+      <Card data-testid="card-token-subsidy">
+        <CardHeader className="pb-3">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Coins className="h-4 w-4 text-primary" />
+                Reduce your bill with tokens
+              </CardTitle>
+              <p className="text-sm text-muted-foreground mt-1">
+                Each token takes {usdWhole(TOKEN_USD)} off what you pay Materialized.
+              </p>
+            </div>
+            <TokenBalancePill />
+          </div>
+        </CardHeader>
+
+        <CardContent className="space-y-4">
+          {/* Amount stepper */}
+          <div className="flex items-center justify-between gap-4 rounded-xl border border-border bg-muted/30 p-4">
+            <div>
+              <p className="text-xs text-muted-foreground mb-1">Tokens to apply</p>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-8 w-8 rounded-full"
+                  disabled={applying <= 1 || !!subsidyBlockedReason || subsidyMut.isPending}
+                  onClick={() => setTokensToApply(Math.max(1, applying - 1))}
+                  data-testid="button-token-decrement"
+                  aria-label="Use one fewer token"
+                >
+                  <Minus className="h-3.5 w-3.5" />
+                </Button>
+                <span className="w-10 text-center text-xl font-bold tabular-nums" data-testid="text-tokens-to-apply">
+                  {applying}
+                </span>
+                <Button
+                  variant="outline"
+                  size="icon"
+                  className="h-8 w-8 rounded-full"
+                  disabled={applying >= maxApplicable || !!subsidyBlockedReason || subsidyMut.isPending}
+                  onClick={() => setTokensToApply(Math.min(maxApplicable, applying + 1))}
+                  data-testid="button-token-increment"
+                  aria-label="Use one more token"
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            </div>
+            <div className="text-right">
+              <p className="text-xs text-muted-foreground mb-1">Credit applied</p>
+              <p className="text-2xl font-bold tabular-nums text-primary" data-testid="text-subsidy-credit">
+                {CURRENCY_SYMBOL}{creditValue}
+              </p>
+              <p className="text-[11px] text-muted-foreground">
+                {tokenBalance > 0
+                  ? `${tokenLabel(applying)} of ${tokenLabel(tokenBalance)}`
+                  : "No tokens in your wallet"}
+              </p>
+            </div>
+          </div>
+
+          <Button
+            className="w-full rounded-full gap-2"
+            disabled={!!subsidyBlockedReason || subsidyMut.isPending || walletLoading || maxApplicable < 1}
+            onClick={() => subsidyMut.mutate()}
+            data-testid="button-apply-tokens-to-subscription"
+          >
+            {subsidyMut.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Coins className="h-4 w-4" />}
+            {subsidyMut.isPending
+              ? "Applying…"
+              : applying < 1
+                ? "No tokens to apply"
+                : `Apply ${tokenLabel(applying)} — ${CURRENCY_SYMBOL}${creditValue} off`}
+          </Button>
+
+          {subsidyBlockedReason && (
+            <p
+              className="flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-400"
+              data-testid="text-subsidy-blocked-reason"
+            >
+              <Info className="h-3.5 w-3.5 mt-[1px] shrink-0" />
+              <span>{subsidyBlockedReason}</span>
+            </p>
+          )}
+
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            The credit sits on your billing account and Stripe takes it off your next invoice
+            automatically. Applying tokens does not change your plan, and it cannot be reversed into
+            cash or refunded to a card.
+          </p>
+
+          <NotCashableNote />
+        </CardContent>
+      </Card>
 
       {/* Plan selector dialog */}
       <Dialog open={planDialogOpen} onOpenChange={setPlanDialogOpen}>

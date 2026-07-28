@@ -1,5 +1,5 @@
 import { sql, relations } from "drizzle-orm";
-import { pgTable, text, varchar, integer, decimal, numeric, serial, timestamp, boolean, pgEnum, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, decimal, numeric, serial, timestamp, boolean, pgEnum, uniqueIndex, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 import { LICENSE_FEE_DECIMAL } from "./pricing";
@@ -409,7 +409,13 @@ export const userProfiles = pgTable("user_profiles", {
   updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`),
 });
 
-// Creator Rewards - tracks credits earned from brand referrals
+// Creator Rewards — SUPERSEDED by `tokenLedger` below. RETIRED, READ-ONLY.
+//
+// This table models an earlier "45 credits ≈ $45" scheme that was never wired up:
+// nothing has ever written a row (createCreatorReward had zero callers and has been
+// removed), so the table is provably empty. It is left in place because the migration
+// runner is additive-only (see server/migrate.ts) — NOT because it is still live.
+// Do not add writers. One credit system only: use tokenLedger.
 export const creatorRewards = pgTable("creator_rewards", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   creatorId: varchar("creator_id").notNull().references(() => users.id),
@@ -423,6 +429,103 @@ export const creatorRewards = pgTable("creator_rewards", {
   earnedAt: timestamp("earned_at").default(sql`CURRENT_TIMESTAMP`),
   redeemedAt: timestamp("redeemed_at"),
 });
+
+// ─── Token Wallet ────────────────────────────────────────────────────────────
+//
+// APPEND-ONLY ledger of wallet tokens. 1 token = $49 of PREPAID PLATFORM CREDIT.
+// TOKENS ARE NEVER CASHABLE — see the module doc on server/wallet.ts.
+//
+// There is deliberately NO `users.token_balance` column. A mutable counter is a
+// read-modify-write and loses updates under concurrency; the balance is always
+// SUM(delta_tokens) over this table. If you are about to add a balance column as
+// a "cache", you are about to reintroduce the bug this design exists to prevent.
+
+export const tokenLedgerReasonEnum = pgEnum("token_ledger_reason", [
+  // ── credits (delta_tokens > 0) ──
+  "brand_conversion",         // minted when a tagged brand pays for a qualifying subscription
+  "admin_grant",              // manual grant / attribution correction (positive leg)
+  "spend_refund",             // compensating reversal of a spend that failed downstream
+  // ── debits (delta_tokens < 0) ──
+  "spend_library_listing",    // import/list one video into the Global Video Library
+  "spend_playlist",           // curate a playlist — one token PER VIDEO
+  "spend_subscription_credit",// applied as a NEGATIVE Stripe customer balance txn
+  "admin_revoke",             // manual clawback / attribution correction (negative leg)
+]);
+
+export const tokenLedger = pgTable("token_ledger", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  // Whose wallet this row belongs to.
+  userId: varchar("user_id").notNull().references(() => users.id),
+
+  // SIGNED movement: +N earned, -N spent. Never UPDATEd, never DELETEd.
+  // Balance = SUM(delta_tokens). A zero row would be a no-op event, so it is rejected.
+  deltaTokens: integer("delta_tokens").notNull(),
+
+  reason: tokenLedgerReasonEnum("reason").notNull(),
+
+  // INVARIANT 5 — USD value of ONE token, captured at the moment this row was
+  // written (4900 today). The row's total USD value is ABS(delta_tokens) * this.
+  // Repricing tokens later changes new rows only; history is never rewritten.
+  usdValueCents: integer("usd_value_cents").notNull(),
+
+  // ── mint provenance (brand_conversion only; NULL on every other row) ──
+  sourceBrandId: varchar("source_brand_id").references(() => brands.id),
+  sourceSubscriptionUserId: varchar("source_subscription_user_id").references(() => users.id),
+  stripeSubscriptionId: text("stripe_subscription_id"),
+  // 'brand_referral' | 'first_touch_tag' | 'admin_override' — see resolveBrandConversionAttribution().
+  attributionMethod: text("attribution_method"),
+  attributedVideoId: varchar("attributed_video_id").references(() => videos.id),
+  brandReferralId: varchar("brand_referral_id").references(() => brandReferrals.id),
+
+  // ── spend provenance ──
+  // spendRefType: 'global_video_listing' | 'playlist' | 'stripe_customer_balance'.
+  // (spendRefType, spendRefId) is UNIQUE, which is what makes a retried spend a no-op
+  // instead of a second debit.
+  spendRefType: text("spend_ref_type"),
+  spendRefId: text("spend_ref_id"),
+  // Set once, after the fact, by attachStripeBalanceTxn() — the ONLY permitted UPDATE
+  // on this table, and one that provably cannot change a balance (it never touches
+  // delta_tokens and only fires when the column is still NULL).
+  stripeBalanceTxnId: text("stripe_balance_txn_id"),
+
+  description: text("description"),
+  adminNote: text("admin_note"),
+  createdAt: timestamp("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+}, (t) => ({
+  // INVARIANT 3 — at most ONE token is ever minted for a given brand, enforced by the
+  // DATABASE, not by application logic. This is what makes the many-to-many tagging
+  // safe: five creators tagging one brand still yields exactly one token, because the
+  // index is keyed on source_brand_id ALONE. Keying it on (brand, creator) would permit
+  // one row per creator — 5 × $49 = $245 of credit against a single $249 subscription.
+  //
+  // Deliberately NOT scoped by stripe_subscription_id: the spec says the brand's FIRST
+  // qualifying subscription, so cancel-and-resubscribe must not mint again.
+  brandConversionUniq: uniqueIndex("token_ledger_brand_conversion_uniq")
+    .on(t.sourceBrandId)
+    .where(sql`${t.reason} = 'brand_conversion' AND ${t.sourceBrandId} IS NOT NULL`),
+
+  // Same invariant from the other direction. brands.owner_id is NOT unique, so one
+  // subscriber can own three brands; without this, a resolver bug could mint 3 × $49
+  // against one $249 subscription. At most one mint per subscribing account, ever.
+  subscriberConversionUniq: uniqueIndex("token_ledger_subscriber_conversion_uniq")
+    .on(t.sourceSubscriptionUserId)
+    .where(sql`${t.reason} = 'brand_conversion' AND ${t.sourceSubscriptionUserId} IS NOT NULL`),
+
+  // INVARIANT 4 (idempotency half) — one debit per thing bought. A retried client
+  // request for the same listing/playlist trips this and is reported as a duplicate
+  // rather than debiting twice.
+  spendRefUniq: uniqueIndex("token_ledger_spend_ref_uniq")
+    .on(t.spendRefType, t.spendRefId)
+    .where(sql`${t.spendRefId} IS NOT NULL`),
+
+  // A Stripe balance transaction may back at most one ledger row.
+  stripeBalanceTxnUniq: uniqueIndex("token_ledger_stripe_balance_txn_uniq")
+    .on(t.stripeBalanceTxnId)
+    .where(sql`${t.stripeBalanceTxnId} IS NOT NULL`),
+
+  // Balance is SUM over one user's rows — the hot path deserves an index.
+  byUser: index("token_ledger_user_idx").on(t.userId),
+}));
 
 // Embed Deployments - tracks where affiliate embed codes are deployed
 export const embedDeployments = pgTable("embed_deployments", {
@@ -595,6 +698,13 @@ export const creatorRewardsRelations = relations(creatorRewards, ({ one }) => ({
   brandReferral: one(brandReferrals, { fields: [creatorRewards.brandReferralId], references: [brandReferrals.id] }),
 }));
 
+export const tokenLedgerRelations = relations(tokenLedger, ({ one }) => ({
+  user: one(users, { fields: [tokenLedger.userId], references: [users.id] }),
+  sourceBrand: one(brands, { fields: [tokenLedger.sourceBrandId], references: [brands.id] }),
+  attributedVideo: one(videos, { fields: [tokenLedger.attributedVideoId], references: [videos.id] }),
+  brandReferral: one(brandReferrals, { fields: [tokenLedger.brandReferralId], references: [brandReferrals.id] }),
+}));
+
 export const embedDeploymentsRelations = relations(embedDeployments, ({ one }) => ({
   affiliate: one(users, { fields: [embedDeployments.affiliateId], references: [users.id] }),
   video: one(videos, { fields: [embedDeployments.videoId], references: [videos.id] }),
@@ -634,6 +744,9 @@ export const insertUserProfileSchema = createInsertSchema(userProfiles).omit({ i
 export const insertCreatorRewardSchema = createInsertSchema(creatorRewards).omit({ id: true, earnedAt: true, redeemedAt: true });
 export const insertEmbedDeploymentSchema = createInsertSchema(embedDeployments).omit({ id: true, totalLoads: true, firstSeenAt: true, lastSeenAt: true });
 export const insertCommissionTransactionSchema = createInsertSchema(commissionTransactions).omit({ id: true, status: true, createdAt: true });
+// Ledger rows are written only by server/wallet.ts, which supplies every field
+// explicitly. `id` and `createdAt` are DB-generated.
+export const insertTokenLedgerSchema = createInsertSchema(tokenLedger).omit({ id: true, createdAt: true });
 
 // Types
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -686,6 +799,9 @@ export type InsertEmbedDeployment = z.infer<typeof insertEmbedDeploymentSchema>;
 export type EmbedDeployment = typeof embedDeployments.$inferSelect;
 export type InsertCommissionTransaction = z.infer<typeof insertCommissionTransactionSchema>;
 export type CommissionTransaction = typeof commissionTransactions.$inferSelect;
+export type InsertTokenLedgerEntry = z.infer<typeof insertTokenLedgerSchema>;
+export type TokenLedgerEntry = typeof tokenLedger.$inferSelect;
+export type TokenLedgerReason = TokenLedgerEntry["reason"];
 
 // Button label options for carousel
 export const BUTTON_LABEL_OPTIONS = [

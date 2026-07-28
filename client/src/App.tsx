@@ -36,7 +36,9 @@ import AffiliateSettings from "@/pages/affiliate-settings";
 import AffiliateDashboard from "@/pages/affiliate-dashboard";
 import Affiliates from "@/pages/affiliates";
 import Landing from "@/pages/landing";
-import Rewards from "@/pages/rewards";
+// The token wallet lives at pages/rewards.tsx — it replaced the dead
+// `creator_rewards` UI in place, so the old /creator/rewards route keeps working.
+import WalletPage from "@/pages/rewards";
 import Profile from "@/pages/profile";
 import BrandAuthorize from "@/pages/brand-authorize";
 import AdminPipeline from "@/pages/admin-pipeline";
@@ -76,7 +78,9 @@ function CreatorRouter() {
       <Route path="/creator/affiliates" component={Affiliates} />
       <Route path="/creator/referrals" component={Referrals} />
       <Route path="/creator/brand-kit" component={BrandKit} />
-      <Route path="/creator/rewards" component={Rewards} />
+      <Route path="/creator/wallet" component={WalletPage} />
+      {/* Legacy path — kept so existing links/bookmarks land on the wallet. */}
+      <Route path="/creator/rewards" component={WalletPage} />
       <Route path="/creator/profile" component={Profile} />
       <Route path="/creator/help" component={Help} />
       <Route path="/creator/mailbox" component={Mailbox} />

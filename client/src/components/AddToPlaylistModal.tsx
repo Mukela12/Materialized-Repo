@@ -1,5 +1,8 @@
 import { CURRENCY_SYMBOL } from "@/lib/currency";
-import { LICENSE_FEE_PER_VIDEO } from "@shared/pricing";
+import { LICENSE_FEE_PER_VIDEO, tokensForFee } from "@shared/pricing";
+import { isPlaylistLocked, playlistLockedMessage } from "@shared/playlists";
+import { TokenPayOption } from "@/components/TokenPayOption";
+import { walletPost, useInvalidateWallet, tokenLabel } from "@/hooks/useWallet";
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -28,6 +31,27 @@ const PLATFORMS = [
 
 const LICENSE_FEE = LICENSE_FEE_PER_VIDEO;
 
+/** Whole tokens per video. null (never today) means "not payable in tokens". */
+const TOKENS_PER_VIDEO = tokensForFee(LICENSE_FEE_PER_VIDEO);
+
+/**
+ * CARD PUBLISHING IS OFF, and these buttons say so instead of failing.
+ *
+ * POST /api/playlists/:id/confirm-payment used to publish unconditionally — it
+ * never read stripePaymentIntentId and never called Stripe, so anyone could
+ * checkout-then-confirm and publish for FREE. It now requires a genuinely
+ * succeeded PaymentIntent, which is correct, but nothing in the client ever
+ * consumes the `clientSecret` that /checkout returns: there is no card-entry
+ * form, so no PaymentIntent can ever succeed and the button can only ever 402.
+ *
+ * A dead button that takes money-shaped actions is worse than an absent one, so
+ * it is disabled here rather than re-opening the free-publish hole. Re-enable by
+ * mounting Stripe Elements on the clientSecret — NOT by relaxing the server.
+ */
+const CARD_PUBLISH_ENABLED = false;
+const CARD_PUBLISH_NOTE =
+  "Card checkout isn't available yet — the payment form is still being wired up. Publish with tokens above, or save a draft and come back.";
+
 type PlaylistEntry = { id: number; name: string; description: string | null; itemCount: number; status?: string };
 type Step = "form" | "payment" | "done";
 
@@ -39,6 +63,7 @@ interface Props {
 
 export function AddToPlaylistModal({ open, onClose, selectedListingIds }: Props) {
   const { toast } = useToast();
+  const invalidateWallet = useInvalidateWallet();
   const [tab, setTab] = useState<"existing" | "new">("existing");
   const [selectedPlaylistId, setSelectedPlaylistId] = useState<string>("");
   const [newName, setNewName] = useState("");
@@ -48,12 +73,32 @@ export function AddToPlaylistModal({ open, onClose, selectedListingIds }: Props)
   const [savedPlaylistId, setSavedPlaylistId] = useState<number | null>(null);
   const [paymentTotal, setPaymentTotal] = useState<string>("0");
 
-  const totalFee = selectedListingIds.length * LICENSE_FEE;
-
   const { data: playlists = [], isLoading } = useQuery<PlaylistEntry[]>({
     queryKey: ["/api/playlists"],
     enabled: open,
   });
+
+  const selectedPlaylist = playlists.find((p) => String(p.id) === selectedPlaylistId);
+
+  /**
+   * The server charges for EVERY video in the playlist, not just the ones being
+   * added now (`items.length * LICENSE_FEE_PER_VIDEO` in /api/playlists/:id/checkout).
+   * Quoting only `selectedListingIds.length` under-quotes anyone adding to a playlist
+   * that already has videos — harmless-looking with a card, but with tokens it would
+   * debit more tokens than the button promised. Quote what will actually be charged.
+   */
+  const existingItemCount = tab === "existing" ? (selectedPlaylist?.itemCount ?? 0) : 0;
+  const projectedItemCount = existingItemCount + selectedListingIds.length;
+  const totalFee = projectedItemCount * LICENSE_FEE;
+  /**
+   * A playlist's contents FREEZE once money is committed against a video count —
+   * POST /api/playlists/:id/items 409s on those statuses. The rule and the wording
+   * come from @shared/playlists so this can never disagree with the server.
+   */
+  const lockedStatus = tab === "existing" && isPlaylistLocked(selectedPlaylist?.status)
+    ? selectedPlaylist!.status!
+    : null;
+  const lockedReason = lockedStatus ? playlistLockedMessage(lockedStatus) : null;
 
   const saveItems = async (asDraft: boolean): Promise<number> => {
     let playlistId: number;
@@ -108,6 +153,43 @@ export function AddToPlaylistModal({ open, onClose, selectedListingIds }: Props)
     },
   });
 
+  /**
+   * Save the items, then settle the whole playlist in tokens. One request does the
+   * debit and the publish, so unlike the card path there is no separate confirm step.
+   */
+  const tokenPublishMutation = useMutation({
+    mutationFn: async () => {
+      const playlistId = await saveItems(false);
+      setSavedPlaylistId(playlistId);
+      const { ok, data } = await walletPost(`/api/playlists/${playlistId}/checkout`, {
+        payWith: "tokens",
+      });
+      if (!ok) {
+        if (data.balance !== undefined && data.required !== undefined) {
+          throw new Error(
+            `You have ${tokenLabel(data.balance)} — this playlist costs ${tokenLabel(data.required)}. ` +
+            `Your videos were saved as a draft, so nothing is lost.`,
+          );
+        }
+        throw new Error(data.error || "Token payment failed");
+      }
+      return data;
+    },
+    onSuccess: (data) => {
+      invalidateWallet();
+      queryClient.invalidateQueries({ queryKey: ["/api/playlists"] });
+      setStep("done");
+      toast({
+        title: "Published with tokens",
+        description: `${tokenLabel(data.tokensSpent ?? 0)} used. Your embed code is ready.`,
+      });
+    },
+    onError: (e: Error) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/playlists"] });
+      toast({ title: "Couldn't pay with tokens", description: e.message, variant: "destructive" });
+    },
+  });
+
   const confirmPaymentMutation = useMutation({
     mutationFn: async () => {
       if (!savedPlaylistId) throw new Error("No playlist");
@@ -136,8 +218,9 @@ export function AddToPlaylistModal({ open, onClose, selectedListingIds }: Props)
   };
 
   const isFormValid =
-    (tab === "existing" && !!selectedPlaylistId) ||
-    (tab === "new" && !!newName.trim());
+    !lockedStatus &&
+    ((tab === "existing" && !!selectedPlaylistId) ||
+      (tab === "new" && !!newName.trim()));
 
   return (
     <Dialog open={open} onOpenChange={handleClose}>
@@ -192,6 +275,12 @@ export function AddToPlaylistModal({ open, onClose, selectedListingIds }: Props)
             <p className="text-xs text-muted-foreground">
               This licenses each selected video for use in your published playlist. Once paid, you'll receive an embeddable widget code with full UTM tracking.
             </p>
+            {/* See CARD_PUBLISH_ENABLED: the server now demands a real succeeded
+                PaymentIntent and no card-entry UI exists to produce one. */}
+            <p className="text-xs text-muted-foreground" data-testid="text-card-unavailable">
+              {CARD_PUBLISH_NOTE} Your playlist is already saved as a draft — you can publish it with
+              tokens from My Playlists at any time.
+            </p>
 
             <div className="flex gap-2">
               <Button
@@ -205,7 +294,8 @@ export function AddToPlaylistModal({ open, onClose, selectedListingIds }: Props)
               <Button
                 className="flex-1"
                 onClick={() => confirmPaymentMutation.mutate()}
-                disabled={confirmPaymentMutation.isPending}
+                disabled={!CARD_PUBLISH_ENABLED || confirmPaymentMutation.isPending}
+                title={CARD_PUBLISH_ENABLED ? undefined : CARD_PUBLISH_NOTE}
                 data-testid="button-confirm-payment"
               >
                 {confirmPaymentMutation.isPending
@@ -339,21 +429,54 @@ export function AddToPlaylistModal({ open, onClose, selectedListingIds }: Props)
                 </div>
                 <div className="flex justify-between items-center text-sm">
                   <span className="text-muted-foreground">
-                    {selectedListingIds.length} video{selectedListingIds.length !== 1 ? "s" : ""} × {CURRENCY_SYMBOL}{LICENSE_FEE}
+                    {projectedItemCount} video{projectedItemCount !== 1 ? "s" : ""} × {CURRENCY_SYMBOL}{LICENSE_FEE}
                   </span>
                   <span className="font-bold text-base">{CURRENCY_SYMBOL}{totalFee}</span>
                 </div>
+                {existingItemCount > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    Includes {existingItemCount} video{existingItemCount !== 1 ? "s" : ""} already in this
+                    playlist — the fee covers the whole playlist, not just the new additions.
+                  </p>
+                )}
                 <p className="text-xs text-muted-foreground">
                   Required before embed code is issued. Save as draft to pay later.
                 </p>
+                {!CARD_PUBLISH_ENABLED && (
+                  <p className="text-xs text-muted-foreground" data-testid="text-card-disabled-form">
+                    {CARD_PUBLISH_NOTE}
+                  </p>
+                )}
               </div>
+
+              {/* Pay with tokens — shown whenever the playlist can be published,
+                  disabled with the reason on screen when the balance is short. */}
+              {TOKENS_PER_VIDEO !== null && (
+                <TokenPayOption
+                  required={TOKENS_PER_VIDEO * projectedItemCount}
+                  usdAmount={totalFee}
+                  title="Publish with tokens instead"
+                  breakdown={`${projectedItemCount} video${projectedItemCount !== 1 ? "s" : ""} × ${tokenLabel(TOKENS_PER_VIDEO)} (${CURRENCY_SYMBOL}${LICENSE_FEE}) each. Tokens are spent whole.`}
+                  onPay={() => tokenPublishMutation.mutate()}
+                  isPending={tokenPublishMutation.isPending}
+                  blockedReason={
+                    lockedReason
+                      ?? (!isFormValid
+                        ? tab === "new"
+                          ? "Name your new playlist first."
+                          : "Choose a playlist first."
+                        : null)
+                  }
+                  testId="modal-token-pay"
+                />
+              )}
             </div>
 
             <DialogFooter className="gap-2 flex-col sm:flex-row">
               <Button
                 variant="outline"
                 onClick={() => saveDraftMutation.mutate()}
-                disabled={saveDraftMutation.isPending || checkoutMutation.isPending || !isFormValid}
+                disabled={saveDraftMutation.isPending || checkoutMutation.isPending || tokenPublishMutation.isPending || !isFormValid}
                 data-testid="button-save-draft"
                 className="flex-1"
               >
@@ -362,9 +485,14 @@ export function AddToPlaylistModal({ open, onClose, selectedListingIds }: Props)
                   : <Save className="h-4 w-4 mr-2" />}
                 Save Draft
               </Button>
+              {/* Disabled, not removed: this button only leads to the confirm step
+                  above, which cannot succeed without a card form. Starting the card
+                  flow would also move the playlist to `pending_payment` and freeze
+                  its contents for a payment that can never complete. */}
               <Button
                 onClick={() => checkoutMutation.mutate()}
-                disabled={checkoutMutation.isPending || saveDraftMutation.isPending || !isFormValid}
+                disabled={!CARD_PUBLISH_ENABLED || checkoutMutation.isPending || saveDraftMutation.isPending || tokenPublishMutation.isPending || !isFormValid}
+                title={CARD_PUBLISH_ENABLED ? undefined : CARD_PUBLISH_NOTE}
                 data-testid="button-pay-publish"
                 className="flex-1"
               >

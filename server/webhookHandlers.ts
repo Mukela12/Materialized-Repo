@@ -3,6 +3,7 @@ import { getUncachableStripeClient } from './stripeClient';
 import { storage } from './storage';
 import { toCents, centsToAmount } from './feeConfig';
 import { PLAN_CONFIG, isPlanKey, type PlanKey } from './stripeService';
+import { mintBrandConversionToken } from './wallet';
 
 export const DEFAULT_PLAN: PlanKey = 'starter';
 
@@ -30,6 +31,44 @@ export function mapStripeStatus(stripeStatus: string): 'active' | 'past_due' | '
     default:
       return 'cancelled';
   }
+}
+
+/**
+ * Resolve a plan AND report whether it was genuinely identified or fell back.
+ *
+ * `resolved: false` means neither price/product metadata nor the exact-amount map
+ * matched, so the returned plan is DEFAULT_PLAN — which is 'starter', the ONLY
+ * token-qualifying tier. Anything that pays out money must check this flag:
+ * otherwise a subscription on a custom price with no metadata (e.g. $4,990/yr set
+ * up by hand in the Stripe dashboard) clears the $249 amount gate and mints a
+ * token despite not being the $249 Brand tier.
+ */
+export async function resolvePlanFromSubscription(
+  subscription: Stripe.Subscription,
+): Promise<{ plan: PlanKey; resolved: boolean }> {
+  const item = subscription.items?.data?.[0];
+  if (!item) return { plan: DEFAULT_PLAN, resolved: false };
+  const price = item.price as Stripe.Price;
+
+  if (isPlanKey(price.metadata?.plan)) return { plan: price.metadata.plan, resolved: true };
+
+  if (typeof price.product === 'string') {
+    try {
+      const stripe = await getUncachableStripeClient();
+      const product = await stripe.products.retrieve(price.product);
+      if (isPlanKey(product.metadata?.plan)) return { plan: product.metadata.plan, resolved: true };
+    } catch {
+      /* fall through to the amount map */
+    }
+  } else if (price.product && typeof price.product === 'object') {
+    const product = price.product as Stripe.Product;
+    if (isPlanKey(product.metadata?.plan)) return { plan: product.metadata.plan, resolved: true };
+  }
+
+  const byAmount = PLAN_AMOUNT_FALLBACK[price.unit_amount ?? 0];
+  if (byAmount) return { plan: byAmount, resolved: true };
+
+  return { plan: DEFAULT_PLAN, resolved: false };
 }
 
 export async function planFromSubscription(subscription: Stripe.Subscription): Promise<PlanKey> {
@@ -211,7 +250,10 @@ async function handleInvoicePaymentSucceeded(invoice: Stripe.Invoice): Promise<v
     expand: ['items.data.price.product'],
   });
   const currentPeriodEnd = subscriptionPeriodEnd(subscription);
-  const plan = await planFromSubscription(subscription);
+  // `resolved` gates the MINT only — billing still uses the resolved-or-default
+  // plan exactly as before, so an unidentifiable price keeps the subscription
+  // working; it just can't hand out money.
+  const { plan, resolved: planResolved } = await resolvePlanFromSubscription(subscription);
 
   await storage.upsertBrandSubscription({
     userId: user.id,
@@ -222,6 +264,92 @@ async function handleInvoicePaymentSucceeded(invoice: Stripe.Invoice): Promise<v
   });
 
   console.log(`[Webhook] Payment succeeded — user ${user.id}, period ends ${currentPeriodEnd.toISOString()}`);
+
+  // ── Token wallet: the ONE earn trigger ────────────────────────────────────
+  //
+  // This is the only place a brand-conversion token is minted, and it is hooked
+  // HERE rather than on checkout.session.completed on purpose:
+  //
+  //   * It is the only handler guaranteed to be preceded by money actually
+  //     moving. checkout.session.completed fires for trials and for subscriptions
+  //     later voided; customer.subscription.updated fires on status churn with no
+  //     payment. Minting a $49 liability against a $249 subscription that never
+  //     paid is precisely the failure to avoid.
+  //   * It also covers subscriptions created OUTSIDE Checkout — billing portal,
+  //     Stripe dashboard, imports — which handleCheckoutCompleted never sees.
+  //   * Firing again on every monthly renewal is harmless BY DESIGN. Idempotency
+  //     comes from the DB unique indexes, not from picking a handler that happens
+  //     to fire once, so we deliberately hook the most reliable handler rather
+  //     than the rarest. Renewal #2..#N trip the index and no-op.
+  //
+  // Consequence worth knowing: a brand in a Stripe trial mints nothing until the
+  // first real charge, even though mapStripeStatus() already shows them 'active'
+  // in-app. That is correct for a money reward.
+  await mintBrandConversionTokenSafely({
+    subscriberUserId: user.id,
+    plan,
+    // Stripe's own figure, and the ONLY untrusted-input-proof part of the mint
+    // gate: `plan` can resolve to DEFAULT_PLAN ('starter', the one qualifying tier)
+    // for a price with no metadata, but a $10 invoice still cannot clear a $249
+    // bar. mintBrandConversionToken requires >= PLAN_CONFIG[plan].amount, so a $0
+    // trial and a mid-cycle proration both mint nothing.
+    amountPaidCents: invoice.amount_paid ?? 0,
+    stripeSubscriptionId: subscriptionId,
+    planResolved,
+  });
+}
+
+/**
+ * Mint wrapper that CANNOT throw.
+ *
+ * dispatchStripeEvent already swallows handler errors so a failure never 400s the
+ * webhook — which also means a failure here would be silent. Catch locally so the
+ * expected "already minted" case logs at info level and anything genuinely wrong
+ * logs at error level and stays greppable.
+ */
+async function mintBrandConversionTokenSafely(args: {
+  subscriberUserId: string;
+  plan: PlanKey;
+  amountPaidCents: number;
+  stripeSubscriptionId: string | null;
+  planResolved: boolean;
+}): Promise<void> {
+  // A plan we could not identify defaults to 'starter' — the only tier that pays
+  // out. Refuse to mint on a guess: a hand-made $4,990 price with no metadata
+  // would otherwise clear the $249 amount gate and mint a $49 token.
+  if (!args.planResolved) {
+    console.warn(
+      `[Wallet] No mint for subscriber ${args.subscriberUserId} — plan could not be resolved ` +
+      `from the Stripe price (defaulted to '${args.plan}'); set metadata.plan on the price to enable`,
+    );
+    return;
+  }
+  try {
+    const result = await mintBrandConversionToken(storage, args);
+    if (result.minted) {
+      console.log(
+        `[Wallet] Minted 1 token for creator ${result.entry.userId} ` +
+        `(brand ${result.attribution.brandId}, via ${result.attribution.method}, ` +
+        `video ${result.attribution.videoId}, subscriber ${args.subscriberUserId})`,
+      );
+    } else if (result.reason === 'already_minted') {
+      // Expected on every renewal and on any Stripe replay. Not a problem.
+      console.log(`[Wallet] No mint for subscriber ${args.subscriberUserId} — already minted`);
+    } else if (result.reason === 'underpaid') {
+      // Normal for a proration. ALSO the signature of a subscription on a custom
+      // price with no metadata.plan, which planFromSubscription() resolves to
+      // DEFAULT_PLAN ('starter') — worth being able to grep for.
+      console.warn(
+        `[Wallet] No mint for subscriber ${args.subscriberUserId} — invoice paid ` +
+        `${args.amountPaidCents}c is below the '${args.plan}' list price ` +
+        `${PLAN_CONFIG[args.plan].amount}c (proration, or a price with no metadata.plan)`,
+      );
+    } else {
+      console.log(`[Wallet] No mint for subscriber ${args.subscriberUserId} — ${result.reason}`);
+    }
+  } catch (err) {
+    console.error(`[Wallet] Mint FAILED for subscriber ${args.subscriberUserId}:`, err);
+  }
 }
 
 async function handleInvoicePaymentFailed(invoice: Stripe.Invoice): Promise<void> {

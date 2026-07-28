@@ -12,7 +12,7 @@ import {
   Send,
   Palette,
   UserPlus,
-  Gift,
+  Wallet,
   UserCircle,
   Bell,
   Heart,
@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { useLogout } from "@/hooks/useCurrentUser";
 import { useMailboxUnreadCount } from "@/hooks/useMailbox";
+import { useTokenBalance, tokenLabel } from "@/hooks/useWallet";
 import {
   Sidebar,
   SidebarContent,
@@ -61,8 +62,11 @@ const brandItems = [
   { path: "/creator/referrals", label: "Brand Referrals", icon: Send },
 ];
 
-const rewardsItems = [
-  { path: "/creator/rewards", label: "My Rewards", icon: Gift },
+// One credit surface only. This used to point at /creator/rewards, which rendered
+// the retired `creator_rewards` table; the wallet now owns it and that path still
+// resolves to the same page for anyone holding an old link.
+const walletItems = [
+  { path: "/creator/wallet", label: "Token Wallet", icon: Wallet },
 ];
 
 const accountItems = [
@@ -92,6 +96,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
   const logoutMutation = useLogout();
   const [location] = useLocation();
   const { data: unreadCount = 0 } = useMailboxUnreadCount();
+  const { balance: tokenBalance } = useTokenBalance();
 
   const renderItems = (items: typeof overviewItems) => (
     <SidebarMenu>
@@ -100,6 +105,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
           (item.path !== "/creator" && location.startsWith(item.path));
         const Icon = item.icon;
         const isMailbox = item.path.endsWith("/mailbox");
+        const isWallet = item.path.endsWith("/wallet");
 
         return (
           <SidebarMenuItem key={item.path}>
@@ -110,6 +116,15 @@ export function AppSidebar({ user }: AppSidebarProps) {
                 {isMailbox && unreadCount > 0 && (
                   <Badge className="ml-auto h-5 min-w-5 justify-center rounded-full bg-primary px-1.5 text-[10px] font-semibold text-primary-foreground border-0">
                     {unreadCount > 99 ? "99+" : unreadCount}
+                  </Badge>
+                )}
+                {isWallet && tokenBalance > 0 && (
+                  <Badge
+                    className="ml-auto h-5 min-w-5 justify-center rounded-full bg-primary px-1.5 text-[10px] font-semibold text-primary-foreground border-0"
+                    title={`${tokenLabel(tokenBalance)} of account credit`}
+                    data-testid="badge-sidebar-token-balance"
+                  >
+                    {tokenBalance > 99 ? "99+" : tokenBalance}
                   </Badge>
                 )}
               </Link>
@@ -211,10 +226,10 @@ export function AppSidebar({ user }: AppSidebarProps) {
 
         <SidebarGroup>
           <SidebarGroupLabel className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            Rewards
+            Wallet
           </SidebarGroupLabel>
           <SidebarGroupContent>
-            {renderItems(rewardsItems)}
+            {renderItems(walletItems)}
           </SidebarGroupContent>
         </SidebarGroup>
 
