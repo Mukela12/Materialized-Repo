@@ -268,13 +268,57 @@ export async function registerRoutes(
   });
 
   // ==================== PRODUCT ROUTES ====================
-  
-  // Get products (optionally by brand)
+
+  /**
+   * Is a brand's INVENTORY discoverable to other users?
+   *
+   * Client rule (28 Jul 2026): "their inventory is discoverable while tag a brand
+   * is selected from the drop-down list" — i.e. any brand can be TAGGED whether or
+   * not it subscribes (that is the acquisition funnel: tag -> $29 setup + 30-day
+   * trial -> subscribe), but its products only become available to creators once
+   * the brand is subscribed. Subscribing is what makes a brand's videos shoppable.
+   *
+   * 'active' covers Stripe's `trialing` too (see mapStripeStatus), so a brand in
+   * its 30-day trial is discoverable — which is the point of the trial.
+   *
+   * This gates DISCOVERY only. Already-published videos are unaffected: the public
+   * embed renders stored video_product_overlays rows, never a live product query,
+   * so a lapsed subscription cannot retroactively break a creator's live video or
+   * their tracked sales.
+   */
+  async function isBrandInventoryDiscoverable(brandId: string): Promise<boolean> {
+    const brand = await storage.getBrand(brandId);
+    if (!brand?.ownerId) return false;
+    const sub = await storage.getBrandSubscription(brand.ownerId);
+    return sub?.status === "active";
+  }
+
+  // Get products (optionally by brand). A caller may always see their OWN brand's
+  // inventory; another brand's inventory requires that brand to be subscribed.
   app.get("/api/products", async (req, res) => {
     try {
       const brandId = req.query.brandId as string | undefined;
       const products = await storage.getProducts(brandId);
-      res.json(products);
+
+      const sessionUserId = (req.session as any)?.userId;
+      const actor = sessionUserId ? await storage.getUser(sessionUserId) : null;
+      if (actor?.isAdmin) return res.json(products);
+
+      // Filter to brands whose inventory this caller may discover. Cached per
+      // brand so a mixed list costs one lookup per brand, not one per product.
+      const allowed = new Map<string, boolean>();
+      const visible: typeof products = [];
+      for (const p of products) {
+        const bid = p.brandId;
+        if (!bid) continue;
+        if (!allowed.has(bid)) {
+          const brand = await storage.getBrand(bid);
+          const isOwner = !!sessionUserId && brand?.ownerId === sessionUserId;
+          allowed.set(bid, isOwner || (await isBrandInventoryDiscoverable(bid)));
+        }
+        if (allowed.get(bid)) visible.push(p);
+      }
+      res.json(visible);
     } catch (error) {
       res.status(500).json({ error: "Failed to get products" });
     }
@@ -2472,10 +2516,19 @@ export async function registerRoutes(
             startedAt: new Date(),
           });
 
-          // Gather product catalog from selected brands
+          // Gather product catalog from selected brands. An UNSUBSCRIBED brand can
+          // still be tagged — that is how it gets pulled onto the platform — but its
+          // inventory is not discoverable, so detection has nothing to match against
+          // and the video simply is not shoppable until the brand subscribes.
           const allProducts: ProductInfo[] = [];
           for (const brandId of (brandIds || [])) {
             const brand = await storage.getBrand(brandId);
+            if (!(await isBrandInventoryDiscoverable(brandId))) {
+              console.log(
+                `[Detection] Skipping catalogue for brand ${brandId} (${brand?.name ?? "unknown"}) — not subscribed`,
+              );
+              continue;
+            }
             const products = await storage.getProducts(brandId);
             for (const product of products) {
               allProducts.push({
