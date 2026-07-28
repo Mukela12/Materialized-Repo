@@ -22,3 +22,6 @@ temp_interactive_push.bat
 # DemoPopup.tsx); the local copies were never shipped (.vercelignore excluded them)
 # and only inflated the Railway Docker build context.
 client/public/*.mp4
+
+# One-off operational scripts (contain no secrets, but not part of the app)
+_enable_demo_brand.cjs

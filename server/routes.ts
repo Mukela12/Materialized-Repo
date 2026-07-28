@@ -4871,12 +4871,29 @@ Identify which products from the catalog are most likely to appear or be feature
     } catch (e) { res.status(500).json({ error: "Failed to fetch subscription" }); }
   });
 
-  app.put("/api/brand/subscription", async (req, res) => {
+  /**
+   * ADMIN ONLY — grant/adjust a subscription without payment.
+   *
+   * This used to take the SESSION user and a client-supplied body, so any logged-in
+   * user could PUT {plan:"pro", status:"active"} and hand themselves a free
+   * subscription: entitlement keys off subscription STATUS, so that is full paid
+   * access for nothing. No client ever called it (the app only ever GETs this
+   * path), so it was pure attack surface.
+   *
+   * Kept rather than deleted because a manual grant is genuinely needed — comping
+   * an account, restoring after a billing incident, or switching on a demo brand
+   * so its inventory is discoverable. `userId` names the target; omit it to act on
+   * yourself.
+   */
+  app.put("/api/brand/subscription", requireAdmin, async (req, res) => {
     try {
-      const userId = (req.session as any)?.userId;
-      if (!userId) return res.status(401).json({ error: "Unauthorized" });
-      const parsed = insertBrandSubscriptionSchema.parse({ ...req.body, userId });
+      const targetUserId = (req.body?.userId as string | undefined) ?? (req.session as any)?.userId;
+      if (!targetUserId) return res.status(400).json({ error: "userId is required" });
+      const target = await storage.getUser(targetUserId);
+      if (!target) return res.status(404).json({ error: "User not found" });
+      const parsed = insertBrandSubscriptionSchema.parse({ ...req.body, userId: targetUserId });
       const sub = await storage.upsertBrandSubscription(parsed);
+      console.log(`[Admin] Subscription for ${targetUserId} set to ${parsed.plan}/${parsed.status}`);
       res.json(sub);
     } catch (e) { res.status(400).json({ error: "Invalid data" }); }
   });
