@@ -17,3 +17,8 @@ client/public/*.mp4
 temp_auto_push.bat
 temp_interactive_push.bat
 .env*
+
+# Large source videos — all four are served from Cloudinary (see landing.tsx /
+# DemoPopup.tsx); the local copies were never shipped (.vercelignore excluded them)
+# and only inflated the Railway Docker build context.
+client/public/*.mp4
