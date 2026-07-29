@@ -2,6 +2,7 @@ import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { sanitizeUser, toPublicBrand } from "./serializers";
+import { viewerHash, isUniqueViolation } from "./viewerIdentity";
 import { canAccessUserResource } from "./authz";
 import { randomBytes } from "crypto";
 import { encryptSecret, decryptSecret } from "./crypto";
@@ -1079,31 +1080,118 @@ export async function registerRoutes(
   });
 
   // Track analytics event
+/**
+   * What POST /api/analytics/events accepts from an unauthenticated caller.
+   *
+   * Matches exactly what the two deployed embed players send — videoId,
+   * eventType, utmCode, referrerDomain (see the widget scripts at the bottom of
+   * this file) — plus productId, which the carousel sends on a click.
+   *
+   * Everything else about an event is decided by the server: the creator comes
+   * from the video, geo and device from the request, the affiliate from a utm
+   * code that must match the video, and the viewer hash from the connection.
+   *
+   * eventType is an enum here because the column is plain text with no CHECK
+   * constraint, so this is the only thing standing between the dashboards and
+   * arbitrary event types.
+   */
+  const analyticsIngestSchema = z.object({
+    videoId: z.string().min(1),
+    eventType: z.enum(["view", "click", "purchase"]),
+    productId: z.string().min(1).optional(),
+    utmCode: z.string().max(200).optional(),
+    referrerDomain: z.string().max(253).optional(),
+  });
   app.post("/api/analytics/events", async (req, res) => {
     try {
-      const data = insertAnalyticsEventSchema.parse(req.body);
+      /**
+       * Narrow, explicit input — NOT the table's insert schema.
+       *
+       * This endpoint is unauthenticated by necessity: it is called by embed
+       * scripts running on third-party sites that have no session. It used to
+       * parse with `insertAnalyticsEventSchema`, which is
+       * `createInsertSchema(analyticsEvents)` and therefore accepted EVERY
+       * column — so a caller could set `revenue` to any value (it feeds the
+       * revenue figures on the creator, brand and admin dashboards), invent an
+       * `eventType` (a plain text column with no enum and no CHECK), or
+       * override the server's own geo/device classification.
+       *
+       * Only the four fields the deployed embeds actually send are accepted,
+       * plus productId for click attribution. Everything else is derived by the
+       * server below. Anything not listed here is silently dropped by zod,
+       * which is what keeps already-deployed embeds working unchanged.
+       *
+       * revenue is deliberately absent: production has never recorded a single
+       * purchase event, so nothing legitimate sends it, and it drives money
+       * figures on three dashboards.
+       */
+      const data = analyticsIngestSchema.parse(req.body);
+
+      /**
+       * The video must exist, and it decides the attribution.
+       *
+       * Previously videoId was taken on trust with only the foreign key
+       * standing behind it, and video ids are public — every embed snippet
+       * contains one. Loading the video costs one indexed lookup and gives us
+       * the creator, which is what the billing aggregate is keyed on.
+       */
+      const video = await storage.getVideo(data.videoId);
+      if (!video) return res.status(404).json({ error: "Unknown video" });
 
       let affiliateId: string | null = null;
       let campaignAffiliateId: string | null = null;
       let resolvedCommissionRate: string | null = null;
 
-      const utmCode = data.utmCode || data.utmSource || null;
+      const utmCode = data.utmCode || null;
       if (utmCode) {
         const resolved = await storage.resolveUtmToAffiliate(utmCode);
-        if (resolved) {
+        // The resolver knows which video the code belongs to, and this used to
+        // ignore it — so a caller could staple one affiliate's utm code onto an
+        // unrelated video and have the event credited to them. Attribution now
+        // requires the code and the video to agree.
+        if (resolved && resolved.videoId === data.videoId) {
           affiliateId = resolved.affiliateId;
           campaignAffiliateId = resolved.campaignAffiliateId;
           resolvedCommissionRate = resolved.commissionRate;
         }
       }
 
-      // Derive geo/device server-side from the request (the embed players only
-      // send videoId/eventType/utmCode/referrerDomain). Prefer server-derived
-      // values but honor any client-supplied ones already on `data`.
-      const device = data.device ?? classifyDevice(req.headers["user-agent"]);
-      const country = data.country ?? deriveCountry(req);
+      // Geo and device are derived from the request, full stop. The previous
+      // `data.device ?? classifyDevice(...)` let the caller win, which is the
+      // opposite of what its own comment claimed.
+      const device = classifyDevice(req.headers["user-agent"]);
+      const country = deriveCountry(req);
 
-      const event = await storage.createAnalyticsEvent({ ...data, affiliateId, device, country });
+      /**
+       * Deduplicate billable views at the database.
+       *
+       * A partial unique index on (video_id, viewer_hash) for event_type='view'
+       * means a reload, a prefetch, a second tab or a retried beacon collapses
+       * into the one view that was already counted. Catching the violation and
+       * returning success is correct: a viewer revisiting a page has not done
+       * anything wrong, and the embed must not retry.
+       *
+       * Only views are deduplicated — a viewer may legitimately click several
+       * products on the same video.
+       */
+      const viewer = viewerHash(req);
+
+      let event;
+      try {
+        event = await storage.createAnalyticsEvent({
+          ...data,
+          affiliateId,
+          device,
+          country,
+          creatorId: video.creatorId,
+          viewerHash: viewer,
+        } as any);
+      } catch (err) {
+        if (isUniqueViolation(err)) {
+          return res.status(200).json({ deduplicated: true });
+        }
+        throw err;
+      }
 
       if (affiliateId && data.referrerDomain) {
         const videoId = data.videoId;
