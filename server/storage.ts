@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import { eq, desc, asc, sql, and, inArray, isNull } from "drizzle-orm";
+import { eq, desc, asc, sql, and, inArray, isNull, gte, lt } from "drizzle-orm";
 import { db } from "./db";
 import { LICENSE_FEE_DECIMAL } from "@shared/pricing";
 import {
@@ -160,6 +160,15 @@ export interface IStorage {
   // Analytics
   getAnalyticsEvents(videoId?: string): Promise<AnalyticsEvent[]>;
   createAnalyticsEvent(event: InsertAnalyticsEvent): Promise<AnalyticsEvent>;
+  /**
+   * Billable views for one creator in a half-open period [from, to).
+   *
+   * Half-open so consecutive periods tile exactly: an event at midnight belongs
+   * to the period starting then, never to both. Counts rows, and the
+   * deduplication that makes a row "one billable view" is enforced by the
+   * partial unique index at write time rather than re-derived here.
+   */
+  countBillableViews(creatorId: string, from: Date, to: Date): Promise<number>;
   getVideoStats(creatorId: string): Promise<{
     totalViews: number;
     totalClicks: number;
@@ -846,10 +855,21 @@ export class MemStorage implements IStorage {
       revenue: event.revenue ?? null,
       country: event.country ?? null,
       device: event.device ?? null,
+      creatorId: event.creatorId ?? null,
+      viewerHash: event.viewerHash ?? null,
       createdAt: new Date(),
     };
     this.analyticsEvents.set(id, newEvent);
     return newEvent;
+  }
+
+  async countBillableViews(creatorId: string, from: Date, to: Date): Promise<number> {
+    return Array.from(this.analyticsEvents.values()).filter(e => {
+      const at = e.createdAt ? new Date(e.createdAt) : null;
+      return (e as any).creatorId === creatorId
+        && e.eventType === "view"
+        && !!at && at >= from && at < to;
+    }).length;
   }
 
   async getVideoStats(creatorId: string): Promise<{
@@ -2373,6 +2393,34 @@ export class DatabaseStorage implements IStorage {
   async createAnalyticsEvent(event: InsertAnalyticsEvent): Promise<AnalyticsEvent> {
     const [newEvent] = await db.insert(analyticsEvents).values(event).returning();
     return newEvent;
+  }
+
+  /**
+   * Billable views for one creator in a half-open period [from, to).
+   *
+   * Reads the denormalized creator_id rather than joining through videos and
+   * inlining the creator's video-id list into an IN (...) predicate, which is
+   * what getVideoStats below still does. Served by
+   * analytics_events_creator_period_idx as a single range scan.
+   *
+   * Deduplication is NOT applied here: it happens at write time via the partial
+   * unique index, so every row this counts is already exactly one billable
+   * view. Re-deriving it at read time would be a second, divergent definition
+   * of the same rule.
+   */
+  async countBillableViews(creatorId: string, from: Date, to: Date): Promise<number> {
+    const [row] = await db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(analyticsEvents)
+      .where(
+        and(
+          eq(analyticsEvents.creatorId, creatorId),
+          eq(analyticsEvents.eventType, "view"),
+          gte(analyticsEvents.createdAt, from),
+          lt(analyticsEvents.createdAt, to),
+        ),
+      );
+    return row?.count ?? 0;
   }
 
   async getVideoStats(creatorId: string): Promise<{ totalViews: number; totalClicks: number; totalRevenue: number; averageCTR: number }> {
