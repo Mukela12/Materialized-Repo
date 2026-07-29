@@ -115,6 +115,44 @@ export function setupFeeMajor(): number {
 }
 
 /**
+ * Overage rates, in MAJOR units (dollars), per unit of usage.
+ *
+ * Confirmed by the client on 29 Jul 2026: $0.05 per view and $0.15 per minute,
+ * each multiplied by the number of publishers distributing the video.
+ *
+ * WHY THIS LIVES HERE
+ *   These numbers were previously copied into two separate client files, and a
+ *   THIRD, contradictory model ($0.008/min, with minutes derived as
+ *   views × publishers) was hardcoded into the brand dashboard. The product
+ *   therefore quoted two different prices on two different screens — on 10,000
+ *   views across 10 publishers, $5,000 on one and $800 on the other. A single
+ *   exported constant is what stops that recurring.
+ *
+ * NOT YET AUTHORITATIVE
+ *   Nothing bills from these. They drive an on-screen ESTIMATE only. The
+ *   endpoints that once charged a browser-computed total have been removed,
+ *   because they let the customer decide their own bill. When usage billing is
+ *   built these move into platform_settings so an admin can change them without
+ *   a deploy, and the amount is computed server-side from recorded usage — at
+ *   which point this constant becomes the seed value, not the source of truth.
+ */
+export const OVERAGE_RATES = {
+  perView: 0.05,
+  perMinute: 0.15,
+} as const;
+
+/**
+ * Estimated monthly overage, in MAJOR units.
+ *
+ * `publishers` multiplies BOTH rates: the same view is charged once per
+ * publisher distributing it. That is the model as specified; it is called out
+ * here because it is the part people misread as a per-publisher seat fee.
+ */
+export function estimateOverage(views: number, minutes: number, publishers: number): number {
+  return (views * OVERAGE_RATES.perView + minutes * OVERAGE_RATES.perMinute) * publishers;
+}
+
+/**
  * Who may take the introductory offer: first-time subscribers, and nobody else.
  *
  * Pass the caller's existing brand_subscriptions row, or null/undefined if they

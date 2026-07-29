@@ -7,7 +7,7 @@ import { Slider } from "@/components/ui/slider";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { CURRENCY_SYMBOL, PLATFORM_CURRENCY_CODE } from "@/lib/currency";
-import { planPriceMajor, type PlanKey } from "@shared/plans";
+import { planPriceMajor, type PlanKey, OVERAGE_RATES } from "@shared/plans";
 import {
   Dialog,
   DialogContent,
@@ -93,8 +93,11 @@ const PLANS: {
 const OFFERED_PLANS = PLANS.filter((p) => !p.legacy);
 
 // Surplus pricing constants
-const RATE_PER_VIEW   = 0.05;
-const RATE_PER_MINUTE = 0.15;
+// Rates come from shared/plans.ts so this page and every other surface quote
+// the same price. They were duplicated here and in the brand settings page,
+// and a third contradictory model lived on the brand dashboard.
+const RATE_PER_VIEW   = OVERAGE_RATES.perView;
+const RATE_PER_MINUTE = OVERAGE_RATES.perMinute;
 
 function StatusBadge({ status }: { status: string }) {
   const map: Record<string, { label: string; className: string }> = {
@@ -252,7 +255,7 @@ export default function BrandSettingsSubscription() {
                 <p className="text-sm font-medium">Estimate overage charges</p>
               </div>
               <p className="text-xs text-muted-foreground -mt-3">
-                Usage beyond plan limits is billed at <strong>{CURRENCY_SYMBOL}0.05 / view</strong> and <strong>{CURRENCY_SYMBOL}0.15 / minute</strong>, multiplied by active publishers.
+                Usage beyond plan limits is billed at <strong>{CURRENCY_SYMBOL}{RATE_PER_VIEW.toFixed(2)} / view</strong> and <strong>{CURRENCY_SYMBOL}{RATE_PER_MINUTE.toFixed(2)} / minute</strong>, multiplied by active publishers.
               </p>
 
               <div className="space-y-2">
