@@ -142,7 +142,14 @@ export const videos = pgTable("videos", {
   durationSeconds: integer("duration_seconds"),
   isTrial: boolean("is_trial").default(false),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
-});
+}, (t) => ({
+  /**
+   * "Which videos belong to this creator" is on the path of every creator
+   * dashboard, the trial gate, and now the billing aggregate — and it was a
+   * sequential scan, because Postgres does not index foreign keys automatically.
+   */
+  creatorIdx: index("videos_creator_id_idx").on(t.creatorId),
+}));
 
 // Video-Brand associations (many-to-many)
 export const videoBrands = pgTable("video_brands", {
@@ -189,8 +196,67 @@ export const analyticsEvents = pgTable("analytics_events", {
   revenue: decimal("revenue", { precision: 10, scale: 2 }),
   country: text("country"),
   device: text("device"),
+
+  /**
+   * The creator who owns the video, denormalized at write time.
+   *
+   * Billing asks "how much usage did THIS creator have between these dates",
+   * and without this every such query joins through videos and inlines the
+   * creator's whole video-id list into an IN (...) predicate. Denormalizing
+   * makes it a single indexed range scan.
+   *
+   * Safe to denormalize because a video's owner never changes: creatorId is set
+   * once at insert and no route updates it. It is also a point-in-time record —
+   * usage should stay attributed to whoever owned the video when it happened.
+   */
+  creatorId: varchar("creator_id").references(() => users.id),
+
+  /**
+   * Opaque per-viewer-per-day identity, used ONLY to deduplicate billable views.
+   *
+   * A salted HMAC of IP + user-agent + the UTC date (see server/viewerIdentity.ts).
+   * Because the date is inside the hash it rotates every midnight UTC, so the
+   * partial unique index below yields exactly one billable view per viewer, per
+   * video, per day without needing a separate day column or any scheduled job.
+   *
+   * Deliberately NOT reversible and NOT stored alongside the raw IP: it is a
+   * dedup key, not a tracking identifier, and it stops being linkable to a
+   * person after 24 hours.
+   *
+   * NULL on rows written before this existed, and on any event we cannot
+   * identify — the partial index ignores NULLs, so those never block a write.
+   */
+  viewerHash: text("viewer_hash"),
+
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
-});
+}, (t) => ({
+  /**
+   * The billing aggregate: one creator, one event type, a date range.
+   * This table had NO index beyond its primary key, so every stat query was a
+   * sequential scan.
+   */
+  creatorPeriodIdx: index("analytics_events_creator_period_idx")
+    .on(t.creatorId, t.eventType, t.createdAt),
+
+  /** Per-video dashboards and the video detail page. */
+  videoCreatedIdx: index("analytics_events_video_created_idx")
+    .on(t.videoId, t.createdAt),
+
+  /**
+   * One billable view per viewer, per video, per day — enforced by the DATABASE
+   * rather than by application logic, so a race between two concurrent requests
+   * cannot produce two rows. The ingest route catches the violation and returns
+   * success, because a repeat view is a normal thing for a viewer to do, not an
+   * error.
+   *
+   * Partial on purpose: clicks and purchases must never be deduplicated (a
+   * viewer may legitimately click several products), and NULL viewer_hash rows
+   * are exempt so historical data and unidentifiable requests still record.
+   */
+  billableViewUniq: uniqueIndex("analytics_events_billable_view_uniq")
+    .on(t.videoId, t.viewerHash)
+    .where(sql`${t.eventType} = 'view' AND ${t.viewerHash} IS NOT NULL`),
+}));
 
 // Affiliate payouts
 export const affiliatePayouts = pgTable("affiliate_payouts", {
