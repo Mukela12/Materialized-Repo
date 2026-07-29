@@ -1,7 +1,7 @@
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { sanitizeUser } from "./serializers";
+import { sanitizeUser, toPublicBrand } from "./serializers";
 import { canAccessUserResource } from "./authz";
 import { randomBytes } from "crypto";
 import { encryptSecret, decryptSecret } from "./crypto";
@@ -226,7 +226,7 @@ export async function registerRoutes(
   app.get("/api/brands", async (req, res) => {
     try {
       const brands = await storage.getBrands();
-      res.json(brands);
+      res.json(brands.map(toPublicBrand));
     } catch (error) {
       res.status(500).json({ error: "Failed to get brands" });
     }
@@ -239,7 +239,7 @@ export async function registerRoutes(
       if (!brand) {
         return res.status(404).json({ error: "Brand not found" });
       }
-      res.json(brand);
+      res.json(toPublicBrand(brand));
     } catch (error) {
       res.status(500).json({ error: "Failed to get brand" });
     }
@@ -1267,9 +1267,13 @@ export async function registerRoutes(
   // Create subscriber intake (landing page signup)
   app.post("/api/subscriber-intake", async (req, res) => {
     try {
-      const validAccessCode = process.env.ACCESS_CODE ?? "exclusiveaccess1233*";
+      // No hardcoded fallback. The previous default was a real, live access code
+      // committed in plaintext, so the check passed for anyone who read the source
+      // even with ACCESS_CODE unset. Absent config now fails CLOSED: if the
+      // platform has no code configured, no code can be accepted.
+      const validAccessCode = process.env.ACCESS_CODE;
       const submittedCode = (req.body.accessCode ?? "").trim();
-      if (submittedCode !== validAccessCode) {
+      if (!validAccessCode || submittedCode !== validAccessCode) {
         return res.status(403).json({ error: "Invalid access code" });
       }
 

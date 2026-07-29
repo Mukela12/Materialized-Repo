@@ -45,12 +45,17 @@ integrations = ["javascript_database:1.0.0", "javascript_object_storage:2.0.0", 
 path = "scripts/post-merge.sh"
 timeoutMs = 20000
 
-[userenv]
-
-[userenv.shared]
-ADMIN_BOOTSTRAP_SECRET = "mat-admin-2026"
-ACCESS_CODE = "exclusiveaccess1233*"
-
-[userenv.development]
-TEST_ADMIN_EMAIL = "missbethanieashton@gmail.com"
-TEST_ADMIN_PASSWORD = "test1233*"
+# No secrets in this file. It is tracked in git and this repository is public,
+# so anything written here is published the moment it is committed — and stays
+# readable in history afterwards. ADMIN_BOOTSTRAP_SECRET, ACCESS_CODE and a set
+# of admin test credentials were all previously kept here in plaintext.
+#
+# Set these in the hosting provider's environment instead (Railway for the
+# server, Vercel for the build), and locally in a .env file, which is ignored.
+#
+# Required by the server:  ACCESS_CODE
+# Optional, and dangerous: ADMIN_BOOTSTRAP_SECRET — setting it enables
+#   POST /api/admin/make-admin, which grants admin to any user id to any caller
+#   presenting the secret. Leave it unset unless you are actively bootstrapping
+#   a first admin, and unset it again immediately afterwards.
+# Tests only:              TEST_ADMIN_EMAIL, TEST_ADMIN_PASSWORD

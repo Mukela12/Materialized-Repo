@@ -41,8 +41,6 @@ type ConnectCreatorForm = z.infer<typeof connectCreatorSchema>;
 export default function BrandDashboard() {
   const [activeTab, setActiveTab] = useState("stats");
   const [, navigate] = useLocation();
-  const [apiKeyInput, setApiKeyInput] = useState("");
-  const [isApiConnected, setIsApiConnected] = useState(false);
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [calcAudience, setCalcAudience] = useState(10000);
   const [calcPublishers, setCalcPublishers] = useState(10);
@@ -102,16 +100,6 @@ export default function BrandDashboard() {
       });
     },
   });
-
-  const handleConnectApi = () => {
-    if (apiKeyInput.trim()) {
-      setIsApiConnected(true);
-      toast({
-        title: "API Connected!",
-        description: "Your product inventory is now syncing.",
-      });
-    }
-  };
 
   const onSubmitCreatorInvite = (data: ConnectCreatorForm) => {
     creatorInviteMutation.mutate(data);
@@ -378,44 +366,34 @@ export default function BrandDashboard() {
                 Sync your product inventory automatically with your e-commerce platform
               </p>
             </CardHeader>
+            {/*
+              This used to be a non-functional mock: a single "API Key" field whose
+              Connect button called no endpoint at all — it flipped local state and
+              showed "API Connected! Your product inventory is now syncing", which
+              was never true. A brand following it would believe their catalogue was
+              live while nothing had been imported.
+
+              The working integration lives at /brand/inventory, which collects the
+              credentials each platform actually needs (Shopify wants a store domain
+              AND an Admin API token, WooCommerce a URL plus consumer key/secret —
+              none of which fit in one generic field), validates them against the
+              live store before saving, and then runs a real product sync.
+            */}
             <CardContent className="space-y-4">
-              {!isApiConnected ? (
-                <>
-                  <div className="space-y-2">
-                    <Label htmlFor="api-key">API Key</Label>
-                    <Input
-                      id="api-key"
-                      type="password"
-                      placeholder="Enter your Shopify, WooCommerce, or custom API key"
-                      value={apiKeyInput}
-                      onChange={(e) => setApiKeyInput(e.target.value)}
-                      data-testid="input-api-key"
-                    />
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    <Badge variant="outline">Shopify</Badge>
-                    <Badge variant="outline">WooCommerce</Badge>
-                    <Badge variant="outline">BigCommerce</Badge>
-                    <Badge variant="outline">Custom API</Badge>
-                  </div>
-                  <Button 
-                    onClick={handleConnectApi}
-                    className="rounded-full"
-                    disabled={!apiKeyInput.trim()}
-                    data-testid="button-connect-api"
-                  >
-                    Connect API
-                  </Button>
-                </>
-              ) : (
-                <div className="flex items-center gap-3 p-4 bg-green-50 dark:bg-green-950/30 rounded-lg">
-                  <div className="h-3 w-3 bg-green-500 rounded-full animate-pulse" />
-                  <div>
-                    <p className="font-medium text-green-700 dark:text-green-400">API Connected</p>
-                    <p className="text-sm text-green-600 dark:text-green-500">Your inventory is syncing automatically</p>
-                  </div>
-                </div>
-              )}
+              <div className="flex flex-wrap gap-2">
+                <Badge variant="outline">Shopify</Badge>
+                <Badge variant="outline">WooCommerce</Badge>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                Connect your store to import your products. You'll need your store
+                address and an API credential from your platform — the next page
+                walks through where to find them.
+              </p>
+              <Link href="/brand/inventory">
+                <Button className="rounded-full" data-testid="button-connect-api">
+                  Connect your store
+                </Button>
+              </Link>
             </CardContent>
           </Card>
 

@@ -13,3 +13,26 @@ export function sanitizeUser<T extends Record<string, any>>(
   const { password, emailVerificationToken, emailVerificationExpires, ...safe } = user;
   return safe;
 }
+
+/**
+ * Remove admin-only inventory-grant metadata from a brand before it leaves an
+ * unauthenticated route.
+ *
+ * `GET /api/brands` and `GET /api/brands/:id` require no session, and Drizzle
+ * selects every declared column — so when migration 0011 added the admin-grant
+ * columns they immediately began serving them to anyone:
+ *
+ *   - `inventoryAccessNote`      free text an admin writes, e.g. an invoice ref
+ *   - `inventoryAccessGrantedBy` an internal user id for the acting admin
+ *   - `inventoryAccessUntil`     would let anyone enumerate which brands are on a
+ *                                paid window and the date each one lapses
+ *
+ * Admin surfaces read `GET /api/admin/brands` instead, which is behind
+ * requireAdmin and intentionally returns the full row.
+ */
+export function toPublicBrand<T extends Record<string, any>>(
+  brand: T,
+): Omit<T, "inventoryAccessUntil" | "inventoryAccessGrantedBy" | "inventoryAccessNote"> {
+  const { inventoryAccessUntil, inventoryAccessGrantedBy, inventoryAccessNote, ...visible } = brand;
+  return visible;
+}
