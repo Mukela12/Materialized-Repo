@@ -18,6 +18,17 @@
  * process terminate as soon as the artifacts are on disk.
  */
 import { build } from "vite";
+import { execFileSync } from "child_process";
+
+/**
+ * Integrity check BEFORE vite loads anything.
+ *
+ * This must run first, and in a separate process, because the thing it looks for
+ * lives in postcss.config.js — which vite imports and EXECUTES as soon as the
+ * build starts. Checking afterwards, or in-process, would mean the payload had
+ * already run. See script/check-integrity.mjs for the incident this prevents.
+ */
+execFileSync("node", ["script/check-integrity.mjs"], { stdio: "inherit" });
 
 build()
   .then(() => {

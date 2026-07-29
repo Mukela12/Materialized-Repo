@@ -1,6 +1,7 @@
 import { build as esbuild } from "esbuild";
 import { build as viteBuild } from "vite";
 import { rm, readFile } from "fs/promises";
+import { execFileSync } from "child_process";
 
 // Server deps to bundle for faster cold starts
 const allowlist = [
@@ -26,6 +27,12 @@ const allowlist = [
 ];
 
 async function buildAll() {
+  // Integrity check FIRST, in a separate process, before vite imports anything.
+  // postcss.config.js is executed by vite as the client build starts, so a check
+  // that ran later — or in this process — would run after the payload did.
+  // See script/check-integrity.mjs for the incident this prevents.
+  execFileSync("node", ["script/check-integrity.mjs"], { stdio: "inherit" });
+
   await rm("dist", { recursive: true, force: true });
 
   console.log("building client...");
