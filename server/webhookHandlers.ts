@@ -162,6 +162,35 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session): Promis
   const currentPeriodEnd = subscriptionPeriodEnd(subscription);
   const plan = metaPlan ?? (await planFromSubscription(subscription));
 
+  /**
+   * Promote the card just captured to be the CUSTOMER's default payment method.
+   *
+   * Checkout sets it as the SUBSCRIPTION's default, which is enough for the
+   * monthly invoices — but overage is billed as a standalone invoice against the
+   * customer (see createSurplusInvoice), and a standalone `charge_automatically`
+   * invoice resolves its card from customer.invoice_settings.default_payment_method
+   * only. It cannot reach a subscription's default.
+   *
+   * Verified against Stripe test mode: after a completed setup-fee checkout the
+   * subscription default was set and the customer default was NOT, so every
+   * overage invoice would have gone uncollected. Without this, "card on file for
+   * overage" is not true no matter how the card was captured.
+   *
+   * Best-effort: a failure here must not lose the subscription write below, which
+   * is what actually grants access.
+   */
+  const capturedPm = subscription.default_payment_method;
+  if (capturedPm) {
+    const pmId = typeof capturedPm === 'string' ? capturedPm : capturedPm.id;
+    try {
+      await stripe.customers.update(customerId, {
+        invoice_settings: { default_payment_method: pmId },
+      });
+    } catch (err) {
+      console.error('[Webhook] could not set customer default payment method:', err);
+    }
+  }
+
   await storage.upsertBrandSubscription({
     userId,
     plan,

@@ -33,6 +33,8 @@ const mockStripe = {
   prices: { list: vi.fn(), create: vi.fn() },
   checkout: { sessions: { create: vi.fn() } },
   customers: { create: vi.fn() },
+  invoices: { create: vi.fn(), finalizeInvoice: vi.fn() },
+  invoiceItems: { create: vi.fn() },
 };
 
 beforeEach(() => {
@@ -181,5 +183,54 @@ describe('isEligibleForIntroOffer', () => {
 
   it('a cancelled subscriber cannot re-trial — the loop this rule exists to close', () => {
     expect(isEligibleForIntroOffer({ userId: 'u1', status: 'cancelled' })).toBe(false);
+  });
+});
+
+/**
+ * The surplus/overage invoice.
+ *
+ * Regression coverage for a live defect: the invoice item was created BEFORE the
+ * invoice, on the assumption that `invoices.create` sweeps up pending items. It
+ * does not — the default pending_invoice_items_behavior is 'exclude' — so the
+ * invoice finalised with zero lines, a $0 invoice is auto-marked `paid`, and the
+ * caller reported success while nobody was charged. Confirmed against Stripe
+ * test mode: a $1 surplus produced `total=0 status=paid lines=0`.
+ */
+describe('StripeService.createSurplusInvoice', () => {
+  const service = new StripeService();
+
+  it('creates the invoice FIRST, then attaches the item to it by id', async () => {
+    mockStripe.invoices.create.mockResolvedValue({ id: 'in_1' });
+    mockStripe.invoiceItems.create.mockResolvedValue({ id: 'ii_1' });
+    mockStripe.invoices.finalizeInvoice.mockResolvedValue({ id: 'in_1', total: 100, status: 'open' });
+
+    await service.createSurplusInvoice('cus_1', 1, 'Overage');
+
+    // The item must name the invoice — that is what stops it floating.
+    expect(mockStripe.invoiceItems.create).toHaveBeenCalledWith(
+      expect.objectContaining({ invoice: 'in_1', amount: 100, customer: 'cus_1' }),
+    );
+    expect(mockStripe.invoices.create.mock.invocationCallOrder[0])
+      .toBeLessThan(mockStripe.invoiceItems.create.mock.invocationCallOrder[0]);
+  });
+
+  it('converts MAJOR units to minor — $1 is 100, not 1', async () => {
+    mockStripe.invoices.create.mockResolvedValue({ id: 'in_1' });
+    mockStripe.invoiceItems.create.mockResolvedValue({ id: 'ii_1' });
+    mockStripe.invoices.finalizeInvoice.mockResolvedValue({ id: 'in_1', total: 100 });
+
+    await service.createSurplusInvoice('cus_1', 1, 'Overage');
+    expect(mockStripe.invoiceItems.create).toHaveBeenCalledWith(
+      expect.objectContaining({ amount: 100 }),
+    );
+  });
+
+  it('THROWS on a zero-total invoice rather than returning a false success', async () => {
+    mockStripe.invoices.create.mockResolvedValue({ id: 'in_empty' });
+    mockStripe.invoiceItems.create.mockResolvedValue({ id: 'ii_1' });
+    mockStripe.invoices.finalizeInvoice.mockResolvedValue({ id: 'in_empty', total: 0, status: 'paid' });
+
+    await expect(service.createSurplusInvoice('cus_1', 1, 'Overage'))
+      .rejects.toThrow(/zero total/);
   });
 });

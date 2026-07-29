@@ -65,7 +65,7 @@ import { detectAiGeneratedContent } from "./replit_integrations/detection/aiCont
 import { sampleVideoFrames } from "./frameSampler";
 // Object storage removed — using Cloudinary instead
 import type Stripe from "stripe";
-import { stripeService, PLAN_CONFIG, PLAN_KEYS, isPlanKey, isAllowedPlan, BRAND_PLANS, CREATOR_PLANS, isEligibleForIntroOffer, type PlanKey } from "./stripeService";
+import { stripeService, PLAN_CONFIG, PLAN_KEYS, isPlanKey, isAllowedPlan, BRAND_PLANS, CREATOR_PLANS, isEligibleForIntroOffer, setupFeeMajor, TRIAL_DAYS, type PlanKey } from "./stripeService";
 import { getStripePublishableKey, getUncachableStripeClient } from "./stripeClient";
 import { dispatchStripeEvent } from "./webhookHandlers";
 import { resolveSigningUrl } from "./docusignHelper";
@@ -119,6 +119,12 @@ export async function registerRoutes(
         isTrialExhausted: !hasActiveSubscription && videoCount >= 1,
         trialVideosAllowed: user.isAdmin ? 99999 : 1,
         trialMaxDurationSeconds: user.isAdmin ? 99999 : 120,
+        // Whether to OFFER the intro deal. Presentation only — the checkout route
+        // re-decides this from the same rule and is the actual gate, so a client
+        // that ignores this flag gets a 409 rather than a free trial.
+        eligibleForIntroOffer: isEligibleForIntroOffer(sub),
+        introOfferSetupFee: setupFeeMajor(),
+        introOfferTrialDays: TRIAL_DAYS,
       });
     } catch (e) {
       res.status(500).json({ error: "Failed to get trial status" });

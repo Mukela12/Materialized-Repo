@@ -156,21 +156,52 @@ export class StripeService {
     });
   }
 
+  /**
+   * `amount` is in MAJOR UNITS (e.g. 1 = $1.00) — multiplied by 100 here.
+   *
+   * ORDER MATTERS, AND THE OBVIOUS ORDER IS WRONG.
+   *
+   * This previously created the invoice item first and then the invoice, relying
+   * on the new invoice sweeping up pending items. It does not: `invoices.create`
+   * defaults to pending_invoice_items_behavior 'exclude', so the item stayed
+   * unattached and the invoice was finalised with ZERO line items. A $0 invoice
+   * is auto-marked `paid`, so the call returned a paid invoice and the caller
+   * reported success — while nobody was charged and the real amount floated as a
+   * pending item, waiting to ambush the customer on their next subscription
+   * invoice. Verified against Stripe test mode: a $1 surplus produced
+   * `total=0 status=paid lines=0` with the $1 item attached to nothing.
+   *
+   * Creating the invoice FIRST and naming it on the item removes the ambiguity
+   * entirely — the line cannot land anywhere else.
+   */
   async createSurplusInvoice(customerId: string, amount: number, description: string) {
     const stripe = await getUncachableStripeClient();
-    await stripe.invoiceItems.create({
-      customer: customerId,
-      amount: Math.round(amount * 100),
-      currency: getPlatformCurrency(),
-      description,
-    });
+
     const invoice = await stripe.invoices.create({
       customer: customerId,
       auto_advance: true,
       collection_method: 'charge_automatically',
       metadata: { type: 'surplus' },
     });
+
+    await stripe.invoiceItems.create({
+      customer: customerId,
+      invoice: invoice.id,
+      amount: Math.round(amount * 100),
+      currency: getPlatformCurrency(),
+      description,
+    });
+
     const finalized = await stripe.invoices.finalizeInvoice(invoice.id);
+
+    // A finalised surplus invoice with no lines means the item did not attach —
+    // the failure this function was rewritten to fix. Fail loudly rather than
+    // returning a $0 "paid" invoice that reads as success.
+    if (!finalized.total) {
+      throw new Error(
+        `Surplus invoice ${finalized.id} finalised with a zero total — the line item did not attach.`,
+      );
+    }
     return finalized;
   }
 

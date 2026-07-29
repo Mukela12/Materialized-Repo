@@ -126,6 +126,17 @@ interface TrialStatus {
   isTrialExhausted: boolean;
   trialVideosAllowed: number;
   trialMaxDurationSeconds: number;
+  /**
+   * Whether to OFFER the intro deal — presentation only. The checkout route
+   * re-decides eligibility from the same rule server-side and is the real gate,
+   * so a client that ignores this gets a 409, never a free trial.
+   *
+   * Optional because a cached/older server may not send it; absent reads as
+   * "don't offer", which fails safe.
+   */
+  eligibleForIntroOffer?: boolean;
+  introOfferSetupFee?: number;
+  introOfferTrialDays?: number;
 }
 
 export default function CreatorSettingsSubscription() {
@@ -152,12 +163,20 @@ export default function CreatorSettingsSubscription() {
   });
 
   const checkoutMut = useMutation({
-    mutationFn: async (plan: PlanKey) => {
-      const res = await apiRequest("POST", "/api/creator/subscription/checkout", { plan });
+    mutationFn: async ({ plan, withTrial }: { plan: PlanKey; withTrial?: boolean }) => {
+      const res = await apiRequest("POST", "/api/creator/subscription/checkout", { plan, withTrial });
       return res.json() as Promise<{ url: string; sessionId: string }>;
     },
     onSuccess: ({ url }) => { if (url) window.location.href = url; },
-    onError: (err: any) => toast({ title: "Couldn't start checkout", description: err?.message, variant: "destructive" }),
+    onError: (err: any) =>
+      toast({
+        // The server refuses the intro offer to anyone who has subscribed before.
+        // Say so plainly rather than showing a generic failure — the user has done
+        // nothing wrong and the normal plans are still available to them.
+        title: err?.code === "TRIAL_NOT_ELIGIBLE" ? "Introductory offer unavailable" : "Couldn't start checkout",
+        description: err?.message,
+        variant: "destructive",
+      }),
   });
 
   const portalMut = useMutation({
@@ -282,7 +301,13 @@ export default function CreatorSettingsSubscription() {
       )}
 
       {/* Free trial banner */}
-      {!trialLoading && isOnTrial && (
+      {/*
+        `trial &&` is load-bearing, not defensive noise. isOnTrial is
+        `!trial?.hasActiveSubscription`, which is TRUE when the query failed and
+        `trial` is undefined — so without this the banner renders on an error and
+        every `trial.x` below throws. It also narrows the type for the whole block.
+      */}
+      {!trialLoading && trial && isOnTrial && (
         <div className="rounded-2xl border border-primary/30 bg-primary/5 p-5 space-y-3">
           <div className="flex items-center gap-2">
             <Video className="h-4 w-4 text-primary" />
@@ -303,6 +328,48 @@ export default function CreatorSettingsSubscription() {
               <span className="text-muted-foreground">Max 2 minutes per video</span>
             </div>
           </div>
+
+          {/*
+            The introductory offer. Shown only to creators who have never
+            subscribed — `eligibleForIntroOffer` is presentation only, and the
+            checkout route re-decides from the same rule, so hiding this is a
+            courtesy rather than the control.
+
+            The amounts and the day count come from the server (shared/plans.ts)
+            rather than being written here, so the page cannot advertise a price
+            different from the one Stripe charges.
+
+            The card wording is deliberate and not upsell padding: with an amount
+            due, Stripe stores the card as the subscription's default payment
+            method, and it is later charged for overage. Someone agreeing to a
+            one-off fee should not discover that separately.
+          */}
+          {trial.eligibleForIntroOffer && (
+            <div className="rounded-xl border border-primary/40 bg-background p-4 space-y-2">
+              <p className="font-semibold text-sm text-foreground">
+                Get started for ${trial.introOfferSetupFee}
+              </p>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                A one-off ${trial.introOfferSetupFee} setup fee, then{" "}
+                <strong className="text-foreground">{trial.introOfferTrialDays} days free</strong> — unlimited
+                videos with no duration limit. Your card is saved for usage charges and your
+                first monthly payment is taken after {trial.introOfferTrialDays} days. Cancel any
+                time before then and you pay nothing further.
+              </p>
+              <Button
+                data-testid="button-intro-offer"
+                size="sm"
+                className="rounded-full w-full sm:w-auto"
+                disabled={checkoutMut.isPending}
+                onClick={() => checkoutMut.mutate({ plan: "creator", withTrial: true })}
+              >
+                {checkoutMut.isPending
+                  ? "Redirecting…"
+                  : `Start ${trial.introOfferTrialDays} days free — $${trial.introOfferSetupFee} today`}
+              </Button>
+            </div>
+          )}
+
           <Button
             data-testid="button-upgrade-from-trial"
             size="sm"
@@ -608,7 +675,7 @@ export default function CreatorSettingsSubscription() {
                     size="sm"
                     variant={plan.popular ? "default" : "outline"}
                     disabled={isCurrent || checkoutMut.isPending}
-                    onClick={() => { setPlanDialogOpen(false); checkoutMut.mutate(plan.id); }}
+                    onClick={() => { setPlanDialogOpen(false); checkoutMut.mutate({ plan: plan.id }); }}
                     className="w-full rounded-xl"
                   >
                     {isCurrent ? "Current plan" : checkoutMut.isPending ? "Redirecting…" : `Subscribe — ${plan.price}/mo`}
