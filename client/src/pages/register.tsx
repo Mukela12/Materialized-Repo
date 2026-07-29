@@ -129,11 +129,11 @@ export default function Register() {
                 name="accessCode"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Access Code <span className="text-muted-foreground font-normal text-xs">If you have an access code, enter it here</span></FormLabel>
+                    <FormLabel>Voucher Code <span className="text-muted-foreground font-normal text-xs">If you have a voucher code, enter it here</span></FormLabel>
                     <FormControl>
                       <Input
                         {...field}
-                        placeholder="Have a code? Enter it for free access"
+                        placeholder="Enter your voucher code"
                         data-testid="input-register-accessCode"
                       />
                     </FormControl>

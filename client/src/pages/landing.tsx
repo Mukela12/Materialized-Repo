@@ -1183,12 +1183,12 @@ function SignupSection() {
                       name="accessCode"
                       render={({ field }) => (
                         <FormItem>
-                          <FormLabel className="text-white">Access Code <span className="text-white/50 font-normal text-xs">If you have an access code, enter it here</span></FormLabel>
+                          <FormLabel className="text-white">Voucher Code <span className="text-white/50 font-normal text-xs">If you have a voucher code, enter it here</span></FormLabel>
                           <FormControl>
                             <Input
                               {...field}
                               className="bg-white/10 border-white/20 text-white placeholder:text-white/40"
-                              placeholder="Have a code? Enter it for free access"
+                              placeholder="Enter your voucher code"
                               data-testid="input-access-code"
                             />
                           </FormControl>
@@ -1203,7 +1203,7 @@ function SignupSection() {
                       style={{ paddingLeft: "30px", paddingRight: "30px" }}
                       data-testid="button-submit-signup"
                     >
-                      {mutation.isPending ? "Creating Account..." : "Create Free Account"}
+                      {mutation.isPending ? "Creating Account..." : "Create Account"}
                     </Button>
                   </form>
                 </Form>
@@ -1265,8 +1265,11 @@ export default function Landing() {
     document.getElementById("signup")?.scrollIntoView({ behavior: "smooth" });
   };
 
+  // Page background is near-black in both themes and matched to the footer
+  // exactly: the footer and the analytics card above it are rounded, so any
+  // lighter page background shows through the corners as a band.
   return (
-    <div className="min-h-screen bg-white dark:bg-[#1a1a1a]">
+    <div className="min-h-screen bg-[#020410]">
       <section className="relative min-h-screen overflow-hidden">
         <video
           autoPlay
