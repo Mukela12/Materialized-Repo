@@ -6,9 +6,10 @@ import { getPlatformCurrency } from './feeConfig';
 export {
   PLAN_CONFIG, PLAN_KEYS, isPlanKey, planPriceMajor,
   BRAND_PLANS, CREATOR_PLANS, isAllowedPlan,
+  SETUP_FEE, TRIAL_DAYS, setupFeeMajor, isEligibleForIntroOffer,
   type PlanKey,
 } from '../shared/plans';
-import { PLAN_CONFIG, type PlanKey } from '../shared/plans';
+import { PLAN_CONFIG, SETUP_FEE, TRIAL_DAYS, type PlanKey } from '../shared/plans';
 
 export class StripeService {
   async findOrCreateSubscriptionPrice(plan: PlanKey): Promise<string> {
@@ -52,6 +53,99 @@ export class StripeService {
   ) {
     const priceId = await this.findOrCreateSubscriptionPrice(plan);
     return this.createCheckoutSession(customerId, priceId, successUrl, cancelUrl, 'subscription', metadata);
+  }
+
+  /**
+   * The one-time setup-fee price, created once and reused.
+   *
+   * Mirrors findOrCreateSubscriptionPrice deliberately, including its `limit:
+   * 100` reasoning: a miss here mints a duplicate price on every checkout, and
+   * duplicates are invisible until someone reconciles Stripe by hand. The
+   * lookup keys on product metadata rather than name, because names are
+   * editable in the Stripe dashboard and metadata is not surfaced there.
+   *
+   * Distinguished from the subscription price by having NO `recurring` — that
+   * absence is what makes Checkout bill it once instead of monthly.
+   */
+  async findOrCreateSetupFeePrice(): Promise<string> {
+    const stripe = await getUncachableStripeClient();
+
+    const products = await stripe.products.list({ active: true, limit: 100 });
+    let product = products.data.find(p => p.metadata?.kind === 'setup_fee');
+
+    if (!product) {
+      product = await stripe.products.create({
+        name: SETUP_FEE.name,
+        metadata: { kind: 'setup_fee' },
+      });
+    }
+
+    const prices = await stripe.prices.list({ product: product.id, active: true, limit: 100 });
+    const existing = prices.data.find(
+      p => !p.recurring && p.unit_amount === SETUP_FEE.amount && p.currency === getPlatformCurrency(),
+    );
+    if (existing) return existing.id;
+
+    const newPrice = await stripe.prices.create({
+      product: product.id,
+      unit_amount: SETUP_FEE.amount,
+      currency: getPlatformCurrency(),
+      metadata: { kind: 'setup_fee' },
+    });
+    return newPrice.id;
+  }
+
+  /**
+   * The onboarding checkout: charge the setup fee now, start the subscription on
+   * a free trial, and keep the card for later.
+   *
+   * All three happen in ONE session on purpose. Splitting them would mean a
+   * creator could pay the fee and abandon before the card was vaulted, leaving
+   * an account that is entitled for 30 days and uncollectable afterwards.
+   *
+   * `waiveSetupFee` supports the comped accounts the client asked for. It
+   * changes the session shape rather than just the amount: with nothing due,
+   * Stripe would not ask for a card at all, so `payment_method_collection:
+   * 'always'` is required to still vault one. Without that, a gifted account
+   * reaches day 31 with no way to bill it — the exact failure the fee normally
+   * prevents.
+   */
+  async createTrialWithSetupFeeCheckout(
+    customerId: string,
+    plan: PlanKey,
+    successUrl: string,
+    cancelUrl: string,
+    metadata?: Record<string, string>,
+    waiveSetupFee: boolean = false,
+  ) {
+    const stripe = await getUncachableStripeClient();
+    const subscriptionPriceId = await this.findOrCreateSubscriptionPrice(plan);
+
+    const lineItems: Array<{ price: string; quantity: number }> = [
+      { price: subscriptionPriceId, quantity: 1 },
+    ];
+    if (!waiveSetupFee) {
+      lineItems.push({ price: await this.findOrCreateSetupFeePrice(), quantity: 1 });
+    }
+
+    return await stripe.checkout.sessions.create({
+      customer: customerId,
+      payment_method_types: ['card'],
+      line_items: lineItems,
+      mode: 'subscription',
+      // Stripe owns the 30-day clock. The subscription is `trialing` for its
+      // duration, which mapStripeStatus already collapses to 'active', so every
+      // existing entitlement gate treats a trialing creator as subscribed with
+      // no new entitlement code.
+      subscription_data: { trial_period_days: TRIAL_DAYS },
+      // Redundant when the fee is charged (an amount due always collects a
+      // card), load-bearing when it is waived. Set unconditionally so the two
+      // paths cannot drift.
+      payment_method_collection: 'always',
+      success_url: successUrl,
+      cancel_url: cancelUrl,
+      ...(metadata ? { metadata } : {}),
+    });
   }
 
   async createBillingPortal(customerId: string, returnUrl: string) {

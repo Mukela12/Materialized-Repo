@@ -65,7 +65,7 @@ import { detectAiGeneratedContent } from "./replit_integrations/detection/aiCont
 import { sampleVideoFrames } from "./frameSampler";
 // Object storage removed — using Cloudinary instead
 import type Stripe from "stripe";
-import { stripeService, PLAN_CONFIG, PLAN_KEYS, isPlanKey, isAllowedPlan, BRAND_PLANS, CREATOR_PLANS, type PlanKey } from "./stripeService";
+import { stripeService, PLAN_CONFIG, PLAN_KEYS, isPlanKey, isAllowedPlan, BRAND_PLANS, CREATOR_PLANS, isEligibleForIntroOffer, type PlanKey } from "./stripeService";
 import { getStripePublishableKey, getUncachableStripeClient } from "./stripeClient";
 import { dispatchStripeEvent } from "./webhookHandlers";
 import { resolveSigningUrl } from "./docusignHelper";
@@ -152,13 +152,54 @@ export async function registerRoutes(
       }
 
       const origin = req.headers.origin ?? `${req.protocol}://${req.headers.host}`;
-      const session = await stripeService.createSubscriptionCheckout(
-        customerId,
-        plan,
-        `${origin}/creator/settings/subscription?checkout=success`,
-        `${origin}/creator/settings/subscription?checkout=cancelled`,
-        { userId, plan },
-      );
+      const successUrl = `${origin}/creator/settings/subscription?checkout=success`;
+      const cancelUrl = `${origin}/creator/settings/subscription?checkout=cancelled`;
+
+      /**
+       * The onboarding offer: pay the setup fee once, then TRIAL_DAYS before the
+       * first monthly charge.
+       *
+       * ELIGIBILITY IS DECIDED HERE, NOT BY THE CALLER. `withTrial` is a request,
+       * not an instruction. Without a server-side check, a creator could cancel
+       * and re-run this endpoint every month and hold the product indefinitely
+       * for the setup fee instead of the monthly price — cheaper than the plan,
+       * repeatable forever, and invisible in the subscription table because the
+       * row is upserted rather than appended.
+       *
+       * "Never subscribed" is the test, and `brand_subscriptions.userId` being
+       * unique is what makes it reliable: cancelling UPDATES the row's status
+       * rather than deleting it (storage.upsertBrandSubscription), so the row's
+       * mere existence is a durable record that this user has transacted before,
+       * whatever state they are in now.
+       *
+       * The setup fee is never waived here. Comped accounts are a decision for an
+       * admin, and a creator must not be able to zero their own fee by posting a
+       * flag — stripeService.createTrialWithSetupFeeCheckout takes waiveSetupFee
+       * for that future admin-driven path, and this route always leaves it false.
+       */
+      const session = await (async () => {
+        if (req.body?.withTrial !== true) {
+          return stripeService.createSubscriptionCheckout(
+            customerId, plan, successUrl, cancelUrl, { userId, plan },
+          );
+        }
+
+        const priorSubscription = await storage.getBrandSubscription(userId);
+        if (!isEligibleForIntroOffer(priorSubscription)) {
+          return null;
+        }
+
+        return stripeService.createTrialWithSetupFeeCheckout(
+          customerId, plan, successUrl, cancelUrl, { userId, plan, offer: "trial" },
+        );
+      })();
+
+      if (!session) {
+        return res.status(409).json({
+          error: "The introductory offer is for first-time subscribers only.",
+          code: "TRIAL_NOT_ELIGIBLE",
+        });
+      }
 
       res.json({ url: session.url, sessionId: session.id });
     } catch (e: any) {

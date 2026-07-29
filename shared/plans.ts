@@ -80,3 +80,54 @@ export function isAllowedPlan(value: unknown, allowed: readonly PlanKey[]): valu
 export function planPriceMajor(plan: PlanKey): number {
   return PLAN_CONFIG[plan].amount / 100;
 }
+
+/**
+ * The onboarding offer: a one-off setup fee, then 30 days before the first
+ * monthly charge.
+ *
+ * Both numbers live here, in MINOR units, for the same reason the plan amounts
+ * do — the client renders exactly what the server charges. `amount` is passed to
+ * Stripe verbatim; it is NOT the major-unit convention `createPaymentIntent`
+ * uses, which multiplies by 100.
+ *
+ * WHY STRIPE OWNS THE CLOCK
+ *   The 30 days are Stripe's `trial_period_days`, not a timestamp this app
+ *   stores and sweeps. There is no scheduler in this codebase, so anything we
+ *   dated ourselves would need one; Stripe already bills the first invoice on
+ *   day 31 and emits the webhooks that keep the local row in step.
+ *
+ * WHY THE FEE MATTERS BEYOND THE REVENUE
+ *   Because there is an amount due at checkout, Stripe collects and vaults a
+ *   card and makes it the subscription's default payment method. That is the
+ *   only route in this codebase to a card on file — there is no SetupIntent
+ *   flow and no client-side Stripe.js — and it is what any later overage
+ *   invoice has to charge against. A zero-fee variant therefore has to ask for
+ *   the card explicitly; see createTrialWithSetupFeeCheckout.
+ */
+export const SETUP_FEE = { name: 'Materialized Setup Fee', amount: 2900 } as const;
+
+/** Days before the first monthly charge. Stripe counts these, not us. */
+export const TRIAL_DAYS = 30;
+
+/** Setup fee in MAJOR units (e.g. 29) for display. */
+export function setupFeeMajor(): number {
+  return SETUP_FEE.amount / 100;
+}
+
+/**
+ * Who may take the introductory offer: first-time subscribers, and nobody else.
+ *
+ * Pass the caller's existing brand_subscriptions row, or null/undefined if they
+ * have none. ANY row disqualifies — including `cancelled` and `past_due`.
+ *
+ * That is the whole point, and it is the opposite of what the code wants to be
+ * refactored into. `prior?.status === 'active'` reads more natural and is wrong:
+ * it would let a creator cancel, re-run checkout, and hold the product for the
+ * setup fee every 30 days instead of the monthly price — indefinitely, and
+ * invisibly, because upsertBrandSubscription updates the single unique row per
+ * user rather than appending. The row's EXISTENCE is the durable record that
+ * this account has transacted before; its status is not.
+ */
+export function isEligibleForIntroOffer(priorSubscription: unknown): boolean {
+  return priorSubscription === null || priorSubscription === undefined;
+}
