@@ -3881,7 +3881,14 @@ Identify which products from the catalog are most likely to appear or be feature
         return res.status(400).json({ error: "No connect account found" });
       }
 
-      const baseUrl = `https://${process.env.REPLIT_DOMAINS?.split(",")[0]}`;
+      // REPLIT_DOMAINS was the only reference to it left in the codebase and it is
+      // not set on this deployment (Vercel front end, Railway API), so this
+      // produced "https://undefined/affiliate/settings" — Stripe's hosted
+      // onboarding then had nowhere to return the creator to, and nobody could
+      // finish connecting an account. Use the same convention as every other
+      // redirect in this file.
+      const baseUrl =
+        process.env.APP_URL || req.headers.origin || `${req.protocol}://${req.headers.host}`;
       const accountLink = await stripeService.createConnectAccountLink(
         user.stripeConnectAccountId,
         `${baseUrl}/affiliate/settings`,
@@ -3909,9 +3916,20 @@ Identify which products from the catalog are most likely to appear or be feature
       }
 
       const account = await stripeService.getConnectAccount(user.stripeConnectAccountId);
-      // Same 3-condition gate as the account.updated webhook (handleAccountUpdated) so the
+      // Same gate as the account.updated webhook (handleAccountUpdated) so the
       // status endpoint and the webhook agree on when an account is onboarded.
-      const isOnboarded = account.charges_enabled && account.payouts_enabled && account.details_submitted;
+      //
+      // `charges_enabled` is deliberately NOT required, and requiring it was a bug
+      // that made this unsatisfiable. createConnectAccount requests the `transfers`
+      // capability only — correctly, because money flows platform -> creator and a
+      // creator never accepts card payments through us. charges_enabled reflects
+      // whether the account can PROCESS charges, which needs `card_payments`, so on
+      // a transfers-only account it stays false forever. Every affiliate therefore
+      // stayed un-onboarded and executePayouts skipped all of them.
+      //
+      // What actually matters for being paid: Stripe will accept a transfer and
+      // the creator can be paid out to their bank.
+      const isOnboarded = account.payouts_enabled && account.details_submitted;
 
       if (isOnboarded && !user.stripeConnectOnboarded) {
         await storage.updateUser(user.id, { stripeConnectOnboarded: true } as any);

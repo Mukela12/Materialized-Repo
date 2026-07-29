@@ -508,7 +508,11 @@ async function handleAccountUpdated(account: Stripe.Account): Promise<void> {
     return;
   }
 
-  const onboarded = !!account.charges_enabled && !!account.payouts_enabled && !!account.details_submitted;
+  // Must match the /api/stripe/connect/status gate exactly — see the comment there
+  // for why charges_enabled is NOT part of this. Short version: connected accounts
+  // are created with the `transfers` capability only, so charges_enabled never
+  // becomes true and requiring it left every affiliate permanently un-onboarded.
+  const onboarded = !!account.payouts_enabled && !!account.details_submitted;
 
   if (!!user.stripeConnectOnboarded === onboarded) {
     return; // no change — avoid a needless write
