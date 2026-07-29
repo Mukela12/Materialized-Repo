@@ -388,8 +388,23 @@ async function handleInvoicePaymentFailed(invoice: Stripe.Invoice): Promise<void
   const user = await storage.getUserByStripeCustomerId(customerId);
   if (!user) return;
 
-  const existing = await storage.getBrandSubscription(user.id);
   const invoiceSubscriptionId = extractSubscriptionId((invoice as InvoiceWithSubscription).subscription);
+
+  /**
+   * Only a SUBSCRIPTION invoice may change subscription status.
+   *
+   * Without this, a failed standalone invoice — an overage charge, or anything
+   * raised by hand in the Stripe dashboard — flips the user's whole subscription
+   * to past_due and revokes their access over a bill that has nothing to do with
+   * it. The success-path twin above already returns early on the same condition;
+   * this side was missing it, so the two disagreed about what an invoice means.
+   *
+   * This matters more, not less, as overage billing arrives: overage failing is
+   * expected and routine, and it must not cancel someone's plan.
+   */
+  if (!invoiceSubscriptionId) return;
+
+  const existing = await storage.getBrandSubscription(user.id);
 
   await storage.upsertBrandSubscription({
     userId: user.id,

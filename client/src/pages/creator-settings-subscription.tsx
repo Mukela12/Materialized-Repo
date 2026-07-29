@@ -188,19 +188,6 @@ export default function CreatorSettingsSubscription() {
     onError: (err: any) => toast({ title: "Couldn't open billing portal", description: err?.message, variant: "destructive" }),
   });
 
-  const surplusMut = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/creator/subscription/surplus-invoice", {
-        views, minutes, publishers, totalAmount: totalSurplus,
-      });
-      return res.json() as Promise<{ invoiceId: string; url?: string }>;
-    },
-    onSuccess: ({ url }) => {
-      if (url) window.open(url, "_blank");
-      toast({ title: "Surplus invoice created", description: "Check your email or the link above to pay." });
-    },
-    onError: (err: any) => toast({ title: "Couldn't create invoice", description: err?.message, variant: "destructive" }),
-  });
 
   // ── Token subsidy, derived ──
   // The wallet is the ceiling; the server also caps a single request at 50.
@@ -489,17 +476,15 @@ export default function CreatorSettingsSubscription() {
                       <span className="text-xs font-normal text-muted-foreground ml-1">/ mo</span>
                     </p>
                   </div>
-                  <Button
-                    data-testid="button-pay-surplus"
-                    size="sm"
-                    variant="outline"
-                    disabled={totalSurplus <= 0 || surplusMut.isPending}
-                    onClick={() => surplusMut.mutate()}
-                    className="rounded-full gap-1.5"
-                  >
-                    <CreditCard className="h-3.5 w-3.5" />
-                    {surplusMut.isPending ? "Creating…" : "Pay Surplus"}
-                  </Button>
+                  {/*
+                    Estimate only — this deliberately does not charge anything.
+                    It used to POST the browser-computed total to an endpoint that
+                    billed the card for exactly that number, which meant the
+                    customer decided their own bill. Overage will be billed from
+                    recorded usage, priced server-side, on the subscription
+                    invoice. Until then this is a quote, and says so.
+                  */}
+                  <span className="text-xs text-muted-foreground">Estimate only</span>
                 </div>
               </div>
             )}

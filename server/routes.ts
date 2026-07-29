@@ -215,6 +215,27 @@ export async function registerRoutes(
   });
 
   // Creator billing portal
+  /**
+   * REMOVED (pre-live): POST /api/creator/subscription/surplus-invoice
+   *                     POST /api/brand/subscription/surplus-invoice
+   *
+   * Both took `totalAmount` straight from the request body, validated it only as
+   * `> 0`, and passed it to a charge_automatically invoice that was finalised
+   * immediately. The rates behind that number lived exclusively in two client
+   * files, so the amount the platform charged was decided entirely by the
+   * caller's browser. Under a test key that was a curiosity; under a live key it
+   * is a route where the customer sets their own bill.
+   *
+   * There was also no idempotency key on the path, so a double click raised two
+   * invoices.
+   *
+   * The sliders that drove these remain, relabelled as an estimator — the maths
+   * is useful as a sales tool, it simply must not reach Stripe. Overage will be
+   * billed server-side from recorded usage, priced from rates held in the
+   * database, and attached to the subscription's own invoice. See the overage
+   * scope; stripeService.createSurplusInvoice is kept for that work.
+   */
+
   app.post("/api/creator/subscription/portal", async (req, res) => {
     try {
       const userId = (req.session as any)?.userId;
@@ -239,33 +260,6 @@ export async function registerRoutes(
   });
 
   // Creator surplus invoice
-  app.post("/api/creator/subscription/surplus-invoice", async (req, res) => {
-    try {
-      const userId = (req.session as any)?.userId;
-      if (!userId) return res.status(401).json({ error: "Unauthorized" });
-
-      const { views, minutes, publishers, totalAmount } = req.body;
-      if (!totalAmount || totalAmount <= 0) {
-        return res.status(400).json({ error: "Surplus amount must be greater than zero" });
-      }
-
-      const user = await storage.getUser(userId);
-      let customerId = user?.stripeCustomerId;
-      if (!customerId) {
-        const customer = await stripeService.createCustomer(user?.email ?? "", userId, user?.name ?? undefined);
-        customerId = customer.id;
-        await storage.updateUser(userId, { stripeCustomerId: customerId });
-      }
-
-      const description = `Creator overage — ${(views ?? 0).toLocaleString()} views × ${publishers ?? 1} pub + ${(minutes ?? 0).toLocaleString()} min × ${publishers ?? 1} pub`;
-      const invoice = await stripeService.createSurplusInvoice(customerId, totalAmount, description);
-
-      res.json({ invoiceId: invoice.id, url: invoice.hosted_invoice_url });
-    } catch (e: any) {
-      console.error("Creator surplus error:", e);
-      res.status(500).json({ error: e?.message ?? "Failed to create surplus invoice" });
-    }
-  });
 
   // ==================== BRAND ROUTES ====================
   
@@ -5096,51 +5090,6 @@ Identify which products from the catalog are most likely to appear or be feature
   });
 
   // Subscription → Surplus invoice (one-time overage charge)
-  app.post("/api/brand/subscription/surplus-invoice", async (req, res) => {
-    try {
-      const userId = (req.session as any)?.userId;
-      if (!userId) return res.status(401).json({ error: "Unauthorized" });
-
-      const { views, minutes, publishers, totalAmount } = req.body;
-      if (!totalAmount || totalAmount <= 0) {
-        return res.status(400).json({ error: "Surplus amount must be greater than zero" });
-      }
-
-      const user = await storage.getUser(userId);
-      let customerId = user?.stripeCustomerId;
-      if (!customerId) {
-        const customer = await stripeService.createCustomer(user?.email ?? "", userId, user?.name ?? undefined);
-        customerId = customer.id;
-        await storage.updateUser(userId, { stripeCustomerId: customerId });
-      }
-
-      const description = `Overage charges — ${(views ?? 0).toLocaleString()} views × ${publishers ?? 1} publishers + ${(minutes ?? 0).toLocaleString()} min × ${publishers ?? 1} publishers`;
-      const invoice = await stripeService.createSurplusInvoice(customerId, totalAmount, description);
-
-      // Record the invoice in billing history so it appears in the Billing History page
-      // and its hosted URL can be resolved on demand for downloads.
-      try {
-        await storage.createBrandBillingRecord({
-          userId,
-          type: "invoice",
-          amount: String(totalAmount),
-          currency: (invoice.currency ?? "usd").toUpperCase(),
-          status: invoice.status === "paid" ? "paid" : "pending",
-          description,
-          reference: invoice.number ?? invoice.id,
-          stripeInvoiceId: invoice.id,
-          hostedInvoiceUrl: invoice.hosted_invoice_url ?? null,
-        });
-      } catch (recordErr) {
-        console.error("Failed to record surplus invoice in billing history:", recordErr);
-      }
-
-      res.json({ invoiceId: invoice.id, url: invoice.hosted_invoice_url });
-    } catch (e: any) {
-      console.error("Surplus invoice error:", e);
-      res.status(500).json({ error: e?.message ?? "Failed to create surplus invoice" });
-    }
-  });
 
   // Billing records (history + transactions)
   app.get("/api/brand/billing-records", async (req, res) => {

@@ -35,6 +35,41 @@ if (missing.length) {
   console.log(`[Config] Optional env vars not set: ${missing.join(', ')} — some features will be disabled`);
 }
 
+/**
+ * Say out loud which Stripe mode this process is in, and refuse the one
+ * combination that is silently, expensively wrong.
+ *
+ * Stripe's test and live modes are separate object spaces with separate webhook
+ * endpoints and separate secrets. The dangerous failure is not a loud error, it
+ * is silence: a live secret key paired with a test webhook secret means real
+ * cards are charged while every webhook fails signature verification, so no
+ * subscription is ever recorded, nobody is granted access, and nothing in the
+ * app reports a problem. Refusing to boot is far cheaper than discovering that
+ * from customers.
+ *
+ * The publishable key is the cross-check because it carries the same mode
+ * prefix and is the one value that cannot be mismatched by accident without
+ * also being wrong for the client.
+ */
+const stripeSecret = process.env.STRIPE_SECRET_KEY;
+if (stripeSecret) {
+  const isLive = stripeSecret.startsWith('sk_live');
+  const pk = process.env.STRIPE_PUBLISHABLE_KEY;
+
+  if (pk && isLive !== pk.startsWith('pk_live')) {
+    console.error(
+      `[FATAL] Stripe key mode mismatch: secret key is ${isLive ? 'LIVE' : 'TEST'} ` +
+      `but publishable key is ${pk.startsWith('pk_live') ? 'LIVE' : 'TEST'}. ` +
+      `Set both from the same Stripe mode.`,
+    );
+    process.exit(1);
+  }
+
+  console.log(
+    `[Stripe] ${isLive ? 'LIVE MODE — real money' : 'TEST MODE — no real money moves'}`,
+  );
+}
+
 // Initialize Sentry as early as possible so its Node instrumentation and the
 // global unhandledRejection/uncaughtException handlers attach before the app
 // handles traffic. Hard no-op when SENTRY_DSN is unset (see server/sentry.ts).

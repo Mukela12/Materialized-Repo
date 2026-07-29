@@ -206,8 +206,8 @@ export default function AffiliateSettings() {
                     <div>
                       <p className="font-medium text-green-800 dark:text-green-200">Payouts Active</p>
                       <p className="text-sm text-green-700 dark:text-green-300 mt-1">
-                        Your payout account is fully set up. Commissions will be automatically 
-                        transferred to your connected bank account.
+                        Your payout account is fully set up. Approved commissions are
+                        transferred to your connected bank account each payout run.
                       </p>
                     </div>
                   </div>
@@ -234,8 +234,15 @@ export default function AffiliateSettings() {
                 <div>
                   <p className="text-sm text-muted-foreground">Payout Frequency</p>
                   <p className="font-medium">Monthly</p>
+                  {/*
+                    Was "processed on the 1st of each month". There is no
+                    scheduler in this codebase — payouts run when an admin
+                    triggers them (POST /api/admin/payouts/run), and commissions
+                    must be approved first. Promising a date we do not keep is
+                    worse than naming the real process.
+                  */}
                   <p className="text-xs text-muted-foreground mt-1">
-                    Payouts are processed on the 1st of each month
+                    Processed monthly, after your commissions are approved
                   </p>
                 </div>
                 <div>

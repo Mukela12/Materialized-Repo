@@ -818,3 +818,45 @@ describe('dispatchStripeEvent — unrecognised event type', () => {
     ).resolves.not.toThrow();
   });
 });
+
+/**
+ * A failed STANDALONE invoice must not touch subscription status.
+ *
+ * handleInvoicePaymentFailed read the invoice's subscription id but never
+ * guarded on it, so an invoice with no subscription — an overage charge, or one
+ * raised by hand in the Stripe dashboard — flipped the user's whole plan to
+ * past_due and revoked their access over an unrelated bill. The success-path
+ * twin already returned early on exactly this condition; the two disagreed.
+ *
+ * This matters more as overage billing arrives: overage failing is routine, and
+ * it must never cancel someone's subscription.
+ */
+describe('invoice.payment_failed — only subscription invoices change status', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (storage.getUserByStripeCustomerId as any).mockResolvedValue({ id: 'u1' });
+    (storage.getBrandSubscription as any).mockResolvedValue({
+      plan: 'creator', stripeSubscriptionId: 'sub_1', currentPeriodEnd: new Date(),
+    });
+  });
+
+  it('ignores a standalone invoice (no subscription) — does not mark past_due', async () => {
+    await dispatchStripeEvent({
+      type: 'invoice.payment_failed',
+      data: { object: { customer: 'cus_1', subscription: null } },
+    } as any as Stripe.Event);
+
+    expect(storage.upsertBrandSubscription).not.toHaveBeenCalled();
+  });
+
+  it('still marks past_due for a genuine subscription invoice', async () => {
+    await dispatchStripeEvent({
+      type: 'invoice.payment_failed',
+      data: { object: { customer: 'cus_1', subscription: 'sub_1' } },
+    } as any as Stripe.Event);
+
+    expect(storage.upsertBrandSubscription).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: 'u1', status: 'past_due' }),
+    );
+  });
+});
