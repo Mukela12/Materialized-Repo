@@ -421,12 +421,40 @@ interface AdminBrand {
   category: string | null;
   website: string | null;
   isActive: boolean;
+  /** Admin-granted inventory window. Null = never granted. Past = lapsed/revoked. */
+  inventoryAccessUntil: string | null;
+  inventoryAccessNote: string | null;
+}
+
+/** True while an admin grant is still running. Mirrors the server gate. */
+function inventoryLive(b: AdminBrand): boolean {
+  return !!b.inventoryAccessUntil && new Date(b.inventoryAccessUntil).getTime() > Date.now();
 }
 
 function AdminBrands() {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
   const { data: brands = [] } = useQuery<AdminBrand[]>({
     queryKey: ["/api/admin/brands"],
     queryFn: () => fetch("/api/admin/brands", { credentials: "include" }).then(r => r.json()),
+  });
+
+  // Switch a brand's inventory on for 30 days (the "$29 admin fee, no
+  // subscription" case) or revoke it. The $29 is settled out of band; this only
+  // records the window.
+  const setAccess = useMutation({
+    mutationFn: ({ id, days, note }: { id: string; days: number; note?: string }) =>
+      apiRequest("PUT", `/api/admin/brands/${id}/inventory-access`, { days, note }),
+    onSuccess: (_d, v) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/brands"] });
+      toast({
+        title: v.days > 0 ? "Inventory switched on" : "Inventory access revoked",
+        description: v.days > 0
+          ? `Discoverable for ${v.days} days.`
+          : "This brand's products are no longer discoverable.",
+      });
+    },
+    onError: () => toast({ title: "Could not update inventory access", variant: "destructive" }),
   });
 
   const { query, setQuery, sortKey, sortDir, toggleSort, rows } = useTableControls(brands, {
@@ -466,6 +494,7 @@ function AdminBrands() {
             <SortTh label="Category" sortKey="category" activeKey={sortKey} dir={sortDir} onSort={toggleSort} />
             <th className="p-3 font-medium">Website</th>
             <SortTh label="Status" sortKey="status" activeKey={sortKey} dir={sortDir} onSort={toggleSort} />
+            <th className="p-3 font-medium">Inventory</th>
           </tr>
         </thead>
         <tbody>
@@ -484,6 +513,34 @@ function AdminBrands() {
                 <Badge className={b.isActive ? "bg-green-500/20 text-green-600 border-0" : "bg-red-500/20 text-red-600 border-0"}>
                   {b.isActive ? "Active" : "Inactive"}
                 </Badge>
+              </td>
+              <td className="p-3">
+                {inventoryLive(b) ? (
+                  <div className="flex items-center gap-2">
+                    <Badge className="bg-green-500/20 text-green-600 border-0 whitespace-nowrap">
+                      On &middot; till {new Date(b.inventoryAccessUntil!).toLocaleDateString()}
+                    </Badge>
+                    <Button
+                      size="sm" variant="ghost"
+                      className="h-7 text-xs text-muted-foreground hover:text-destructive"
+                      disabled={setAccess.isPending}
+                      onClick={() => setAccess.mutate({ id: b.id, days: 0 })}
+                      data-testid={`button-revoke-inventory-${b.id}`}
+                    >
+                      Revoke
+                    </Button>
+                  </div>
+                ) : (
+                  <Button
+                    size="sm" variant="outline"
+                    className="h-7 text-xs whitespace-nowrap"
+                    disabled={setAccess.isPending}
+                    onClick={() => setAccess.mutate({ id: b.id, days: 30, note: "Admin grant — $29 admin fee settled" })}
+                    data-testid={`button-grant-inventory-${b.id}`}
+                  >
+                    Switch on 30 days
+                  </Button>
+                )}
               </td>
             </tr>
           ))}

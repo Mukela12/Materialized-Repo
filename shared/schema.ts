@@ -88,6 +88,24 @@ export const brands = pgTable("brands", {
   prContactName: text("pr_contact_name"),
   isActive: boolean("is_active").default(true),
   ownerId: varchar("owner_id").references(() => users.id),
+
+  // ── Admin-granted inventory access ──────────────────────────────────────────
+  // The client's rule is that a brand's inventory becomes discoverable once the
+  // brand accepts and pays the $29 admin fee — WITHOUT a full subscription. The
+  // self-serve version of that (emailed accept link, store connect, hosted
+  // checkout) was built and then cut: review showed a creator could name an
+  // unclaimed brand in a free-text invite, receive the token themselves, and take
+  // ownership of a real catalogue. See stash "self-serve brand acceptance".
+  //
+  // This is the safe form of the same outcome: an admin verifies the brand and
+  // settles the $29 out of band, then grants a window here. No untrusted party
+  // can reach it.
+  //
+  // Expiry is evaluated at READ time (`> now()`), so the window self-expires.
+  // There is no scheduler in this codebase and this deliberately does not need one.
+  inventoryAccessUntil: timestamp("inventory_access_until"),
+  inventoryAccessGrantedBy: varchar("inventory_access_granted_by").references(() => users.id),
+  inventoryAccessNote: text("inventory_access_note"),
 });
 
 // Products table for brand inventory

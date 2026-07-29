@@ -288,7 +288,18 @@ export async function registerRoutes(
    */
   async function isBrandInventoryDiscoverable(brandId: string): Promise<boolean> {
     const brand = await storage.getBrand(brandId);
-    if (!brand?.ownerId) return false;
+    if (!brand) return false;
+
+    // (a) Admin-granted window. Checked FIRST and independently of ownership: the
+    // whole point is to switch on a brand that has accepted and paid the $29 but
+    // has no subscription — and possibly no owner account yet. Compared at read
+    // time, so the window self-expires with no scheduler.
+    if (brand.inventoryAccessUntil && brand.inventoryAccessUntil.getTime() > Date.now()) {
+      return true;
+    }
+
+    // (b) Active subscription. Unchanged.
+    if (!brand.ownerId) return false;
     const sub = await storage.getBrandSubscription(brand.ownerId);
     return sub?.status === "active";
   }
@@ -4703,6 +4714,60 @@ Identify which products from the catalog are most likely to appear or be feature
       res.json(allBrands);
     } catch (error) {
       res.status(500).json({ error: "Failed to load brands" });
+    }
+  });
+
+  /**
+   * Switch a brand's inventory on (or off) without a subscription.
+   *
+   * This is the admin-operated form of the client's "$29 admin fee, 30-day
+   * window, no subscription" rule. The admin verifies the brand and settles the
+   * $29 out of band, then grants the window here. The self-serve version was cut
+   * after review found a creator could take ownership of another brand's
+   * catalogue through it — see the migration header and the git stash.
+   *
+   * Body: { days?: number }  — omit or pass 0/negative to REVOKE immediately.
+   *       { note?: string }  — free text, e.g. the invoice reference.
+   */
+  app.put("/api/admin/brands/:id/inventory-access", requireAdmin, async (req, res) => {
+    try {
+      const brand = await storage.getBrand(req.params.id);
+      if (!brand) return res.status(404).json({ error: "Brand not found" });
+
+      const rawDays = req.body?.days;
+      const days = rawDays === undefined || rawDays === null ? 0 : Number(rawDays);
+      if (!Number.isFinite(days) || days > 365) {
+        return res.status(400).json({ error: "days must be a number no greater than 365" });
+      }
+
+      // days <= 0 revokes. Writing a past timestamp rather than NULL keeps the
+      // grant history readable ("was on until X") instead of erasing it.
+      const until = days > 0
+        ? new Date(Date.now() + days * 24 * 60 * 60 * 1000)
+        : new Date(Date.now() - 1000);
+
+      const note = typeof req.body?.note === "string" ? req.body.note.slice(0, 500) : null;
+      const adminId = (req.session as any)?.userId ?? null;
+
+      const updated = await storage.updateBrand(brand.id, {
+        inventoryAccessUntil: until,
+        inventoryAccessGrantedBy: adminId,
+        inventoryAccessNote: note,
+      } as any);
+
+      console.log(
+        `[Admin] Inventory access for brand ${brand.id} (${brand.name}) ` +
+        `${days > 0 ? `granted ${days}d until ${until.toISOString()}` : "REVOKED"} by ${adminId}`,
+      );
+      res.json({
+        brand: updated,
+        inventoryAccessUntil: until,
+        active: days > 0,
+        note,
+      });
+    } catch (error) {
+      console.error("[Admin] inventory-access update failed:", error);
+      res.status(500).json({ error: "Failed to update inventory access" });
     }
   });
 
