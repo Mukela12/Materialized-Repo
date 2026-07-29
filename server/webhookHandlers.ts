@@ -258,6 +258,42 @@ type InvoiceWithSubscription = Stripe.Invoice & {
   subscription: string | Stripe.Subscription | null;
 };
 
+/**
+ * Read an invoice's subscription id across Stripe API versions.
+ *
+ * Stripe moved this field in the 2025-03-31.basil release: the top-level
+ * `invoice.subscription` became `invoice.parent.subscription_details.subscription`.
+ *
+ * This matters because nothing here pins an API version — getUncachableStripeClient
+ * constructs `new Stripe(secretKey)` with no apiVersion, so requests follow the
+ * ACCOUNT default, and each webhook ENDPOINT carries its own version chosen when it
+ * was created. Those are independent. Creating a fresh endpoint (which is exactly
+ * what switching to live mode requires, since endpoints are per-mode) gets the
+ * account's current version, which may be newer than the test endpoint's.
+ *
+ * The failure mode is silence, not an error. Both callers below do
+ * `if (!subscriptionId) return;`, so a null read means renewals stop extending
+ * periods and stop minting tokens, with nothing logged and no exception — the
+ * quietest possible way for a live cutover to fail. Reading every known shape
+ * costs nothing and removes the dependency on which version an endpoint happens
+ * to carry.
+ */
+function invoiceSubscriptionId(invoice: Stripe.Invoice): string | null {
+  const legacy = (invoice as InvoiceWithSubscription).subscription;
+  if (legacy) return extractSubscriptionId(legacy);
+
+  // 2025-03-31.basil and later.
+  const parent = (invoice as any).parent?.subscription_details?.subscription;
+  if (parent) return extractSubscriptionId(parent);
+
+  // Last resort: line items carry it on both shapes.
+  const line = (invoice as any).lines?.data?.[0]?.subscription
+    ?? (invoice as any).lines?.data?.[0]?.parent?.subscription_item_details?.subscription;
+  if (line) return extractSubscriptionId(line);
+
+  return null;
+}
+
 // Stripe SDK v20 likewise dropped `invoice` from the Charge type, but it is still
 // present in webhook payloads — access via the raw object.
 type ChargeWithInvoice = Stripe.Charge & {
@@ -268,7 +304,7 @@ async function handleInvoicePaymentSucceeded(invoice: Stripe.Invoice): Promise<v
   const customerId = extractCustomerId(invoice.customer);
   if (!customerId) return;
 
-  const subscriptionId = extractSubscriptionId((invoice as InvoiceWithSubscription).subscription);
+  const subscriptionId = invoiceSubscriptionId(invoice);
   if (!subscriptionId) return;
 
   const user = await storage.getUserByStripeCustomerId(customerId);
@@ -388,7 +424,7 @@ async function handleInvoicePaymentFailed(invoice: Stripe.Invoice): Promise<void
   const user = await storage.getUserByStripeCustomerId(customerId);
   if (!user) return;
 
-  const invoiceSubscriptionId = extractSubscriptionId((invoice as InvoiceWithSubscription).subscription);
+  const subscriptionId = invoiceSubscriptionId(invoice);
 
   /**
    * Only a SUBSCRIPTION invoice may change subscription status.
@@ -402,7 +438,7 @@ async function handleInvoicePaymentFailed(invoice: Stripe.Invoice): Promise<void
    * This matters more, not less, as overage billing arrives: overage failing is
    * expected and routine, and it must not cancel someone's plan.
    */
-  if (!invoiceSubscriptionId) return;
+  if (!subscriptionId) return;
 
   const existing = await storage.getBrandSubscription(user.id);
 
@@ -410,7 +446,7 @@ async function handleInvoicePaymentFailed(invoice: Stripe.Invoice): Promise<void
     userId: user.id,
     plan: (existing?.plan ?? DEFAULT_PLAN) as PlanKey,
     status: 'past_due',
-    stripeSubscriptionId: existing?.stripeSubscriptionId ?? invoiceSubscriptionId ?? undefined,
+    stripeSubscriptionId: existing?.stripeSubscriptionId ?? subscriptionId ?? undefined,
     currentPeriodEnd: existing?.currentPeriodEnd ?? undefined,
   });
 

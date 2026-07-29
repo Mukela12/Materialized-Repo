@@ -860,3 +860,64 @@ describe('invoice.payment_failed — only subscription invoices change status', 
     );
   });
 });
+
+/**
+ * Reading an invoice's subscription id across Stripe API versions.
+ *
+ * Stripe moved this field in 2025-03-31.basil: top-level `invoice.subscription`
+ * became `invoice.parent.subscription_details.subscription`. Nothing in this
+ * codebase pins an API version, and webhook ENDPOINTS carry their own version
+ * chosen at creation — so the live endpoint (which must be created fresh, since
+ * endpoints are per-mode) can easily land on a newer version than the test one.
+ *
+ * The failure is silent: the handlers return early on a null id, so renewals
+ * would stop extending periods and stop minting tokens with nothing logged.
+ * These pin that every known shape resolves.
+ */
+describe('invoice subscription id — API-version tolerance', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    (storage.getUserByStripeCustomerId as any).mockResolvedValue({ id: 'u1' });
+    (storage.getBrandSubscription as any).mockResolvedValue({ plan: 'creator' });
+  });
+
+  async function failedInvoice(object: any) {
+    await dispatchStripeEvent({
+      type: 'invoice.payment_failed', data: { object },
+    } as any as Stripe.Event);
+  }
+
+  it('reads the legacy top-level field (pre-basil)', async () => {
+    await failedInvoice({ customer: 'cus_1', subscription: 'sub_legacy' });
+    expect(storage.upsertBrandSubscription).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'past_due' }),
+    );
+  });
+
+  it('reads parent.subscription_details.subscription (2025-03-31.basil+)', async () => {
+    await failedInvoice({
+      customer: 'cus_1',
+      subscription: null,
+      parent: { subscription_details: { subscription: 'sub_basil' } },
+    });
+    expect(storage.upsertBrandSubscription).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'past_due' }),
+    );
+  });
+
+  it('falls back to the line item', async () => {
+    await failedInvoice({
+      customer: 'cus_1',
+      subscription: null,
+      lines: { data: [{ subscription: 'sub_line' }] },
+    });
+    expect(storage.upsertBrandSubscription).toHaveBeenCalledWith(
+      expect.objectContaining({ status: 'past_due' }),
+    );
+  });
+
+  it('still returns null when there is genuinely no subscription', async () => {
+    await failedInvoice({ customer: 'cus_1', subscription: null, lines: { data: [] } });
+    expect(storage.upsertBrandSubscription).not.toHaveBeenCalled();
+  });
+});
