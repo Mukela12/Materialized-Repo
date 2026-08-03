@@ -60,7 +60,6 @@ import {
   isEmailConfigured,
 } from "./emailService";
 import { setupPdfAnalysisRoutes } from "./replit_integrations/pdf_analysis";
-import { registerDetectionRoutes } from "./replit_integrations/detection/routes";
 import { ai, batchAnalyzeFrames, consolidateDetections, type ProductInfo } from "./replit_integrations/detection/client";
 import { detectAiGeneratedContent } from "./replit_integrations/detection/aiContentDetector";
 import { sampleVideoFrames } from "./frameSampler";
@@ -80,7 +79,25 @@ export async function registerRoutes(
   setupPdfAnalysisRoutes(app);
 
   // ==================== AI DETECTION ROUTES ====================
-  registerDetectionRoutes(app, storage);
+  /**
+   * REMOVED: registerDetectionRoutes — POST /api/detection/analyze-frames and
+   * POST /api/detection/analyze-image.
+   *
+   * Both were live in production with NO authentication of any kind: no session
+   * check, no subscription gate, no rate limit beyond the global one. Each
+   * accepted an arbitrary-length array of images and turned every one into a
+   * paid Gemini vision call on the platform's account. Verified reachable on
+   * 3 Aug 2026 — an empty body returned 400 "No frames provided", i.e. the
+   * route was registered and would have proceeded to the model with real input.
+   *
+   * No client code ever called them. They were dead code that was still
+   * deployed and open, so this is a deletion rather than an auth fix — the
+   * sibling route that does the same work (POST /api/videos/:id/detections)
+   * is session-guarded and is the one the product actually uses.
+   *
+   * The underlying detection functions are untouched: server/replit_integrations/
+   * detection/client.ts is still imported by the real path.
+   */
 
   // ==================== OBJECT STORAGE ROUTES ====================
   // Object storage removed — using Cloudinary instead
