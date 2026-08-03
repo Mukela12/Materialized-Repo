@@ -283,8 +283,39 @@ export function VideoUploadModal({
       startScanAnimation();
       startPolling(video.id);
     },
-    onError: () => {
-      toast({ title: "Detection failed", description: "Could not start AI scan. Please try again.", variant: "destructive" });
+    /**
+     * This mutation does TWO things — creates the video, then starts detection —
+     * so a failure in the first was being reported as a failure in the second.
+     *
+     * A creator who has used their free video gets 403 TRIAL_EXHAUSTED from
+     * POST /api/videos and was shown "Detection failed — could not start AI
+     * scan", which is not what happened, points at the wrong subsystem, and
+     * offers "try again" for something retrying cannot fix. Observed in the
+     * wild: it sent someone hunting an AI bug for hours before a client demo.
+     */
+    onError: (err: any) => {
+      const code = err?.code ?? err?.error;
+      if (code === "TRIAL_EXHAUSTED") {
+        toast({
+          title: "You've used your free video",
+          description: "Subscribe to upload more. Your first video stays live.",
+          variant: "destructive",
+        });
+        return;
+      }
+      if (code === "TRIAL_DURATION_EXCEEDED") {
+        toast({
+          title: "Video too long for the free trial",
+          description: "Free uploads are capped at 2 minutes. Subscribe to remove the limit.",
+          variant: "destructive",
+        });
+        return;
+      }
+      toast({
+        title: "Upload failed",
+        description: err?.message ?? "Something went wrong. Please try again.",
+        variant: "destructive",
+      });
     },
   });
 
