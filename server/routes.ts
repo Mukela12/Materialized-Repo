@@ -9,7 +9,7 @@ import { encryptSecret, decryptSecret } from "./crypto";
 import { hashPassword } from "./auth";
 import { recordSaleCommissions, clawbackSaleCommissions } from "./commissions";
 import { appendUtm } from "./embedUtils";
-import { resolveFeeConfig, userRateOr, centsToAmount, formatMoney } from "./feeConfig";
+import { resolveFeeConfig, userRateOr, centsToAmount, formatMoney, getPlatformCurrency } from "./feeConfig";
 import { buildNotifications, countUnread, parseMailboxId, type MailboxSources } from "./mailbox";
 import { LICENSE_FEE, LICENSE_FEE_PER_VIDEO, tokensForFee } from "@shared/pricing";
 import { isPlaylistLocked, playlistLockedMessage } from "@shared/playlists";
@@ -5667,7 +5667,7 @@ Identify which products from the catalog are most likely to appear or be feature
     <div id="carousel"></div>
   </div>
   <script>
-    var utm="${utm.replace(/[<>"'\\]/g, "")}",videoId="${video.id}",apiBase="${apiBase}";
+    var utm="${utm.replace(/[<>"'\\]/g, "")}",videoId="${video.id}",apiBase="${apiBase}",CURRENCY_SYMBOL="${embedCurrencySymbol()}";
     var vid=document.getElementById("vid");
     var rawUrl="${(video.videoUrl || "").replace(/[<>"'\\]/g, "")}";
     // Optimize Cloudinary URL for streaming
@@ -5692,7 +5692,7 @@ Identify which products from the catalog are most likely to appear or be feature
       a.href=p.productUrl||"#";a.target="_blank";a.rel="noopener";a.className="product-card";
       if(p.imageUrl){var img=document.createElement("img");img.src=p.imageUrl;img.alt=p.name;a.appendChild(img);}
       var nameDiv=document.createElement("div");nameDiv.className="product-name";nameDiv.textContent=p.name;a.appendChild(nameDiv);
-      if(p.price){var priceDiv=document.createElement("div");priceDiv.className="product-price";priceDiv.textContent="\\u20AC"+p.price;a.appendChild(priceDiv);}
+      if(p.price){var priceDiv=document.createElement("div");priceDiv.className="product-price";priceDiv.textContent=CURRENCY_SYMBOL+p.price;a.appendChild(priceDiv);}
       a.addEventListener("click",function(){track("click")});
       carousel.appendChild(a);
     });
@@ -5737,7 +5737,7 @@ Identify which products from the catalog are most likely to appear or be feature
       res.set("Cache-Control", "public, max-age=300");
       res.set("Access-Control-Allow-Origin", "*");
       res.send(`(function(){
-  var videoId="${video.id}",utm="${utm.replace(/"/g, "")}",apiBase="${apiBase}";
+  var videoId="${video.id}",utm="${utm.replace(/"/g, "")}",apiBase="${apiBase}",CURRENCY_SYMBOL="${embedCurrencySymbol()}";
   var el=document.getElementById("vc-widget-"+videoId);
   if(!el){console.error("[Materialized] Widget container not found");return;}
   el.style.position="relative";el.style.width="100%";el.style.maxWidth="640px";
@@ -5761,7 +5761,7 @@ Identify which products from the catalog are most likely to appear or be feature
       if(p.imageUrl){var img=document.createElement("img");img.src=p.imageUrl;img.alt=p.name;img.style.cssText="width:100%;height:clamp(30px,8vw,60px);object-fit:cover;border-radius:clamp(4px,1%,6px)";a.appendChild(img);}
       var nd=document.createElement("div");nd.style.cssText="font-size:clamp(7px,2%,10px);font-weight:600;color:#333;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap";
       nd.textContent=p.name||"";a.appendChild(nd);
-      if(p.price){var pd=document.createElement("div");pd.style.cssText="font-size:9px;color:#677A67;font-weight:700";pd.textContent="\\u20AC"+p.price;a.appendChild(pd);}
+      if(p.price){var pd=document.createElement("div");pd.style.cssText="font-size:9px;color:#677A67;font-weight:700";pd.textContent=CURRENCY_SYMBOL+p.price;a.appendChild(pd);}
       a.addEventListener("click",function(){track("click")});
       c.appendChild(a);
     });
@@ -5828,6 +5828,19 @@ function classifyDevice(userAgent: string | undefined): "Mobile" | "Desktop" | "
 // Derive a 2-letter country code from CDN/proxy geo headers when the deployment
 // target provides them (Cloudflare, Vercel, generic). Returns null when unknown
 // so the column stays NULL rather than storing a placeholder.
+/**
+ * Currency symbol for prices rendered inside embed widgets.
+ *
+ * These overlays are what an end customer sees on a third-party site, and both
+ * embed scripts hardcoded the euro sign while Stripe has always billed in
+ * PLATFORM_CURRENCY (USD by default). Derived from the same setting rather than
+ * written twice, so the shopper and the charge agree.
+ */
+function embedCurrencySymbol(): string {
+  const symbols: Record<string, string> = { usd: "$", eur: "\u20AC", gbp: "\u00A3", aud: "A$", cad: "C$" };
+  return symbols[getPlatformCurrency().toLowerCase()] ?? "$";
+}
+
 function deriveCountry(req: Request): string | null {
   const header =
     req.headers["cf-ipcountry"] ||

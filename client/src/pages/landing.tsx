@@ -1,4 +1,5 @@
-import { CURRENCY_SYMBOL } from "@/lib/currency";
+import { CURRENCY_SYMBOL, PLATFORM_CURRENCY_CODE } from "@/lib/currency";
+import { planPriceMajor, setupFeeMajor, type PlanKey } from "@shared/plans";
 import { useState, useEffect, useRef } from "react";
 import { motion, useScroll, useTransform, AnimatePresence } from "framer-motion";
 import { useForm } from "react-hook-form";
@@ -22,7 +23,7 @@ import iphoneFrameTransparent from "@assets/iphone_frame_transparent.png";
 import tabletFrameTransparent from "@assets/tablet_frame_transparent.png";
 import chromeTabletFrame from "@/assets/chrome_tablet_frame_no_bg.png";
 import { COUNTRIES } from "@shared/schema";
-import { Play, ChevronDown, Users, DollarSign, TrendingUp, ShoppingBag, ArrowRight, Star, Smartphone, Monitor, Video, Volume2, VolumeX, CircleUserRound } from "lucide-react";
+import { Play, ChevronDown, Users, DollarSign, TrendingUp, ShoppingBag, ArrowRight, Star, Smartphone, Monitor, Video, Volume2, VolumeX, CircleUserRound, Check } from "lucide-react";
 import { DemoPopup } from "@/components/DemoPopup";
 import { SiInstagram, SiLinkedin } from "react-icons/si";
 // Landing page videos hosted on Cloudinary
@@ -862,6 +863,66 @@ const ROLE_ROUTES: Record<string, string> = {
   publisher: "/affiliate",
 };
 
+/**
+ * Landing-page plan copy.
+ *
+ * Prices are NOT written here — planPriceMajor() and setupFeeMajor() read
+ * shared/plans.ts, the same catalogue server/stripeService.ts mints Stripe
+ * prices from. That is deliberate: this page and the customer's card must never
+ * disagree, and the product has already shipped two contradictory price lists
+ * once.
+ *
+ * `role` is what the card click selects, so a visitor who picks a plan lands on
+ * the right signup form rather than a generic one.
+ */
+const LANDING_PLANS: {
+  id: PlanKey;
+  role: "creator" | "brand" | "publisher";
+  label: string;
+  featured?: boolean;
+  features: string[];
+}[] = [
+  {
+    id: "creator",
+    role: "creator",
+    label: "Creator",
+    featured: true,
+    features: [
+      "Upload and monetise 8 videos per month",
+      "Tag brands for unlimited credits per month",
+      "Publish shoppable videos to Substack, your website or your store",
+      "Engage your audience through interactive storytelling",
+      "Works with your existing affiliate commission partnerships",
+      "Expand your reach by getting reposted on major websites",
+      "Content discovery and reposts from the Global Video Library",
+    ],
+  },
+  {
+    id: "starter",
+    role: "brand",
+    label: "Brand",
+    features: [
+      "Make your product catalogue shoppable in creator videos",
+      "Connect Shopify or WooCommerce and sync your inventory",
+      "Campaigns with creators and publishers",
+      "Attributed sales reporting",
+      "Affiliate payouts ledger",
+    ],
+  },
+  {
+    id: "pro",
+    role: "publisher",
+    label: "Publisher",
+    features: [
+      "Repost from the Global Video Library at scale",
+      "Affiliate commission on every attributed sale",
+      "Unlimited embeds across your properties",
+      "Advanced analytics and API access",
+      "Priority support",
+    ],
+  },
+];
+
 function SignupSection() {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
@@ -951,7 +1012,6 @@ function SignupSection() {
                   hoverBg: "rgba(19,81,170,0.22)",
                   hoverBorder: "rgba(19,81,170,0.7)",
                   glowColor: "rgba(19,81,170,0.35)",
-                  icon: "🎬",
                 },
                 {
                   role: "brand" as const,
@@ -960,7 +1020,6 @@ function SignupSection() {
                   hoverBg: "rgba(49,77,59,0.28)",
                   hoverBorder: "rgba(109,191,126,0.7)",
                   glowColor: "rgba(107,143,214,0.3)",
-                  icon: "🛍️",
                 },
                 {
                   role: "publisher" as const,
@@ -969,7 +1028,6 @@ function SignupSection() {
                   hoverBg: "rgba(200,165,74,0.2)",
                   hoverBorder: "rgba(200,165,74,0.65)",
                   glowColor: "rgba(2,4,16,0.35)",
-                  icon: "📡",
                 },
               ].map((item) => (
                 <motion.button
@@ -988,7 +1046,6 @@ function SignupSection() {
                   style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.15)", minHeight: 220 }}
                   data-testid={`button-role-${item.role}`}
                 >
-                  <div className="text-3xl">{item.icon}</div>
                   <div>
                     <div className="text-2xl font-bold text-white mb-3 tracking-tight" style={{ fontFamily: "'Aileron', sans-serif" }}>
                       {item.title}
@@ -1404,7 +1461,7 @@ export default function Landing() {
       {/* Mobile-only submenu — below hero video */}
       <div className="sm:hidden bg-[#020410] px-4 py-3 flex items-center justify-between gap-2">
         <button
-          onClick={scrollToSignup}
+          onClick={() => document.getElementById("pricing")?.scrollIntoView({ behavior: "smooth" })}
           data-testid="button-mobile-pricing"
           className="flex-1 py-2 px-3 rounded-xl text-white/60 text-sm font-medium transition-colors hover:text-white"
           style={{ background: "transparent" }}
@@ -1505,6 +1562,70 @@ export default function Landing() {
           </div>
         );
       })()}
+
+      {/*
+        Pricing. Amounts come from shared/plans.ts — the same catalogue the server
+        mints Stripe prices from — so the page can never advertise a number
+        different from the one a customer is charged. The feature copy lives here
+        because it is marketing text, not a billing fact.
+      */}
+      <section id="pricing" className="py-20 px-4 bg-[#020410]">
+        <div className="max-w-6xl mx-auto">
+          <div className="text-center mb-4">
+            <h2 className="text-3xl sm:text-4xl font-bold text-white tracking-tight" style={{ fontFamily: "'Aileron', sans-serif" }}>
+              Subscription Plans
+            </h2>
+            <p className="text-white/60 mt-3 text-sm sm:text-base">
+              All plans include a one-time {CURRENCY_SYMBOL}{setupFeeMajor()} admin setup fee
+              {" · "}Overage charges apply
+            </p>
+            <p className="text-white/40 mt-2 text-xs">
+              All prices in {PLATFORM_CURRENCY_CODE}. Billed monthly, cancel any time.
+            </p>
+          </div>
+
+          <div className="grid md:grid-cols-3 gap-6 mt-12">
+            {LANDING_PLANS.map((plan) => (
+              <button
+                key={plan.id}
+                onClick={() => handleRoleSelect(plan.role)}
+                data-testid={`card-pricing-${plan.id}`}
+                className={`text-left p-8 rounded-3xl backdrop-blur-sm flex flex-col transition-all hover:scale-[1.02] ${
+                  plan.featured ? "ring-1 ring-white/40" : ""
+                }`}
+                style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.15)" }}
+              >
+                <div className="text-xl font-bold text-white tracking-tight" style={{ fontFamily: "'Aileron', sans-serif" }}>
+                  {plan.label}
+                </div>
+                <div className="mt-4 flex items-baseline gap-1">
+                  <span className="text-4xl font-bold text-white">{CURRENCY_SYMBOL}{planPriceMajor(plan.id)}</span>
+                  <span className="text-white/60 text-sm">/month</span>
+                </div>
+                <div className="text-white/45 text-xs mt-2">
+                  + {CURRENCY_SYMBOL}{setupFeeMajor()} one-time setup fee + overage
+                </div>
+
+                <div className="h-px bg-white/15 my-6" />
+
+                <ul className="space-y-3 flex-1">
+                  {plan.features.map((f) => (
+                    <li key={f} className="flex items-start gap-2.5 text-white/80 text-sm leading-relaxed">
+                      <Check className="w-4 h-4 mt-0.5 shrink-0 text-[#6b8fd6]" />
+                      <span>{f}</span>
+                    </li>
+                  ))}
+                </ul>
+
+                <div className="mt-8 text-sm font-semibold flex items-center gap-1.5 text-white">
+                  Get started
+                  <ArrowRight className="w-4 h-4" />
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      </section>
 
       <div
         className="overflow-hidden"
