@@ -217,6 +217,19 @@ app.use(
     resave: false,
     saveUninitialized: false,
     cookie: {
+      // No `domain` — the cookie stays host-only, so a session is valid on
+      // exactly the host that issued it. That is the posture we want, but it
+      // only holds together because ONE host is canonical.
+      //
+      // Both mtrlzd.com and www.mtrlzd.com used to serve the app with a 200 and
+      // no redirect between them, which made them two separate cookie jars:
+      // signing in on one left you signed out on the other, with no error and
+      // no way for the user to tell why. vercel.json now 308s the apex to www,
+      // which is also the host Stripe posts webhooks to (docs/LIVE_CUTOVER.md).
+      //
+      // Do NOT "fix" a future recurrence by setting domain: ".mtrlzd.com" —
+      // that shares the session with every present and future subdomain,
+      // including previews and staging. Keep it host-only; keep www canonical.
       secure: process.env.NODE_ENV === "production",
       httpOnly: true,
       maxAge: 7 * 24 * 60 * 60 * 1000,
