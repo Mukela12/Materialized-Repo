@@ -16,10 +16,19 @@
  *   fixing an error and re-running with --update removes it, and it can never
  *   silently come back.
  *
- * SIGNATURE
- *   file + error code + message, deliberately WITHOUT line/column. Otherwise
- *   inserting a line at the top of a file would renumber every error below it
- *   and flood the report with false "new" entries.
+ * SIGNATURE: file + error code, counted. Nothing else.
+ *   Not the line/column — inserting a line at the top of a file would renumber
+ *   every error below it and the whole file would read as new.
+ *   Not the message either, which was the first attempt and broke the build.
+ *   TypeScript embeds the INFERRED TYPE in messages like "Property 'name' does
+ *   not exist on type '{ id: string; username: string; ... }'", and it renders
+ *   those property lists in a different order on CI than locally. Identical
+ *   errors therefore produced different signatures, and every deploy failed
+ *   with four "new" errors that had been in the baseline all along.
+ *
+ *   file + code + count is deterministic across environments, and still catches
+ *   what matters: a file gaining an error code it did not have, or gaining more
+ *   of one it did.
  *
  * USAGE
  *   node script/check-types.mjs            check against the baseline
@@ -39,25 +48,25 @@ try {
   raw = `${err.stdout ?? ""}${err.stderr ?? ""}`;
 }
 
-/** "client/src/x.tsx(12,3): error TS2304: Cannot find name 'y'." -> signature */
+/** "client/src/x.tsx(12,3): error TS2304: ..." -> { "client/src/x.tsx :: TS2304": n } */
 function parse(output) {
-  const out = [];
+  const counts = {};
   for (const line of output.split("\n")) {
-    const m = line.match(/^([^(]+)\(\d+,\d+\): (error TS\d+): (.*)$/);
+    const m = line.match(/^([^(]+)\(\d+,\d+\): error (TS\d+):/);
     if (!m) continue;
-    const [, file, code, message] = m;
-    // Collapse the message so incidental type-name churn does not read as new.
-    out.push(`${file} :: ${code} :: ${message.slice(0, 120)}`);
+    const key = `${m[1]} :: ${m[2]}`;
+    counts[key] = (counts[key] ?? 0) + 1;
   }
-  return out;
+  return counts;
 }
 
 const current = parse(raw);
-const currentSet = new Set(current);
+const currentTotal = Object.values(current).reduce((a, b) => a + b, 0);
 
 if (update) {
-  writeFileSync(BASELINE, JSON.stringify([...currentSet].sort(), null, 2) + "\n");
-  console.log(`type baseline updated: ${currentSet.size} known error(s) recorded`);
+  const sorted = Object.fromEntries(Object.entries(current).sort(([a], [b]) => a.localeCompare(b)));
+  writeFileSync(BASELINE, JSON.stringify(sorted, null, 2) + "\n");
+  console.log(`type baseline updated: ${currentTotal} known error(s) across ${Object.keys(current).length} file/code pair(s)`);
   process.exit(0);
 }
 
@@ -66,24 +75,30 @@ if (!existsSync(BASELINE)) {
   process.exit(1);
 }
 
-const baseline = new Set(JSON.parse(readFileSync(BASELINE, "utf8")));
-const added = [...currentSet].filter((s) => !baseline.has(s));
-const fixed = [...baseline].filter((s) => !currentSet.has(s));
+const baseline = JSON.parse(readFileSync(BASELINE, "utf8"));
 
-if (added.length) {
-  console.error(`\n  TYPECHECK FAILED — ${added.length} new type error(s)\n`);
-  for (const s of added) {
-    const [file, code, message] = s.split(" :: ");
-    console.error(`   ${file}\n     ${code}: ${message}\n`);
+const regressions = [];
+for (const [key, n] of Object.entries(current)) {
+  const allowed = baseline[key] ?? 0;
+  if (n > allowed) regressions.push({ key, n, allowed });
+}
+
+if (regressions.length) {
+  console.error(`\n  TYPECHECK FAILED — ${regressions.length} regression(s)\n`);
+  for (const { key, n, allowed } of regressions) {
+    const [file, code] = key.split(" :: ");
+    console.error(`   ${file}`);
+    console.error(`     ${code}: ${n} error(s), baseline allows ${allowed}\n`);
   }
-  console.error("  These are NEW since the recorded baseline. Fix them, or if the");
+  console.error("  Run `npx tsc --noEmit` to see them in full. Fix them, or if the");
   console.error("  change is deliberate, re-record with:");
   console.error("     node script/check-types.mjs --update\n");
   process.exit(1);
 }
 
-let msg = `typecheck passed (${currentSet.size} known, 0 new)`;
-if (fixed.length) {
-  msg += ` — ${fixed.length} baseline error(s) now fixed; run --update to lock that in`;
+const baselineTotal = Object.values(baseline).reduce((a, b) => a + b, 0);
+let msg = `typecheck passed (${currentTotal} known, 0 new)`;
+if (currentTotal < baselineTotal) {
+  msg += ` — ${baselineTotal - currentTotal} baseline error(s) now fixed; run --update to lock that in`;
 }
 console.log(msg);
