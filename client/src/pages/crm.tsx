@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useSearch } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -75,9 +76,36 @@ const referralFormSchema = z.object({
 
 type ReferralFormValues = z.infer<typeof referralFormSchema>;
 
+/**
+ * `?refer=1` opens the Refer a Brand form on arrival.
+ *
+ * "Tag a Brand" on My Brand Partners used to drop you on this page with the form
+ * still shut, so referring a brand cost two clicks and a hunt for the button —
+ * the client flagged exactly this. The intent now travels in the URL instead of
+ * being lost in the navigation.
+ *
+ * Driven off wouter's search string rather than read once on mount, so it also
+ * fires for a visitor already sitting on this page — otherwise the component
+ * never remounts and the link would appear to do nothing.
+ *
+ * The param is stripped as soon as it is consumed, so refreshing or coming back
+ * via the back button does not pop the dialog open again on a page the user only
+ * wanted to read.
+ */
+const REFER_PARAM = "refer";
+
 export default function CRMAnalytics() {
   const { toast } = useToast();
+  const search = useSearch();
   const [isReferralOpen, setIsReferralOpen] = useState(false);
+
+  useEffect(() => {
+    if (new URLSearchParams(search).get(REFER_PARAM) !== "1") return;
+    setIsReferralOpen(true);
+    const url = new URL(window.location.href);
+    url.searchParams.delete(REFER_PARAM);
+    window.history.replaceState({}, "", url.pathname + url.search + url.hash);
+  }, [search]);
 
   const { data: brands = [], isLoading } = useQuery<Brand[]>({
     queryKey: ["/api/brands"],

@@ -19,6 +19,9 @@ import { Link } from "wouter";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
+import {
+  Accordion, AccordionContent, AccordionItem, AccordionTrigger,
+} from "@/components/ui/accordion";
 import { StatCard } from "@/components/StatCard";
 import { NOT_CASH_STATEMENT } from "@/components/TokenPayOption";
 import {
@@ -35,6 +38,47 @@ import { useCurrentUser } from "@/hooks/useCurrentUser";
 
 /** $249 — the Brand tier whose first paid invoice mints a token. */
 const QUALIFYING_PLAN_PRICE = planPriceMajor("starter");
+
+/**
+ * Token terms, per the client's request for a T&C accordion on this page.
+ *
+ * Every line here is a statement about behaviour this codebase actually has, not
+ * boilerplate. Sources, so a future edit can re-check rather than guess:
+ *   - $49/token, the three sinks, never-cashable  → server/wallet.ts module doc
+ *   - append-only, balance = SUM(delta_tokens)    → shared/schema.ts tokenLedger
+ *   - value captured per row (`rowUsdCents`)      → the page doc above
+ *   - no expiry: token_ledger has NO expiry column and no scheduler exists, so
+ *     nothing can expire a token. If an expiry policy is ever introduced, this
+ *     line has to change in the same commit as the mechanism.
+ *
+ * Do not add a term here that the code does not enforce.
+ */
+const TOKEN_TERMS = [
+  {
+    q: "What is a token worth?",
+    a: `One token is ${usdWhole(TOKEN_USD)} of prepaid credit against Materialized's own fees. Each entry in your history is valued at the token price on the day it was written, which is why an older row can show a different amount than a newer one.`,
+  },
+  {
+    q: "Can I withdraw tokens as cash?",
+    a: "No. Tokens are account credit and can only be spent inside Materialized. They cannot be withdrawn, transferred to another account, or paid out to a bank. Commissions you earn from brands are separate, are paid in cash, and are unaffected by your token balance.",
+  },
+  {
+    q: "How do I earn tokens?",
+    a: `A token is minted when a brand you referred — or were the first creator to tag — pays for a qualifying subscription of ${usdWhole(QUALIFYING_PLAN_PRICE)}/month or above. Materialized may also grant tokens directly to correct an attribution.`,
+  },
+  {
+    q: "What can I spend tokens on?",
+    a: "Three things: listing a video in the Global Video Library, publishing a curated playlist (one token per video in it), or reducing your own subscription invoice. Credit applied to your subscription is used against your next invoice from Materialized.",
+  },
+  {
+    q: "Do tokens expire?",
+    a: "No. A token stays in your wallet until you spend it.",
+  },
+  {
+    q: "Can my history be changed?",
+    a: "No. The ledger is append-only: entries are never edited or deleted. If something needs correcting, the correction is added as its own line, so the full history stays visible.",
+  },
+];
 
 const SPEND_TARGETS = [
   {
@@ -216,7 +260,8 @@ export default function WalletPage() {
               real payment. Attribution can be corrected by Materialized if a brand disputes it.
             </p>
             <Separator />
-            <Link href="/creator/referrals">
+            {/* Straight to the open form, not to the list — see the note in crm.tsx. */}
+            <Link href="/creator/crm?refer=1">
               <span className="inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline cursor-pointer" data-testid="link-brand-referrals">
                 Refer a brand
                 <ChevronRight className="h-3.5 w-3.5" />
@@ -287,7 +332,7 @@ export default function WalletPage() {
                 {usdWhole(QUALIFYING_PLAN_PRICE)}/month subscription, {usdWhole(TOKEN_USD)} of credit
                 lands here.
               </p>
-              <Link href="/creator/referrals">
+              <Link href="/creator/crm?refer=1">
                 <span className="inline-flex items-center gap-1 mt-4 text-sm font-medium text-primary hover:underline cursor-pointer" data-testid="link-refer-brand-empty">
                   Refer a brand
                   <ChevronRight className="h-3.5 w-3.5" />
@@ -299,6 +344,33 @@ export default function WalletPage() {
               {entries.map((entry) => <LedgerRow key={entry.id} entry={entry} />)}
             </div>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Terms & conditions */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Terms &amp; conditions</CardTitle>
+          <CardDescription>
+            How tokens work, in full. {NOT_CASH_STATEMENT}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Accordion type="single" collapsible className="w-full" data-testid="wallet-terms">
+            {TOKEN_TERMS.map(({ q, a }, i) => (
+              <AccordionItem key={q} value={`term-${i}`}>
+                <AccordionTrigger className="text-sm text-left" data-testid={`wallet-term-trigger-${i}`}>
+                  {q}
+                </AccordionTrigger>
+                <AccordionContent
+                  className="text-sm text-muted-foreground leading-relaxed"
+                  data-testid={`wallet-term-content-${i}`}
+                >
+                  {a}
+                </AccordionContent>
+              </AccordionItem>
+            ))}
+          </Accordion>
         </CardContent>
       </Card>
     </div>

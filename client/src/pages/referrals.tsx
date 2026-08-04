@@ -45,7 +45,12 @@ export default function Referrals() {
             tokens and in-app credits when they subscribe.
           </p>
         </div>
-        <Button className="rounded-full gap-2" onClick={() => navigate("/creator/crm")}>
+        {/* ?refer=1 lands with the form already open — see the note in crm.tsx. */}
+        <Button
+          className="rounded-full gap-2"
+          onClick={() => navigate("/creator/crm?refer=1")}
+          data-testid="button-tag-brand"
+        >
           <Plus className="h-4 w-4" />
           Tag a Brand
         </Button>

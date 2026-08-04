@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, Play, CheckSquare, Square, ListVideo, X, ShoppingBag } from "lucide-react";
+import { Search, Play, CheckSquare, Square, ListVideo, X, ShoppingBag, Repeat2 } from "lucide-react";
 import { AddToPlaylistModal } from "@/components/AddToPlaylistModal";
 import { WishlistHeart } from "@/components/WishlistHeart";
 
@@ -109,7 +109,7 @@ export default function Library() {
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="newest">Newest first</SelectItem>
-            <SelectItem value="most_licensed">Most licensed</SelectItem>
+            <SelectItem value="most_licensed">Most reposted</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -192,8 +192,23 @@ export default function Library() {
                     <CardTitle className="text-sm line-clamp-1">{title}</CardTitle>
                     <CardDescription>by {listing.creator?.displayName ?? "Unknown Creator"}</CardDescription>
                   </CardHeader>
-                  <CardFooter className="pt-0 text-xs text-muted-foreground">
-                    {listing.totalLicenses} licenses · {CURRENCY_SYMBOL}{listing.licenseFee}
+                  <CardFooter className="pt-0 text-xs text-muted-foreground gap-2">
+                    {/*
+                      "Reposts", not "licenses" — same number, the word the client
+                      and the rest of the app use. totalLicenses increments once
+                      per paid license (server/routes.ts, the license-purchase
+                      handler), which is exactly one publisher reposting it.
+                    */}
+                    <span
+                      className="inline-flex items-center gap-1"
+                      title={`Reposted ${listing.totalLicenses} time${listing.totalLicenses === 1 ? "" : "s"}`}
+                      data-testid={`listing-reposts-${listing.id}`}
+                    >
+                      <Repeat2 className="h-3.5 w-3.5 shrink-0" />
+                      {listing.totalLicenses}
+                    </span>
+                    <span aria-hidden>·</span>
+                    <span>{CURRENCY_SYMBOL}{listing.licenseFee}</span>
                   </CardFooter>
                 </Card>
                 <WishlistHeart listingId={listing.id} wishlisted={wishlistedIds.has(listing.id)} />
