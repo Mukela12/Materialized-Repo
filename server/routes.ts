@@ -9,6 +9,19 @@ import { encryptSecret, decryptSecret } from "./crypto";
 import { hashPassword } from "./auth";
 import { recordSaleCommissions, clawbackSaleCommissions } from "./commissions";
 import { recordFeeAccrual, voidFeeAccrual } from "./feeAccruals";
+import { generateFeeInvoice, type FeeInvoiceStripe } from "./feeInvoicing";
+
+/**
+ * Adapts stripeService to the narrow surface feeInvoicing needs, so the
+ * invoicing logic stays testable against a fake instead of the Stripe SDK.
+ */
+const feeInvoiceStripeAdapter: FeeInvoiceStripe = {
+  createInvoice: (a) => stripeService.createFeeInvoice(a) as any,
+  createInvoiceItem: (a) => stripeService.createFeeInvoiceItem(a),
+  finalizeInvoice: (id) => stripeService.finalizeFeeInvoice(id) as any,
+  findInvoiceByFeeInvoiceId: (customerId, feeInvoiceId) =>
+    stripeService.findFeeInvoiceByFeeInvoiceId(customerId, feeInvoiceId) as any,
+};
 import { appendUtm } from "./embedUtils";
 import { resolveFeeConfig, userRateOr, centsToAmount, formatMoney, getPlatformCurrency } from "./feeConfig";
 import { buildNotifications, countUnread, parseMailboxId, type MailboxSources } from "./mailbox";
@@ -4872,6 +4885,116 @@ Identify which products from the catalog are most likely to appear or be feature
     } catch (error) {
       console.error("Fee accrual summary error:", error);
       res.status(500).json({ error: "Failed to load fee accruals" });
+    }
+  });
+
+  /**
+   * Admin: raise a marketplace-fee invoice for one brand and period.
+   *
+   * Creates a DRAFT by default — nothing is billed until it is finalised, which
+   * is a separate call, so the first invoices a brand receives get a human look
+   * first. Pass `finalize: true` to issue it immediately.
+   *
+   * Safe to retry. The accruals are claimed before Stripe is called, so a second
+   * concurrent request finds nothing to bill, and a run interrupted mid-flight
+   * resumes onto the SAME Stripe invoice rather than creating a second one.
+   */
+  app.post("/api/admin/fee-invoices", requireAdmin, async (req, res) => {
+    try {
+      const { brandUserId, from, to, finalize, currency, daysUntilDue } = req.body ?? {};
+      if (typeof brandUserId !== "string" || !brandUserId) {
+        return res.status(400).json({ error: "brandUserId is required" });
+      }
+      const periodStart = new Date(from);
+      const periodEnd = new Date(to);
+      if (Number.isNaN(periodStart.getTime()) || Number.isNaN(periodEnd.getTime())) {
+        return res.status(400).json({ error: "from and to must be valid dates" });
+      }
+      if (periodEnd <= periodStart) {
+        return res.status(400).json({ error: "to must be after from" });
+      }
+
+      const result = await generateFeeInvoice(storage, feeInvoiceStripeAdapter, {
+        brandUserId,
+        currency: typeof currency === "string" && currency ? currency : getPlatformCurrency(),
+        periodStart,
+        periodEnd,
+        finalize: finalize === true,
+        daysUntilDue: Number(daysUntilDue) || 14,
+      });
+
+      // A failed Stripe call is reported as 502, not 200 — the claim has been
+      // released and the accruals are billable again, but the caller must not
+      // read this as "invoiced".
+      if (result.status === "failed") return res.status(502).json(result);
+      res.json(result);
+    } catch (error) {
+      console.error("Fee invoice generation error:", error);
+      res.status(500).json({ error: "Failed to generate fee invoice" });
+    }
+  });
+
+  /** Admin: finalise a draft fee invoice, which is what actually sends it. */
+  app.post("/api/admin/fee-invoices/:id/finalize", requireAdmin, async (req, res) => {
+    try {
+      const invoice = await storage.getFeeInvoice(req.params.id);
+      if (!invoice) return res.status(404).json({ error: "Fee invoice not found" });
+      if (!invoice.stripeInvoiceId) {
+        return res.status(409).json({ error: "This invoice has no Stripe invoice yet" });
+      }
+      if (invoice.finalized) return res.json({ ok: true, alreadyFinalized: true });
+
+      const final = await stripeService.finalizeFeeInvoice(invoice.stripeInvoiceId);
+      if (!final.total) {
+        // The zero-total trap: a finalised invoice with no lines is auto-marked
+        // paid, so this would otherwise report success while nobody is billed.
+        return res.status(500).json({
+          error: `Invoice ${final.id} finalised with a zero total — the line item did not attach.`,
+        });
+      }
+      await storage.markInvoiceFinalized(invoice.id, final.hosted_invoice_url ?? null);
+      res.json({ ok: true, stripeInvoiceId: final.id, total: final.total, hostedInvoiceUrl: final.hosted_invoice_url });
+    } catch (error) {
+      console.error("Fee invoice finalize error:", error);
+      res.status(500).json({ error: "Failed to finalize invoice" });
+    }
+  });
+
+  /**
+   * Admin: cancel a fee invoice and release its accruals.
+   *
+   * Needed because a draft voided in the Stripe dashboard would otherwise leave
+   * its accruals permanently marked invoiced — a receivable stuck behind an
+   * invoice that no longer exists.
+   */
+  app.post("/api/admin/fee-invoices/:id/release", requireAdmin, async (req, res) => {
+    try {
+      const invoice = await storage.getFeeInvoice(req.params.id);
+      if (!invoice) return res.status(404).json({ error: "Fee invoice not found" });
+      if (invoice.finalized) {
+        return res.status(409).json({
+          error: "This invoice has been finalised and sent. Void it in Stripe and credit the brand there.",
+        });
+      }
+      const reason = typeof req.body?.reason === "string" ? req.body.reason : "released by admin";
+      await storage.releaseInvoiceClaim(invoice.id, reason, "void");
+      res.json({ ok: true, released: invoice.lineCount });
+    } catch (error) {
+      console.error("Fee invoice release error:", error);
+      res.status(500).json({ error: "Failed to release invoice" });
+    }
+  });
+
+  /** Admin: fee invoices raised, newest first. */
+  app.get("/api/admin/fee-invoices", requireAdmin, async (req, res) => {
+    try {
+      const rows = await storage.listFeeInvoices(
+        typeof req.query.brandUserId === "string" ? req.query.brandUserId : undefined,
+      );
+      res.json(rows);
+    } catch (error) {
+      console.error("Fee invoice list error:", error);
+      res.status(500).json({ error: "Failed to load fee invoices" });
     }
   });
 

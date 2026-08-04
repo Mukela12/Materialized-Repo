@@ -371,6 +371,80 @@ export class StripeService {
     const stripe = await getUncachableStripeClient();
     return await stripe.accounts.createLoginLink(accountId);
   }
+
+  // ── Marketplace fee invoices ────────────────────────────────────────────────
+  //
+  // Billing a brand for the 15% we are owed on sales they made on their own
+  // storefront. This is NOT an application fee and cannot be — Materialized is
+  // not in that payment path. See server/feeAccruals.ts.
+  //
+  // Collection method is `send_invoice`, not `charge_automatically`: the brand
+  // receives a hosted invoice with a due date rather than having their card
+  // silently charged for an amount they have not seen before.
+
+  async createFeeInvoice(args: {
+    customerId: string;
+    currency: string;
+    description: string;
+    metadata: Record<string, string>;
+    idempotencyKey: string;
+    daysUntilDue: number;
+  }) {
+    const stripe = await getUncachableStripeClient();
+    // auto_advance false — created as a DRAFT. Finalising is a separate call, so
+    // the first fee invoices a brand ever gets can be looked at before sending.
+    return await stripe.invoices.create({
+      customer: args.customerId,
+      currency: args.currency,
+      collection_method: 'send_invoice',
+      days_until_due: args.daysUntilDue,
+      auto_advance: false,
+      description: args.description,
+      metadata: args.metadata,
+    }, { idempotencyKey: args.idempotencyKey });
+  }
+
+  async createFeeInvoiceItem(args: {
+    customerId: string;
+    invoiceId: string;
+    amountCents: number;
+    currency: string;
+    description: string;
+    idempotencyKey: string;
+  }) {
+    const stripe = await getUncachableStripeClient();
+    // NAMES THE INVOICE. Creating the item first and letting the invoice sweep
+    // it up does not work — invoices.create defaults to
+    // pending_invoice_items_behavior 'exclude', which once produced a finalised
+    // $0 invoice marked paid while the real amount floated as a pending item.
+    // See the note on createSurplusInvoice above.
+    await stripe.invoiceItems.create({
+      customer: args.customerId,
+      invoice: args.invoiceId,
+      amount: args.amountCents,
+      currency: args.currency,
+      description: args.description,
+    }, { idempotencyKey: args.idempotencyKey });
+  }
+
+  async finalizeFeeInvoice(invoiceId: string) {
+    const stripe = await getUncachableStripeClient();
+    return await stripe.invoices.finalizeInvoice(invoiceId);
+  }
+
+  /**
+   * Find an invoice already raised for this fee-invoice id.
+   *
+   * Stripe only retains idempotency keys for 24 hours; past that, replaying the
+   * same key creates a SECOND invoice. A run resumed a day later therefore looks
+   * the invoice up by the id stamped into its metadata instead.
+   */
+  async findFeeInvoiceByFeeInvoiceId(customerId: string, feeInvoiceId: string) {
+    const stripe = await getUncachableStripeClient();
+    const list = await stripe.invoices.list({ customer: customerId, limit: 100 });
+    const match = list.data.find((inv) => inv.metadata?.feeInvoiceId === feeInvoiceId);
+    return match ?? null;
+  }
 }
 
 export const stripeService = new StripeService();

@@ -1239,13 +1239,67 @@ export const platformFeeAccruals = pgTable("platform_fee_accruals", {
   voidedAt: timestamp("voided_at"),
   occurredAt: timestamp("occurred_at").notNull().default(sql`CURRENT_TIMESTAMP`),
   createdAt: timestamp("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  /**
+   * The invoice run that claimed this row. Null while unbilled, and set back to
+   * null if a failed run releases it. Declared after the fee_invoices table in
+   * SQL (migration 0014) but referenced by name here to avoid a circular
+   * reference between the two pgTable definitions.
+   */
+  feeInvoiceId: varchar("fee_invoice_id"),
 });
 
 export const insertPlatformFeeAccrualSchema = createInsertSchema(platformFeeAccruals).omit({
   id: true, status: true, stripeInvoiceId: true, invoicedAt: true, voidedAt: true, createdAt: true,
+  // Set only by an invoice run, never by the webhook that creates the accrual.
+  feeInvoiceId: true,
 });
 export type InsertPlatformFeeAccrual = z.infer<typeof insertPlatformFeeAccrualSchema>;
 export type PlatformFeeAccrual = typeof platformFeeAccruals.$inferSelect;
+
+// ─── Fee invoices ────────────────────────────────────────────────────────────
+//
+// An invoice raised against the accruals above.
+//
+// Invoicing writes to two systems — the accruals here and an invoice at Stripe —
+// and a crash between them leaves the two disagreeing. The rows are therefore
+// CLAIMED first, into a row of this table, inside one transaction under an
+// advisory lock on the brand. That ordering is chosen deliberately: claiming
+// first can only ever under-bill (visible, recoverable), whereas calling Stripe
+// first can bill a customer TWICE. See migrations/0014 and server/feeInvoicing.ts.
+//
+// This row is also the resume point. Its id is the Stripe idempotency key, so a
+// retry of a half-finished run returns the same invoice instead of a second one.
+export const feeInvoiceStatusEnum = pgEnum("fee_invoice_status", [
+  /** Accruals claimed, Stripe not yet confirmed. Resumable. */
+  "pending",
+  /** The Stripe invoice exists. */
+  "created",
+  /** Gave up. The claimed accruals have been released back to 'accrued'. */
+  "failed",
+  /** Cancelled. Accruals released so they can be billed on a later run. */
+  "void",
+]);
+
+export const feeInvoices = pgTable("fee_invoices", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  brandUserId: varchar("brand_user_id").notNull().references(() => users.id),
+  currency: text("currency").notNull(),
+  periodStart: timestamp("period_start").notNull(),
+  periodEnd: timestamp("period_end").notNull(),
+  /** Captured at claim time, so a failed run still shows what it tried to bill. */
+  subtotalCents: integer("subtotal_cents").notNull(),
+  lineCount: integer("line_count").notNull(),
+  status: feeInvoiceStatusEnum("status").notNull().default("pending"),
+  stripeInvoiceId: text("stripe_invoice_id"),
+  hostedInvoiceUrl: text("hosted_invoice_url"),
+  /** A draft bills nobody. Finalising is a separate, explicit step. */
+  finalized: boolean("finalized").notNull().default(false),
+  error: text("error"),
+  createdAt: timestamp("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: timestamp("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+});
+
+export type FeeInvoice = typeof feeInvoices.$inferSelect;
 
 // ─────────────────────────────────────────────────────────────────────────────
 

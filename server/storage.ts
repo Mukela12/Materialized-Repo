@@ -3,6 +3,7 @@ import { eq, desc, asc, sql, and, inArray, isNull, gte, lt } from "drizzle-orm";
 import { db } from "./db";
 import { LICENSE_FEE_DECIMAL } from "@shared/pricing";
 import type { AccrualRow } from "./feeAccruals";
+import type { InvoiceClaim, FeeInvoiceRecord } from "./feeInvoicing";
 
 /** One brand's outstanding marketplace fee over a period. */
 export interface FeeAccrualSummaryRow {
@@ -78,7 +79,9 @@ import {
   embedDeployments,
   commissionTransactions,
   platformFeeAccruals,
+  feeInvoices,
   type PlatformFeeAccrual,
+  type FeeInvoice,
   brandOutreachRequests,
   publisherNotifications,
   brandSubscriptions,
@@ -220,6 +223,16 @@ export interface IStorage {
     Promise<FeeAccrualSummaryRow[]>;
   listFeeAccruals(opts?: { brandUserId?: string; status?: string; limit?: number }):
     Promise<PlatformFeeAccrual[]>;
+
+  // Fee invoicing — see server/feeInvoicing.ts for why the claim comes first.
+  claimAccrualsForInvoice(args: { brandUserId: string; currency: string; periodStart: Date; periodEnd: Date }):
+    Promise<InvoiceClaim | null>;
+  releaseInvoiceClaim(feeInvoiceId: string, reason: string, status: "failed" | "void"): Promise<void>;
+  markInvoiceCreated(feeInvoiceId: string, stripeInvoiceId: string, hostedInvoiceUrl: string | null): Promise<void>;
+  markInvoiceFinalized(feeInvoiceId: string, hostedInvoiceUrl: string | null): Promise<void>;
+  getFeeInvoice(feeInvoiceId: string): Promise<FeeInvoiceRecord | null>;
+  listFeeInvoices(brandUserId?: string): Promise<FeeInvoice[]>;
+  getBrandStripeCustomerId(brandUserId: string): Promise<string | null>;
   getCommissionsByExternalOrder(externalOrderId: string, storeConnectionId?: string | null): Promise<CommissionTransaction[]>;
   
   // Campaigns
@@ -1999,6 +2012,83 @@ export class MemStorage implements IStorage {
       .slice(0, Math.min(opts.limit ?? 200, 1000)) as PlatformFeeAccrual[];
   }
 
+  // ── Fee invoicing ──────────────────────────────────────────────────────────
+  //
+  // Same caveat as the wallet above: Node is single-threaded, so the atomicity
+  // this shows proves nothing about Postgres. The real guarantee is the
+  // pg_advisory_xact_lock in DatabaseStorage, verified against a real database.
+  private feeInvoicesMap = new Map<string, any>();
+
+  async claimAccrualsForInvoice(args: {
+    brandUserId: string; currency: string; periodStart: Date; periodEnd: Date;
+  }): Promise<InvoiceClaim | null> {
+    const rows = Array.from(this.feeAccrualsMap.values()).filter(r =>
+      r.brandUserId === args.brandUserId &&
+      r.currency === args.currency.toLowerCase() &&
+      r.status === "accrued" &&
+      r.marketplaceFeeCents > 0 &&
+      r.occurredAt >= args.periodStart && r.occurredAt < args.periodEnd);
+
+    if (rows.length === 0) return null;
+
+    const subtotalCents = rows.reduce((s, r) => s + r.marketplaceFeeCents, 0);
+    const id = randomUUID();
+    this.feeInvoicesMap.set(id, {
+      id, brandUserId: args.brandUserId, currency: args.currency.toLowerCase(),
+      periodStart: args.periodStart, periodEnd: args.periodEnd,
+      subtotalCents, lineCount: rows.length, status: "pending",
+      stripeInvoiceId: null, hostedInvoiceUrl: null, finalized: false,
+      createdAt: new Date(), updatedAt: new Date(),
+    });
+    for (const r of rows) { r.status = "invoiced"; r.invoicedAt = new Date(); r.feeInvoiceId = id; }
+
+    return {
+      invoice: {
+        id, brandUserId: args.brandUserId, currency: args.currency.toLowerCase(),
+        subtotalCents, lineCount: rows.length, status: "pending",
+        stripeInvoiceId: null, hostedInvoiceUrl: null, finalized: false,
+      },
+      accruals: rows.map(r => ({
+        id: r.id, marketplaceFeeCents: r.marketplaceFeeCents, currency: r.currency,
+        externalOrderId: r.externalOrderId, saleCents: r.saleCents,
+      })),
+    };
+  }
+
+  async releaseInvoiceClaim(feeInvoiceId: string, reason: string, status: "failed" | "void"): Promise<void> {
+    for (const r of Array.from(this.feeAccrualsMap.values())) {
+      if (r.feeInvoiceId === feeInvoiceId) { r.status = "accrued"; r.invoicedAt = null; r.feeInvoiceId = null; }
+    }
+    const inv = this.feeInvoicesMap.get(feeInvoiceId);
+    if (inv) { inv.status = status; inv.error = reason.slice(0, 500); inv.updatedAt = new Date(); }
+  }
+
+  async markInvoiceCreated(feeInvoiceId: string, stripeInvoiceId: string, hostedInvoiceUrl: string | null): Promise<void> {
+    const inv = this.feeInvoicesMap.get(feeInvoiceId);
+    if (inv) { inv.status = "created"; inv.stripeInvoiceId = stripeInvoiceId; inv.hostedInvoiceUrl = hostedInvoiceUrl; inv.updatedAt = new Date(); }
+    for (const r of Array.from(this.feeAccrualsMap.values())) {
+      if (r.feeInvoiceId === feeInvoiceId) r.stripeInvoiceId = stripeInvoiceId;
+    }
+  }
+
+  async markInvoiceFinalized(feeInvoiceId: string, hostedInvoiceUrl: string | null): Promise<void> {
+    const inv = this.feeInvoicesMap.get(feeInvoiceId);
+    if (inv) { inv.finalized = true; inv.hostedInvoiceUrl = hostedInvoiceUrl; inv.updatedAt = new Date(); }
+  }
+
+  async getFeeInvoice(feeInvoiceId: string): Promise<FeeInvoiceRecord | null> {
+    return this.feeInvoicesMap.get(feeInvoiceId) ?? null;
+  }
+
+  async listFeeInvoices(brandUserId?: string): Promise<FeeInvoice[]> {
+    return Array.from(this.feeInvoicesMap.values())
+      .filter(i => !brandUserId || i.brandUserId === brandUserId) as FeeInvoice[];
+  }
+
+  async getBrandStripeCustomerId(brandUserId: string): Promise<string | null> {
+    return this.users.get(brandUserId)?.stripeCustomerId ?? null;
+  }
+
   async markCommissionsPaid(commissionIds: string[], payoutId: string): Promise<void> {
     for (const id of commissionIds) {
       const tx = this.commissionTransactionsMap.get(id);
@@ -3292,6 +3382,133 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(platformFeeAccruals.occurredAt))
       .limit(Math.min(opts.limit ?? 200, 1000));
     return conds.length ? q.where(and(...conds)) : q;
+  }
+
+  // ── Fee invoicing ──────────────────────────────────────────────────────────
+
+  /**
+   * Claim a brand's unbilled accruals into a new invoice, atomically.
+   *
+   * ONE TRANSACTION, UNDER AN ADVISORY LOCK. If the select and the claim are not
+   * atomic, two admins pressing the button at the same moment both see the same
+   * unbilled rows and the brand is invoiced twice. The lock is keyed on the
+   * brand, matching the wallet's pattern — a hash collision between two brands
+   * only over-serialises, it can never under-serialise.
+   */
+  async claimAccrualsForInvoice(args: {
+    brandUserId: string; currency: string; periodStart: Date; periodEnd: Date;
+  }): Promise<InvoiceClaim | null> {
+    return db.transaction(async (trx) => {
+      await trx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${args.brandUserId}, 0))`);
+
+      const rows = await trx.select({
+        id: platformFeeAccruals.id,
+        marketplaceFeeCents: platformFeeAccruals.marketplaceFeeCents,
+        currency: platformFeeAccruals.currency,
+        externalOrderId: platformFeeAccruals.externalOrderId,
+        saleCents: platformFeeAccruals.saleCents,
+      }).from(platformFeeAccruals).where(and(
+        eq(platformFeeAccruals.brandUserId, args.brandUserId),
+        eq(platformFeeAccruals.currency, args.currency.toLowerCase()),
+        // 'accrued' only: never re-bill something already invoiced, and never
+        // bill a voided (refunded) row.
+        sql`${platformFeeAccruals.status} = 'accrued'`,
+        // Zero-fee rows are the unattributed orders. They are recorded for
+        // visibility and must never appear on a bill.
+        sql`${platformFeeAccruals.marketplaceFeeCents} > 0`,
+        gte(platformFeeAccruals.occurredAt, args.periodStart),
+        lt(platformFeeAccruals.occurredAt, args.periodEnd),
+      ));
+
+      if (rows.length === 0) return null;
+
+      const subtotalCents = rows.reduce((s, r) => s + r.marketplaceFeeCents, 0);
+
+      const [invoice] = await trx.insert(feeInvoices).values({
+        brandUserId: args.brandUserId,
+        currency: args.currency.toLowerCase(),
+        periodStart: args.periodStart,
+        periodEnd: args.periodEnd,
+        subtotalCents,
+        lineCount: rows.length,
+        status: "pending",
+      }).returning();
+
+      await trx.update(platformFeeAccruals)
+        .set({ status: "invoiced", invoicedAt: new Date(), feeInvoiceId: invoice.id })
+        .where(inArray(platformFeeAccruals.id, rows.map((r) => r.id)));
+
+      return {
+        invoice: {
+          id: invoice.id,
+          brandUserId: invoice.brandUserId,
+          currency: invoice.currency,
+          subtotalCents: invoice.subtotalCents,
+          lineCount: invoice.lineCount,
+          status: "pending" as const,
+          stripeInvoiceId: null,
+          hostedInvoiceUrl: null,
+          finalized: false,
+        },
+        accruals: rows,
+      };
+    });
+  }
+
+  /**
+   * Undo a claim: the accruals go back to 'accrued' so a later run bills them.
+   * Without this an aborted run strands a receivable permanently.
+   */
+  async releaseInvoiceClaim(feeInvoiceId: string, reason: string, status: "failed" | "void"): Promise<void> {
+    await db.transaction(async (trx) => {
+      await trx.update(platformFeeAccruals)
+        .set({ status: "accrued", invoicedAt: null, feeInvoiceId: null })
+        .where(eq(platformFeeAccruals.feeInvoiceId, feeInvoiceId));
+      await trx.update(feeInvoices)
+        .set({ status, error: reason.slice(0, 500), updatedAt: new Date() })
+        .where(eq(feeInvoices.id, feeInvoiceId));
+    });
+  }
+
+  async markInvoiceCreated(feeInvoiceId: string, stripeInvoiceId: string, hostedInvoiceUrl: string | null): Promise<void> {
+    await db.transaction(async (trx) => {
+      await trx.update(feeInvoices)
+        .set({ status: "created", stripeInvoiceId, hostedInvoiceUrl, updatedAt: new Date() })
+        .where(eq(feeInvoices.id, feeInvoiceId));
+      // Denormalised onto the accrual rows so reconciling a single order back to
+      // its invoice does not need a join.
+      await trx.update(platformFeeAccruals)
+        .set({ stripeInvoiceId })
+        .where(eq(platformFeeAccruals.feeInvoiceId, feeInvoiceId));
+    });
+  }
+
+  async markInvoiceFinalized(feeInvoiceId: string, hostedInvoiceUrl: string | null): Promise<void> {
+    await db.update(feeInvoices)
+      .set({ finalized: true, hostedInvoiceUrl, updatedAt: new Date() })
+      .where(eq(feeInvoices.id, feeInvoiceId));
+  }
+
+  async getFeeInvoice(feeInvoiceId: string): Promise<FeeInvoiceRecord | null> {
+    const [row] = await db.select().from(feeInvoices).where(eq(feeInvoices.id, feeInvoiceId)).limit(1);
+    return row ? {
+      id: row.id, brandUserId: row.brandUserId, currency: row.currency,
+      subtotalCents: row.subtotalCents, lineCount: row.lineCount,
+      status: row.status as FeeInvoiceRecord["status"],
+      stripeInvoiceId: row.stripeInvoiceId, hostedInvoiceUrl: row.hostedInvoiceUrl,
+      finalized: row.finalized,
+    } : null;
+  }
+
+  async listFeeInvoices(brandUserId?: string): Promise<FeeInvoice[]> {
+    const q = db.select().from(feeInvoices).orderBy(desc(feeInvoices.createdAt)).limit(200);
+    return brandUserId ? q.where(eq(feeInvoices.brandUserId, brandUserId)) : q;
+  }
+
+  async getBrandStripeCustomerId(brandUserId: string): Promise<string | null> {
+    const [row] = await db.select({ id: users.stripeCustomerId }).from(users)
+      .where(eq(users.id, brandUserId)).limit(1);
+    return row?.id ?? null;
   }
 
   async hasCommissionForExternalOrder(externalOrderId: string, storeConnectionId?: string | null): Promise<boolean> {
