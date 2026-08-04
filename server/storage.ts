@@ -2,6 +2,20 @@ import { randomUUID } from "crypto";
 import { eq, desc, asc, sql, and, inArray, isNull, gte, lt } from "drizzle-orm";
 import { db } from "./db";
 import { LICENSE_FEE_DECIMAL } from "@shared/pricing";
+import type { AccrualRow } from "./feeAccruals";
+
+/** One brand's outstanding marketplace fee over a period. */
+export interface FeeAccrualSummaryRow {
+  brandUserId: string;
+  brandName: string | null;
+  brandEmail: string | null;
+  currency: string;
+  orders: number;
+  attributedOrders: number;
+  grossSalesCents: number;
+  marketplaceFeeCents: number;
+  platformCents: number;
+}
 import {
   type User, type InsertUser,
   type Brand, type InsertBrand,
@@ -63,6 +77,8 @@ import {
   creatorRewards,
   embedDeployments,
   commissionTransactions,
+  platformFeeAccruals,
+  type PlatformFeeAccrual,
   brandOutreachRequests,
   publisherNotifications,
   brandSubscriptions,
@@ -195,6 +211,15 @@ export interface IStorage {
   markCommissionsPaid(commissionIds: string[], payoutId: string): Promise<void>;
   markCommissionsReversed(commissionIds: string[]): Promise<void>;
   hasCommissionForExternalOrder(externalOrderId: string, storeConnectionId?: string | null): Promise<boolean>;
+
+  // Platform fee accruals — what brands owe MTRLZD. See server/feeAccruals.ts.
+  createPlatformFeeAccrual(row: AccrualRow): Promise<{ id: string }>;
+  voidPlatformFeeAccrual(storeConnectionId: string, externalOrderId: string):
+    Promise<{ voided: boolean; alreadyVoided: boolean; wasInvoiced: boolean }>;
+  getFeeAccrualSummary(opts?: { brandUserId?: string; from?: Date; to?: Date }):
+    Promise<FeeAccrualSummaryRow[]>;
+  listFeeAccruals(opts?: { brandUserId?: string; status?: string; limit?: number }):
+    Promise<PlatformFeeAccrual[]>;
   getCommissionsByExternalOrder(externalOrderId: string, storeConnectionId?: string | null): Promise<CommissionTransaction[]>;
   
   // Campaigns
@@ -1914,6 +1939,66 @@ export class MemStorage implements IStorage {
       (storeConnectionId == null || t.storeConnectionId === storeConnectionId));
   }
 
+  // ── Platform fee accruals ──────────────────────────────────────────────────
+  // In-memory mirror of the DatabaseStorage behaviour, including the unique
+  // (store_connection_id, external_order_id) guard — which is thrown as a 23505
+  // so recordFeeAccrual's dedup path behaves identically here.
+  private feeAccrualsMap = new Map<string, any>();
+
+  async createPlatformFeeAccrual(row: AccrualRow): Promise<{ id: string }> {
+    const key = `${row.storeConnectionId}::${row.externalOrderId}`;
+    if (this.feeAccrualsMap.has(key)) {
+      const err: any = new Error("duplicate key value violates unique constraint");
+      err.code = "23505";
+      throw err;
+    }
+    const id = randomUUID();
+    this.feeAccrualsMap.set(key, { id, ...row, status: "accrued", voidedAt: null, createdAt: new Date() });
+    return { id };
+  }
+
+  async voidPlatformFeeAccrual(storeConnectionId: string, externalOrderId: string) {
+    const key = `${storeConnectionId}::${externalOrderId}`;
+    const row = this.feeAccrualsMap.get(key);
+    if (!row) return { voided: false, alreadyVoided: false, wasInvoiced: false };
+    if (row.status === "void") return { voided: false, alreadyVoided: true, wasInvoiced: false };
+    const wasInvoiced = row.status === "invoiced" || row.status === "paid";
+    row.status = "void";
+    row.voidedAt = new Date();
+    return { voided: true, alreadyVoided: false, wasInvoiced };
+  }
+
+  async getFeeAccrualSummary(opts: { brandUserId?: string; from?: Date; to?: Date } = {}): Promise<FeeAccrualSummaryRow[]> {
+    const byKey = new Map<string, FeeAccrualSummaryRow>();
+    // Array.from rather than iterating the Map directly — this file's tsconfig
+    // target predates downlevel iteration, same as the other Map reads here.
+    for (const r of Array.from(this.feeAccrualsMap.values())) {
+      if (r.status === "void") continue;
+      if (opts.brandUserId && r.brandUserId !== opts.brandUserId) continue;
+      if (opts.from && r.occurredAt < opts.from) continue;
+      if (opts.to && r.occurredAt >= opts.to) continue;
+      const key = `${r.brandUserId}::${r.currency}`;
+      const acc = byKey.get(key) ?? {
+        brandUserId: r.brandUserId, brandName: null, brandEmail: null, currency: r.currency,
+        orders: 0, attributedOrders: 0, grossSalesCents: 0, marketplaceFeeCents: 0, platformCents: 0,
+      };
+      acc.orders += 1;
+      if (r.attributionState === "attributed") acc.attributedOrders += 1;
+      acc.grossSalesCents += r.saleCents;
+      acc.marketplaceFeeCents += r.marketplaceFeeCents;
+      acc.platformCents += r.platformCents;
+      byKey.set(key, acc);
+    }
+    return Array.from(byKey.values());
+  }
+
+  async listFeeAccruals(opts: { brandUserId?: string; status?: string; limit?: number } = {}): Promise<PlatformFeeAccrual[]> {
+    return Array.from(this.feeAccrualsMap.values())
+      .filter(r => (!opts.brandUserId || r.brandUserId === opts.brandUserId) &&
+                   (!opts.status || r.status === opts.status))
+      .slice(0, Math.min(opts.limit ?? 200, 1000)) as PlatformFeeAccrual[];
+  }
+
   async markCommissionsPaid(commissionIds: string[], payoutId: string): Promise<void> {
     for (const id of commissionIds) {
       const tx = this.commissionTransactionsMap.get(id);
@@ -3122,6 +3207,91 @@ export class DatabaseStorage implements IStorage {
   async getCommissionsByStatus(status: string): Promise<CommissionTransaction[]> {
     return db.select().from(commissionTransactions)
       .where(eq(commissionTransactions.status, status as "pending" | "approved" | "paid" | "rejected" | "reversed"));
+  }
+
+  // ── Platform fee accruals ──────────────────────────────────────────────────
+
+  async createPlatformFeeAccrual(row: AccrualRow): Promise<{ id: string }> {
+    // Lets a duplicate raise 23505 rather than swallowing it here: recordFeeAccrual
+    // treats that as the idempotent no-op, and hiding it would make a real
+    // constraint problem look like a successful write.
+    const [created] = await db.insert(platformFeeAccruals).values({
+      storeConnectionId: row.storeConnectionId,
+      brandUserId: row.brandUserId,
+      externalOrderId: row.externalOrderId,
+      videoId: row.videoId,
+      currency: row.currency,
+      saleCents: row.saleCents,
+      marketplaceFeeCents: row.marketplaceFeeCents,
+      creatorCents: row.creatorCents,
+      publisherCents: row.publisherCents,
+      platformCents: row.platformCents,
+      marketplaceFeePct: row.marketplaceFeePct,
+      attributionState: row.attributionState,
+      occurredAt: row.occurredAt,
+    }).returning({ id: platformFeeAccruals.id });
+    return { id: created.id };
+  }
+
+  async voidPlatformFeeAccrual(storeConnectionId: string, externalOrderId: string) {
+    const [existing] = await db.select().from(platformFeeAccruals).where(and(
+      eq(platformFeeAccruals.storeConnectionId, storeConnectionId),
+      eq(platformFeeAccruals.externalOrderId, externalOrderId),
+    )).limit(1);
+
+    if (!existing) return { voided: false, alreadyVoided: false, wasInvoiced: false };
+    if (existing.status === "void") return { voided: false, alreadyVoided: true, wasInvoiced: false };
+
+    // An already-invoiced fee still gets voided — but the caller is told, because
+    // that brand has been billed for a sale that was refunded and is owed a credit.
+    const wasInvoiced = existing.status === "invoiced" || existing.status === "paid";
+
+    await db.update(platformFeeAccruals)
+      .set({ status: "void", voidedAt: new Date() })
+      .where(eq(platformFeeAccruals.id, existing.id));
+
+    return { voided: true, alreadyVoided: false, wasInvoiced };
+  }
+
+  async getFeeAccrualSummary(opts: { brandUserId?: string; from?: Date; to?: Date } = {}): Promise<FeeAccrualSummaryRow[]> {
+    const conds = [
+      // Voided rows are refunds — never invoice them.
+      sql`${platformFeeAccruals.status} <> 'void'`,
+    ];
+    if (opts.brandUserId) conds.push(eq(platformFeeAccruals.brandUserId, opts.brandUserId));
+    if (opts.from) conds.push(gte(platformFeeAccruals.occurredAt, opts.from));
+    if (opts.to) conds.push(lt(platformFeeAccruals.occurredAt, opts.to));
+
+    const rows = await db
+      .select({
+        brandUserId: platformFeeAccruals.brandUserId,
+        brandName: users.displayName,
+        brandEmail: users.email,
+        currency: platformFeeAccruals.currency,
+        orders: sql<number>`count(*)::int`,
+        attributedOrders: sql<number>`count(*) filter (where ${platformFeeAccruals.attributionState} = 'attributed')::int`,
+        grossSalesCents: sql<number>`coalesce(sum(${platformFeeAccruals.saleCents}), 0)::int`,
+        marketplaceFeeCents: sql<number>`coalesce(sum(${platformFeeAccruals.marketplaceFeeCents}), 0)::int`,
+        platformCents: sql<number>`coalesce(sum(${platformFeeAccruals.platformCents}), 0)::int`,
+      })
+      .from(platformFeeAccruals)
+      .leftJoin(users, eq(users.id, platformFeeAccruals.brandUserId))
+      // Grouped by currency as well as brand: summing cents across currencies
+      // would produce a meaningless number.
+      .groupBy(platformFeeAccruals.brandUserId, users.displayName, users.email, platformFeeAccruals.currency)
+      .where(and(...conds));
+
+    return rows as FeeAccrualSummaryRow[];
+  }
+
+  async listFeeAccruals(opts: { brandUserId?: string; status?: string; limit?: number } = {}): Promise<PlatformFeeAccrual[]> {
+    const conds = [];
+    if (opts.brandUserId) conds.push(eq(platformFeeAccruals.brandUserId, opts.brandUserId));
+    if (opts.status) conds.push(sql`${platformFeeAccruals.status} = ${opts.status}`);
+    const q = db.select().from(platformFeeAccruals)
+      .orderBy(desc(platformFeeAccruals.occurredAt))
+      .limit(Math.min(opts.limit ?? 200, 1000));
+    return conds.length ? q.where(and(...conds)) : q;
   }
 
   async hasCommissionForExternalOrder(externalOrderId: string, storeConnectionId?: string | null): Promise<boolean> {

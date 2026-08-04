@@ -1174,6 +1174,79 @@ export const insertStoreConnectionSchema = createInsertSchema(storeConnections).
 export type InsertStoreConnection = z.infer<typeof insertStoreConnectionSchema>;
 export type StoreConnection = typeof storeConnections.$inferSelect;
 
+// ─── Platform fee accruals ───────────────────────────────────────────────────
+//
+// WHAT THE PLATFORM IS OWED. The mirror image of commission_transactions, which
+// records money going OUT to creators and publishers; this records money coming
+// IN from brands.
+//
+// It exists because the 15% marketplace fee was computed on every verified store
+// order and then discarded — returned from computeSaleSplit(), echoed in the
+// webhook response, and never written anywhere. There was no row in any table to
+// invoice a brand from.
+//
+// THIS IS AN ACCOUNTS-RECEIVABLE LEDGER, NOT A PAYMENT PATH. A Stripe
+// application fee only exists on a charge the PLATFORM creates. Brand sales
+// happen on the brand's own store and own Stripe account, with Materialized
+// nowhere in the payment path, so there is nothing for Stripe to skim. Recording
+// what is owed and invoicing it is the honest mechanism. Do not add code here
+// that implies the money collects itself.
+//
+// Every verified order gets a row, including ones that could not be attributed —
+// see the migration header (0013) for why that matters.
+export const feeAccrualStatusEnum = pgEnum("fee_accrual_status", [
+  "accrued", "invoiced", "paid", "void",
+]);
+
+export const feeAttributionStateEnum = pgEnum("fee_attribution_state", [
+  // A Materialized link drove the sale and resolved cleanly. Only these carry a fee.
+  "attributed",
+  // No Materialized ref on the order — not our sale, recorded for completeness.
+  "no_ref",
+  // A ref WAS present but did not resolve. Revenue that should have been earned;
+  // these are the rows to investigate.
+  "ref_unresolved",
+  // Ref resolved but its video is gone. Same category of leak.
+  "video_missing",
+]);
+
+export const platformFeeAccruals = pgTable("platform_fee_accruals", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  storeConnectionId: varchar("store_connection_id").notNull().references(() => storeConnections.id),
+  // Denormalised from the connection so an invoice survives the connection being
+  // deleted or re-pointed at another store.
+  brandUserId: varchar("brand_user_id").notNull().references(() => users.id),
+  externalOrderId: text("external_order_id").notNull(),
+  videoId: varchar("video_id").references(() => videos.id),
+  currency: text("currency").notNull(),
+  saleCents: integer("sale_cents").notNull(),
+  marketplaceFeeCents: integer("marketplace_fee_cents").notNull().default(0),
+  creatorCents: integer("creator_cents").notNull().default(0),
+  publisherCents: integer("publisher_cents").notNull().default(0),
+  /** The invoiceable margin: fee less the commissions paid out of it. */
+  platformCents: integer("platform_cents").notNull().default(0),
+  /**
+   * The rate captured at the time of the sale, never looked up at invoice time.
+   * Changing the platform default must not rewrite what a brand already owes —
+   * same principle as commission_transactions.commission_rate.
+   */
+  marketplaceFeePct: decimal("marketplace_fee_pct", { precision: 5, scale: 2 }).notNull().default("0"),
+  attributionState: feeAttributionStateEnum("attribution_state").notNull(),
+  status: feeAccrualStatusEnum("status").notNull().default("accrued"),
+  stripeInvoiceId: text("stripe_invoice_id"),
+  invoicedAt: timestamp("invoiced_at"),
+  /** Set on refund. Voided rows are never invoiced; already-invoiced ones need crediting. */
+  voidedAt: timestamp("voided_at"),
+  occurredAt: timestamp("occurred_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  createdAt: timestamp("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+});
+
+export const insertPlatformFeeAccrualSchema = createInsertSchema(platformFeeAccruals).omit({
+  id: true, status: true, stripeInvoiceId: true, invoicedAt: true, voidedAt: true, createdAt: true,
+});
+export type InsertPlatformFeeAccrual = z.infer<typeof insertPlatformFeeAccrualSchema>;
+export type PlatformFeeAccrual = typeof platformFeeAccruals.$inferSelect;
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Country list for dropdown

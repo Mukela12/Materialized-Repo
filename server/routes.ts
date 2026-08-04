@@ -8,6 +8,7 @@ import { randomBytes } from "crypto";
 import { encryptSecret, decryptSecret } from "./crypto";
 import { hashPassword } from "./auth";
 import { recordSaleCommissions, clawbackSaleCommissions } from "./commissions";
+import { recordFeeAccrual, voidFeeAccrual } from "./feeAccruals";
 import { appendUtm } from "./embedUtils";
 import { resolveFeeConfig, userRateOr, centsToAmount, formatMoney, getPlatformCurrency } from "./feeConfig";
 import { buildNotifications, countUnread, parseMailboxId, type MailboxSources } from "./mailbox";
@@ -1896,12 +1897,33 @@ export async function registerRoutes(
         return res.json({ ok: true, deduped: true });
       }
 
+      /**
+       * Record the accrual and ack, for an order that earns the platform nothing.
+       *
+       * These used to `return res.json({ ok: true, unattributed: true })` and
+       * write nothing at all, which erased the difference between "not our sale"
+       * and "our link drove this sale but the trail broke". The second is lost
+       * revenue and is now findable. See server/feeAccruals.ts.
+       */
+      const ackUnattributed = async (state: "no_ref" | "ref_unresolved" | "video_missing") => {
+        await recordFeeAccrual(storage, {
+          storeConnectionId: connection.id,
+          brandUserId: connection.userId,
+          externalOrderId: attribution.externalOrderId!,
+          videoId: null,
+          currency: getPlatformCurrency(),
+          saleAmount: attribution.amount,
+          attributionState: state,
+        });
+        return res.json({ ok: true, unattributed: true, reason: state });
+      };
+
       // Resolve the attribution ref to an affiliate/video; unattributed orders are acked, not paid.
-      if (!attribution.ref) return res.json({ ok: true, unattributed: true });
+      if (!attribution.ref) return await ackUnattributed("no_ref");
       const resolved = await storage.resolveUtmToAffiliate(attribution.ref);
-      if (!resolved) return res.json({ ok: true, unattributed: true });
+      if (!resolved) return await ackUnattributed("ref_unresolved");
       const video = await storage.getVideo(resolved.videoId);
-      if (!video) return res.json({ ok: true, unattributed: true });
+      if (!video) return await ackUnattributed("video_missing");
 
       const cfg = resolveFeeConfig(await storage.getPlatformSettings());
       const creatorUser = video.creatorId ? await storage.getUser(video.creatorId) : null;
@@ -1921,7 +1943,25 @@ export async function registerRoutes(
         publisherPct: userRateOr(publisherUser?.commissionRateOverride, cfg.publisherPct),
       });
 
-      res.json({ ok: true, split: result.split });
+      /**
+       * Persist what the brand owes. The split was previously computed, echoed
+       * in this response, and discarded — there was no row anywhere to invoice
+       * from. This is an accounts-receivable entry, NOT a payment: Materialized
+       * is not in the payment path for a sale on the brand's own store, so
+       * nothing here collects money. See server/feeAccruals.ts.
+       */
+      const accrual = await recordFeeAccrual(storage, {
+        storeConnectionId: connection.id,
+        brandUserId: connection.userId,
+        externalOrderId: attribution.externalOrderId,
+        videoId: resolved.videoId,
+        currency: getPlatformCurrency(),
+        saleAmount: attribution.amount,
+        attributionState: "attributed",
+        split: result.split,
+      });
+
+      res.json({ ok: true, split: result.split, feeAccrued: accrual.feeCents });
     } catch (error) {
       console.error(`${platform} webhook error:`, error);
       res.status(500).json({ error: "Webhook processing failed" });
@@ -1971,7 +2011,25 @@ export async function registerRoutes(
       if (!attribution.externalOrderId) return res.status(400).json({ error: "Missing order id" });
 
       const result = await clawbackSaleCommissions(storage, attribution.externalOrderId, connection.id);
-      res.json({ ok: true, reversed: result.reversed, alreadyReversed: result.alreadyReversed });
+
+      // Void the fee accrual too, or the brand gets invoiced for a refunded sale.
+      // `wasInvoiced` means the bill already went out and a credit is owed — said
+      // out loud rather than left to be discovered on a statement.
+      const voided = await voidFeeAccrual(storage, connection.id, attribution.externalOrderId);
+      if (voided.wasInvoiced) {
+        console.warn(
+          `[FeeAccrual] Order ${attribution.externalOrderId} (store ${connection.id}) was refunded ` +
+          `AFTER its marketplace fee was invoiced. Brand ${connection.userId} is owed a credit.`,
+        );
+      }
+
+      res.json({
+        ok: true,
+        reversed: result.reversed,
+        alreadyReversed: result.alreadyReversed,
+        feeVoided: voided.voided,
+        creditOwed: voided.wasInvoiced,
+      });
     } catch (error) {
       console.error(`${platform} refund webhook error:`, error);
       res.status(500).json({ error: "Refund webhook processing failed" });
@@ -4771,6 +4829,64 @@ Identify which products from the catalog are most likely to appear or be feature
     } catch (error) {
       console.error("Admin commissions error:", error);
       res.status(500).json({ error: "Failed to load commissions" });
+    }
+  });
+
+  /**
+   * Admin: what each brand owes in marketplace fees, ready to invoice.
+   *
+   * The fee is recorded per verified store order (server/feeAccruals.ts) rather
+   * than collected automatically, because Materialized is not in the payment
+   * path for a sale on a brand's own storefront — there is no Stripe
+   * application fee to take. This endpoint is what turns that record into a
+   * bill: pick a period, read the total per brand, raise the invoice.
+   *
+   * `?from=`/`?to=` are ISO dates. Voided (refunded) rows are already excluded.
+   * Results are grouped per currency as well as per brand — summing cents
+   * across currencies would be meaningless.
+   */
+  app.get("/api/admin/fee-accruals/summary", requireAdmin, async (req, res) => {
+    try {
+      const parseDate = (v: unknown): Date | undefined => {
+        if (typeof v !== "string" || !v) return undefined;
+        const d = new Date(v);
+        return Number.isNaN(d.getTime()) ? undefined : d;
+      };
+
+      const rows = await storage.getFeeAccrualSummary({
+        brandUserId: typeof req.query.brandUserId === "string" ? req.query.brandUserId : undefined,
+        from: parseDate(req.query.from),
+        to: parseDate(req.query.to),
+      });
+
+      res.json({
+        rows,
+        totals: rows.reduce((acc, r) => ({
+          orders: acc.orders + r.orders,
+          attributedOrders: acc.attributedOrders + r.attributedOrders,
+          grossSalesCents: acc.grossSalesCents + r.grossSalesCents,
+          marketplaceFeeCents: acc.marketplaceFeeCents + r.marketplaceFeeCents,
+          platformCents: acc.platformCents + r.platformCents,
+        }), { orders: 0, attributedOrders: 0, grossSalesCents: 0, marketplaceFeeCents: 0, platformCents: 0 }),
+      });
+    } catch (error) {
+      console.error("Fee accrual summary error:", error);
+      res.status(500).json({ error: "Failed to load fee accruals" });
+    }
+  });
+
+  /** Admin: the individual accrual rows, for reconciling a summary line. */
+  app.get("/api/admin/fee-accruals", requireAdmin, async (req, res) => {
+    try {
+      const rows = await storage.listFeeAccruals({
+        brandUserId: typeof req.query.brandUserId === "string" ? req.query.brandUserId : undefined,
+        status: typeof req.query.status === "string" ? req.query.status : undefined,
+        limit: Number(req.query.limit) || 200,
+      });
+      res.json(rows);
+    } catch (error) {
+      console.error("Fee accrual list error:", error);
+      res.status(500).json({ error: "Failed to load fee accruals" });
     }
   });
 
