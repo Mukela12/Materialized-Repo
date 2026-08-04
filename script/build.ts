@@ -33,6 +33,12 @@ async function buildAll() {
   // See script/check-integrity.mjs for the incident this prevents.
   execFileSync("node", ["script/check-integrity.mjs"], { stdio: "inherit" });
 
+  // Typecheck gate. vite/esbuild transpile without checking types, which is how
+  // a landing-page button that threw ReferenceError on every click reached
+  // production while tsc had been reporting it as TS2304 all along. Fails only
+  // on NEW errors against script/type-baseline.json — see check-types.mjs.
+  execFileSync("node", ["script/check-types.mjs"], { stdio: "inherit" });
+
   await rm("dist", { recursive: true, force: true });
 
   console.log("building client...");

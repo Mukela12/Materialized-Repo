@@ -30,6 +30,10 @@ import { execFileSync } from "child_process";
  */
 execFileSync("node", ["script/check-integrity.mjs"], { stdio: "inherit" });
 
+// Typecheck gate — see script/check-types.mjs. Fails only on NEW errors, so the
+// repo's existing baseline does not block deploys.
+execFileSync("node", ["script/check-types.mjs"], { stdio: "inherit" });
+
 build()
   .then(() => {
     // Artifacts are written; don't wait on leaked esbuild service daemons.

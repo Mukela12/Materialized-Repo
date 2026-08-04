@@ -1,0 +1,21 @@
+[
+  "client/src/App.tsx :: error TS18048 :: 'user' is possibly 'undefined'.",
+  "client/src/pages/brand-creators.tsx :: error TS2322 :: Type '\"link\"' is not assignable to type '\"default\" | \"destructive\" | \"outline\" | \"secondary\" | \"ghost\" | null | undefine",
+  "client/src/pages/brand-creators.tsx :: error TS2322 :: Type '(data: { invitations: ParsedCSVRow[]; }) => Promise<Response>' is not assignable to type 'MutationFunction<{ creat",
+  "client/src/pages/my-videos.tsx :: error TS2322 :: Type '(data: { brandName: string; prContactName: string; prContactEmail: string; productCategory?: string; message?: str",
+  "client/src/pages/my-videos.tsx :: error TS2322 :: Type '(data: { title: string; description?: string; videoUrl: string; selectedBrands: string[]; }) => Promise<{ id: stri",
+  "server/replit_integrations/batch/utils.ts :: error TS2339 :: Property 'AbortError' does not exist on type '<T>(input: (attemptNumber: number) => T | PromiseLike<T>, options?: Option",
+  "server/routes.ts :: error TS1252 :: Function declarations are not allowed inside blocks in strict mode when targeting 'ES5'. Modules are automatically in st",
+  "server/routes.ts :: error TS2339 :: Property 'name' does not exist on type '{ id: string; username: string; password: string; email: string; displayName: st",
+  "server/storage.ts :: error TS2322 :: Type '{ createdAt: Date; role: \"brand\" | \"creator\" | \"publisher\"; email: string; country: string; firstName: string; sur",
+  "server/storage.ts :: error TS2322 :: Type '{ id: number; productId: string | null; productUrl: string | null; imageUrl: string | null; price: string | null; ",
+  "server/storage.ts :: error TS2339 :: Property 'name' does not exist on type 'PgTableWithColumns<{ name: \"users\"; schema: undefined; columns: { id: PgColumn<{",
+  "server/storage.ts :: error TS2739 :: Type '{ id: `${string}-${string}-${string}-${string}-${string}`; brandId: string; name: string; description: string | nu",
+  "server/storage.ts :: error TS2739 :: Type '{ id: `${string}-${string}-${string}-${string}-${string}`; creatorId: string; title: string; description: string |",
+  "server/storage.ts :: error TS2739 :: Type '{ id: `${string}-${string}-${string}-${string}-${string}`; name: string; category: string; website: string; logoUr",
+  "server/storage.ts :: error TS2739 :: Type '{ id: `${string}-${string}-${string}-${string}-${string}`; name: string; logoUrl: string | null; website: string |",
+  "server/storage.ts :: error TS2739 :: Type '{ id: `${string}-${string}-${string}-${string}-${string}`; videoId: string; affiliateId: string; commissionRate: s",
+  "server/storage.ts :: error TS2740 :: Type '{ id: `${string}-${string}-${string}-${string}-${string}`; username: string; password: string; email: string; disp",
+  "server/storage.ts :: error TS2741 :: Property 'manualProducts' is missing in type '{ id: `${string}-${string}-${string}-${string}-${string}`; videoId: string",
+  "server/storage.ts :: error TS2802 :: Type 'MapIterator<{ commissionRate: string; id: string; createdAt: Date | null; embedCode: string | null; utmCode: strin"
+]
