@@ -109,8 +109,13 @@
   --font-mono: Menlo, monospace;
   --font-heading: 'Aileron', sans-serif;
   --font-accent: 'Lekton', monospace;
-  --cta: 141 22% 25%;
-  --cta-hover: 142 21% 18%;
+  /* CTA = the accent blue, matching --primary and the landing page (#1351aa).
+     Was 141 22% 25%, i.e. the green #314d3b. Every default Button uses bg-cta,
+     so that single token made every primary action in the app green — which is
+     why replacing hardcoded greens file-by-file did not shift the buttons the
+     client was actually looking at. Green is now reserved for success states. */
+  --cta: 215 80% 37%;
+  --cta-hover: 215 80% 30%;
   --cta-foreground: 0 0% 100%;
   --radius: .5rem;
   --shadow-2xs: 0px 2px 0px 0px hsl(240 4% 10% / 0.00);
@@ -194,8 +199,9 @@
   --chart-3: 215 80% 35%;
   --chart-4: 210 7% 45%;
   --chart-5: 210 7% 55%;
-  --cta: 141 22% 25%;
-  --cta-hover: 142 21% 18%;
+  /* Dark theme CTA — matches --primary at 215 80% 45%. See the light block. */
+  --cta: 215 80% 45%;
+  --cta-hover: 215 80% 38%;
   --cta-foreground: 0 0% 100%;
   --shadow-2xs: 0px 2px 0px 0px hsl(240 4% 95% / 0.00);
   --shadow-xs: 0px 2px 0px 0px hsl(240 4% 95% / 0.00);
