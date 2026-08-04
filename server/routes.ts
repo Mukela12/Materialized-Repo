@@ -593,7 +593,40 @@ export async function registerRoutes(
       if (!actor?.isAdmin && existing.creatorId !== sessionUserId) {
         return res.status(403).json({ error: "Forbidden" });
       }
-      const video = await storage.updateVideo(req.params.id, req.body);
+      /**
+       * Explicit allowlist. This previously passed req.body straight into
+       * storage.updateVideo, which does db.update(videos).set(data) with no
+       * whitelist and no parse — so once past the ownership check above, a
+       * creator could write ANY column on their own video row:
+       *
+       *   creatorId      — hand the video to another account
+       *   totalViews / totalClicks / totalRevenue — fabricate their own stats
+       *   isTrial        — escape trial accounting
+       *   utmCode        — retarget attribution
+       *
+       * Only the fields the UI actually sends are accepted: VideoDetailSheet
+       * sends title/description/categories/thumbnailUrl, and VideoUploadModal
+       * sends status/carouselSettings. Unknown keys are dropped by zod rather
+       * than reaching the database.
+       *
+       * `status` is constrained to the two values a creator may legitimately
+       * choose; "processing" is server-set and deliberately not offered.
+       */
+      const videoPatchSchema = z.object({
+        title: z.string().min(1).max(300).optional(),
+        description: z.string().max(5000).optional(),
+        categories: z.string().max(2000).optional(),
+        thumbnailUrl: z.string().max(2000).optional(),
+        status: z.enum(["draft", "published"]).optional(),
+        carouselSettings: z.string().max(20000).optional(),
+      });
+
+      const patch = videoPatchSchema.parse(req.body ?? {});
+      if (Object.keys(patch).length === 0) {
+        return res.status(400).json({ error: "No updatable fields supplied" });
+      }
+
+      const video = await storage.updateVideo(req.params.id, patch);
       if (!video) {
         return res.status(404).json({ error: "Video not found" });
       }

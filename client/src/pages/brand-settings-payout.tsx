@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,6 +27,29 @@ export default function BrandSettingsPayout() {
     bic: "",
     paypalEmail: "",
   });
+
+  /**
+   * Load the saved payout method into the form.
+   *
+   * Without this the page always rendered blank fields with "Bank Transfer"
+   * preselected — while the card above it reported an active payout method.
+   * A brand that had saved PayPal details came back, saw the wrong type and
+   * empty inputs, and pressing Save wrote those blanks over their real record
+   * (PUT /api/brand/payout-method upserts).
+   *
+   * This is the page that decides where money is sent, so a silent overwrite
+   * here is the most expensive version of this bug in the app.
+   */
+  useEffect(() => {
+    if (!method) return;
+    setSelectedType((method.type as MethodType) ?? "bank_transfer");
+    setForm({
+      bankName: method.bankName ?? "",
+      iban: method.iban ?? "",
+      bic: method.bic ?? "",
+      paypalEmail: method.paypalEmail ?? "",
+    });
+  }, [method]);
 
   const mutation = useMutation({
     mutationFn: (data: object) => apiRequest("PUT", "/api/brand/payout-method", data),

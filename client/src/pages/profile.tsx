@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -58,7 +58,20 @@ export default function ProfilePage() {
 
   const { reset } = form;
 
-  useState(() => {
+  /**
+   * Hydrate the form once the profile query resolves.
+   *
+   * This was useState(() => ...), whose initializer runs ONCE on the first
+   * render — at which point `profile` is still undefined because the query has
+   * not returned. So the form never populated, and every visit showed empty
+   * fields regardless of what was saved.
+   *
+   * That was not merely cosmetic: handleSubmit posts every field, PUT /api/profile
+   * spreads the whole object into db.update, and so saving a location wrote a
+   * blank bio over the real one. Typing a bio, saving, navigating away and back
+   * lost it. useEffect keyed on `profile` is what was intended.
+   */
+  useEffect(() => {
     if (profile) {
       reset({
         bio: profile.bio || "",
@@ -73,7 +86,7 @@ export default function ProfilePage() {
         setMediaType((profile.profileMediaType as "image" | "video") || "image");
       }
     }
-  });
+  }, [profile, reset]);
 
   const updateProfileMutation = useMutation({
     mutationFn: async (data: ProfileFormData) => {
