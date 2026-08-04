@@ -108,7 +108,55 @@ const clientIp = (req: Request) => {
 };
 const rlValidate = { trustProxy: false, xForwardedForHeader: false } as const;
 
-// Tight limit on auth to blunt credential-stuffing / brute force.
+/**
+ * Credential-stuffing / brute-force protection.
+ *
+ * WHY THIS IS KEYED ON THE ACCOUNT, NOT THE IP
+ *   Measured against production on 4 Aug 2026: requests arriving through
+ *   www.mtrlzd.com do NOT carry a stable client IP. Vercel rewrites /api/* to
+ *   Railway as a fresh outbound request and does not forward the caller's
+ *   address (the same reason x-vercel-ip-country never arrives, and the reason
+ *   viewer hashing had to move — see server/viewerIdentity.ts). Five identical
+ *   logins through Vercel returned remaining 49, 49, 48, 48, 49; the same five
+ *   sent straight to Railway returned 49, 48, 47, 46, 45.
+ *
+ *   So an IP-keyed limiter is close to useless on the path real users take: an
+ *   attacker's attempts scatter across Vercel's egress addresses. Keying on the
+ *   targeted EMAIL instead protects the thing actually under attack, and holds
+ *   regardless of how many addresses the attacker has.
+ *
+ *   The IP limiter is kept as well. It is not redundant — it still bites on
+ *   direct-to-Railway traffic, which is exactly the path someone bypassing the
+ *   front end would use.
+ *
+ * WHY SUCCESSFUL REQUESTS ARE NOT COUNTED
+ *   Brute force is a burst of FAILURES. Legitimate load — a demo room, a launch,
+ *   a busy morning — is a burst of successes. Counting only failures means a
+ *   hundred people signing in normally consume nothing, while a hundred wrong
+ *   passwords for one account still trip at the tenth.
+ *
+ *   Deliberately NOT applied to the email-sending routes below: for
+ *   forgot-password and resend-verification a *successful* request is the abuse
+ *   (mailbombing someone), so those must count every call.
+ */
+const emailKey = (req: Request) => {
+  const raw = (req.body?.email ?? "").toString().trim().toLowerCase();
+  return raw || clientIp(req);
+};
+
+/** Per-account: a wrong password for one email, from anywhere. */
+const accountAuthLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: emailKey,
+  validate: rlValidate,
+  skipSuccessfulRequests: true,
+  message: { error: "Too many failed attempts for this account. Please try again in a few minutes." },
+});
+
+/** Per-IP, failures only. Defence in depth; effective on direct traffic. */
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 50,
@@ -116,7 +164,22 @@ const authLimiter = rateLimit({
   legacyHeaders: false,
   keyGenerator: clientIp,
   validate: rlValidate,
+  skipSuccessfulRequests: true,
   message: { error: "Too many attempts. Please try again in a few minutes." },
+});
+
+/**
+ * Email-sending routes. Every call counts, successes included, because a
+ * successful request here puts mail in someone else's inbox.
+ */
+const emailSendLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: emailKey,
+  validate: rlValidate,
+  message: { error: "Too many requests for this address. Please try again in a few minutes." },
 });
 // Generous global API limit — a floor against floods, never trips for real use.
 const apiLimiter = rateLimit({
@@ -129,10 +192,8 @@ const apiLimiter = rateLimit({
   skip: (req) => !req.path.startsWith("/api") || req.path.startsWith("/api/webhooks"),
 });
 app.use(apiLimiter);
-app.use(
-  ["/api/auth/login", "/api/auth/register", "/api/auth/resend-verification", "/api/auth/forgot-password", "/api/auth/reset-password"],
-  authLimiter,
-);
+// NOTE: the auth limiters are registered AFTER express.json() further down —
+// they key on req.body.email, which does not exist until the body is parsed.
 
 // ── CORS ─────────────────────────────────────────────────────────────────────
 const corsOrigins = process.env.CORS_ORIGINS?.split(',').map(s => s.trim()).filter(Boolean) || [];
@@ -246,6 +307,28 @@ app.use(
 );
 
 app.use(express.urlencoded({ extended: false }));
+
+/**
+ * Auth rate limiting — registered HERE, after the body parsers, not up with the
+ * other middleware.
+ *
+ * accountAuthLimiter and emailSendLimiter key on req.body.email. Mounted before
+ * express.json() that property does not exist yet, so every request would fall
+ * through to the IP key and the per-account protection would silently do
+ * nothing — the precise failure this design exists to avoid, and invisible
+ * because the limiter still appears to work.
+ */
+
+// Sign-in and sign-up: failures only, capped per account and per IP. A room full
+// of people signing in successfully consumes neither budget.
+app.use(["/api/auth/login", "/api/auth/register"], accountAuthLimiter, authLimiter);
+
+// Anything that sends mail to an address the caller typed: count every request.
+app.use(
+  ["/api/auth/resend-verification", "/api/auth/forgot-password", "/api/auth/reset-password"],
+  emailSendLimiter,
+  authLimiter,
+);
 
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {
