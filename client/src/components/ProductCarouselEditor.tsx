@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { BUTTON_LABEL_OPTIONS, CAROUSEL_POSITION_OPTIONS, FONT_OPTIONS } from "@shared/schema";
 import { fontStack } from "@/lib/fonts";
+import { CAROUSEL_DEFAULT_BUTTON_COLOR, CAROUSEL_DEFAULT_BUTTON_TEXT_COLOR } from "@/lib/carouselDefaults";
 
 export interface CarouselSettings {
   position: typeof CAROUSEL_POSITION_OPTIONS[number];
@@ -61,8 +62,8 @@ const defaultSettings: CarouselSettings = {
   showPrice: true,
   showTitle: true,
   buttonLabel: "BUY NOW",
-  buttonColor: "#314d3b",
-  buttonTextColor: "#FFFFFF",
+  buttonColor: CAROUSEL_DEFAULT_BUTTON_COLOR,
+  buttonTextColor: CAROUSEL_DEFAULT_BUTTON_TEXT_COLOR,
   buttonFont: "system",
   titleFont: "system",
   titleFontSize: 100,

@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ChevronLeft, ChevronRight, ExternalLink } from "lucide-react";
 import type { Product, Brand } from "@shared/schema";
+import { CAROUSEL_DEFAULT_BUTTON_COLOR, CAROUSEL_DEFAULT_BUTTON_TEXT_COLOR } from "@/lib/carouselDefaults";
 
 export type CarouselPosition = "bottom" | "top" | "left" | "right" | "bottom-left" | "bottom-right" | "top-left" | "top-right";
 export type ButtonLabel = "BUY NOW" | "PRE ORDER" | "RENT" | "ENQUIRE" | "APPLY NOW" | "DONATE" | "BOOK NOW" | "BID NOW";
@@ -53,8 +54,8 @@ const defaultConfig: CarouselConfig = {
   showPrice: true,
   showTitle: true,
   buttonLabel: "BUY NOW",
-  buttonColor: "#314d3b",
-  buttonTextColor: "#FFFFFF",
+  buttonColor: CAROUSEL_DEFAULT_BUTTON_COLOR,
+  buttonTextColor: CAROUSEL_DEFAULT_BUTTON_TEXT_COLOR,
 };
 
 export function VideoProductCarousel({

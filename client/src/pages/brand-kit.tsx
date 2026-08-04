@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import type { BrandKit } from "@shared/schema";
 import { BUTTON_LABEL_OPTIONS, CAROUSEL_POSITION_OPTIONS } from "@shared/schema";
+import { CAROUSEL_DEFAULT_BUTTON_COLOR, CAROUSEL_DEFAULT_BUTTON_TEXT_COLOR } from "@/lib/carouselDefaults";
 
 interface ColorEntry {
   name: string;
@@ -140,8 +141,8 @@ export default function BrandKitPage() {
   
   const [carouselSettings, setCarouselSettings] = useState({
     buttonFont: "Inter",
-    buttonColor: "#314d3b",
-    buttonTextColor: "#FFFFFF",
+    buttonColor: CAROUSEL_DEFAULT_BUTTON_COLOR,
+    buttonTextColor: CAROUSEL_DEFAULT_BUTTON_TEXT_COLOR,
     cornerRadius: 16,
     backgroundOpacity: 55,
     showThumbnail: true,
@@ -180,8 +181,8 @@ export default function BrandKitPage() {
       // Set carousel settings from brand kit
       setCarouselSettings({
         buttonFont: brandKit.defaultButtonFont || "Inter",
-        buttonColor: brandKit.defaultButtonColor || "#314d3b",
-        buttonTextColor: brandKit.defaultButtonTextColor || "#FFFFFF",
+        buttonColor: brandKit.defaultButtonColor || CAROUSEL_DEFAULT_BUTTON_COLOR,
+        buttonTextColor: brandKit.defaultButtonTextColor || CAROUSEL_DEFAULT_BUTTON_TEXT_COLOR,
         cornerRadius: brandKit.defaultCornerRadius ?? 16,
         backgroundOpacity: brandKit.defaultBackgroundOpacity ?? 55,
         showThumbnail: brandKit.defaultShowThumbnail ?? true,

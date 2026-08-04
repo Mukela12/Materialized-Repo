@@ -61,8 +61,13 @@
  * CTA buttons use --primary. The greens #314d3b / #24372b were removed from
  * app chrome at the client's request — green is now reserved for "published"
  * and other success states, where it means done rather than "act here".
- * #314d3b survives only as the DEFAULT product-carousel button colour, which
- * each brand overrides in their own brand kit.
+ *
+ * #314d3b is now gone from the product entirely. It was left in place as the
+ * default product-carousel button colour on the theory that each brand would
+ * override it in their own brand kit, but most never do, so the default was
+ * what most people actually saw — a green BUY NOW in the upload modal and on
+ * an unconfigured brand kit. That default is the accent too now, defined once
+ * in client/src/lib/carouselDefaults.ts rather than in five separate literals.
  */
 :root {
   --button-outline: rgba(0,0,0, .10);
