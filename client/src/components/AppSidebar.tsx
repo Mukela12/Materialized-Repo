@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import materializedLogo from "@assets/MTRLZD_Logo_white_transparent.png";
 import {
@@ -98,6 +99,23 @@ export function AppSidebar({ user }: AppSidebarProps) {
   const { data: unreadCount = 0 } = useMailboxUnreadCount();
   const { balance: tokenBalance } = useTokenBalance();
 
+  const [menuQuery, setMenuQuery] = useState("");
+
+  /**
+   * Filter nav items by the sidebar search box.
+   *
+   * That input had a placeholder and an icon but no value and no onChange —
+   * typing in it did nothing. It appears in every screenshot the client sent,
+   * with the word "editor" typed into it, so she had tried to use it.
+   *
+   * Returning [] for a group that matches nothing lets renderGroup hide the
+   * group heading too, rather than leaving a bare label over an empty list.
+   */
+  const filterItems = <T extends { label: string }>(items: T[]): T[] => {
+    const q = menuQuery.trim().toLowerCase();
+    return q ? items.filter((i) => i.label.toLowerCase().includes(q)) : items;
+  };
+
   const renderItems = (items: typeof overviewItems) => (
     <SidebarMenu>
       {items.map((item) => {
@@ -174,91 +192,111 @@ export function AppSidebar({ user }: AppSidebarProps) {
             placeholder="Search menu..."
             className="pl-9 h-10 rounded-lg bg-sidebar-accent/30"
             data-testid="input-search-menu"
+            value={menuQuery}
+            onChange={(e) => setMenuQuery(e.target.value)}
           />
         </div>
       </SidebarHeader>
 
       <SidebarContent>
+        {filterItems(overviewItems).length > 0 && (
         <SidebarGroup>
           <SidebarGroupLabel className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             Overview
           </SidebarGroupLabel>
           <SidebarGroupContent>
-            {renderItems(overviewItems)}
+            {renderItems(filterItems(overviewItems))}
           </SidebarGroupContent>
         </SidebarGroup>
+        )}
 
+        {filterItems(contentItems).length > 0 && (
         <SidebarGroup>
           <SidebarGroupLabel className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             Content Management
           </SidebarGroupLabel>
           <SidebarGroupContent>
-            {renderItems(contentItems)}
+            {renderItems(filterItems(contentItems))}
           </SidebarGroupContent>
         </SidebarGroup>
+        )}
 
+        {filterItems(analyticsItems).length > 0 && (
         <SidebarGroup>
           <SidebarGroupLabel className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             Analytics & Insights
           </SidebarGroupLabel>
           <SidebarGroupContent>
-            {renderItems(analyticsItems)}
+            {renderItems(filterItems(analyticsItems))}
           </SidebarGroupContent>
         </SidebarGroup>
+        )}
 
+        {filterItems(affiliateItems).length > 0 && (
         <SidebarGroup>
           <SidebarGroupLabel className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             Affiliates
           </SidebarGroupLabel>
           <SidebarGroupContent>
-            {renderItems(affiliateItems)}
+            {renderItems(filterItems(affiliateItems))}
           </SidebarGroupContent>
         </SidebarGroup>
+        )}
 
+        {filterItems(brandItems).length > 0 && (
         <SidebarGroup>
           <SidebarGroupLabel className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             Branding
           </SidebarGroupLabel>
           <SidebarGroupContent>
-            {renderItems(brandItems)}
+            {renderItems(filterItems(brandItems))}
           </SidebarGroupContent>
         </SidebarGroup>
+        )}
 
+        {filterItems(walletItems).length > 0 && (
         <SidebarGroup>
           <SidebarGroupLabel className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             Wallet
           </SidebarGroupLabel>
           <SidebarGroupContent>
-            {renderItems(walletItems)}
+            {renderItems(filterItems(walletItems))}
           </SidebarGroupContent>
         </SidebarGroup>
+        )}
 
+        {filterItems(communicationItems).length > 0 && (
         <SidebarGroup>
           <SidebarGroupLabel className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             Communication
           </SidebarGroupLabel>
           <SidebarGroupContent>
-            {renderItems(communicationItems)}
+            {renderItems(filterItems(communicationItems))}
           </SidebarGroupContent>
         </SidebarGroup>
+        )}
 
+        {filterItems(accountItems).length > 0 && (
         <SidebarGroup>
           <SidebarGroupLabel className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             Account
           </SidebarGroupLabel>
           <SidebarGroupContent>
-            {renderItems(accountItems)}
+            {renderItems(filterItems(accountItems))}
           </SidebarGroupContent>
         </SidebarGroup>
+        )}
 
+        {filterItems(otherItems).length > 0 && (
         <SidebarGroup>
           <SidebarGroupLabel className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             Support
           </SidebarGroupLabel>
           <SidebarGroupContent>
-            {renderItems(otherItems)}
+            {renderItems(filterItems(otherItems))}
           </SidebarGroupContent>
         </SidebarGroup>
+        )}
       </SidebarContent>
 
       <SidebarFooter className="p-4">

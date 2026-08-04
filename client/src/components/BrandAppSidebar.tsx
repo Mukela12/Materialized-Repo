@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import materializedLogo from "@assets/MTRLZD_Logo_white_transparent.png";
 import {
@@ -83,6 +84,14 @@ export function BrandAppSidebar({ user }: BrandAppSidebarProps) {
   const logoutMutation = useLogout();
   const { data: unreadCount = 0 } = useMailboxUnreadCount();
 
+  const [menuQuery, setMenuQuery] = useState("");
+
+  /** See AppSidebar — this search box was inert in both sidebars. */
+  const filterItems = <T extends { label: string }>(items: T[]): T[] => {
+    const q = menuQuery.trim().toLowerCase();
+    return q ? items.filter((i) => i.label.toLowerCase().includes(q)) : items;
+  };
+
   const renderItems = (items: typeof overviewItems) => (
     <SidebarMenu>
       {items.map((item) => {
@@ -148,73 +157,89 @@ export function BrandAppSidebar({ user }: BrandAppSidebarProps) {
             placeholder="Search menu..."
             className="pl-9 h-10 rounded-lg bg-sidebar-accent/30"
             data-testid="input-search-brand-menu"
+            value={menuQuery}
+            onChange={(e) => setMenuQuery(e.target.value)}
           />
         </div>
       </SidebarHeader>
 
       <SidebarContent>
+        {filterItems(overviewItems).length > 0 && (
         <SidebarGroup>
           <SidebarGroupLabel className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             Overview
           </SidebarGroupLabel>
           <SidebarGroupContent>
-            {renderItems(overviewItems)}
+            {renderItems(filterItems(overviewItems))}
           </SidebarGroupContent>
         </SidebarGroup>
+        )}
 
+        {filterItems(inventoryItems).length > 0 && (
         <SidebarGroup>
           <SidebarGroupLabel className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             Products
           </SidebarGroupLabel>
           <SidebarGroupContent>
-            {renderItems(inventoryItems)}
+            {renderItems(filterItems(inventoryItems))}
           </SidebarGroupContent>
         </SidebarGroup>
+        )}
 
+        {filterItems(creatorsItems).length > 0 && (
         <SidebarGroup>
           <SidebarGroupLabel className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             Creator Network
           </SidebarGroupLabel>
           <SidebarGroupContent>
-            {renderItems(creatorsItems)}
+            {renderItems(filterItems(creatorsItems))}
           </SidebarGroupContent>
         </SidebarGroup>
+        )}
 
+        {filterItems(analyticsItems).length > 0 && (
         <SidebarGroup>
           <SidebarGroupLabel className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             Analytics & Insights
           </SidebarGroupLabel>
           <SidebarGroupContent>
-            {renderItems(analyticsItems)}
+            {renderItems(filterItems(analyticsItems))}
           </SidebarGroupContent>
         </SidebarGroup>
+        )}
 
+        {filterItems(brandingItems).length > 0 && (
         <SidebarGroup>
           <SidebarGroupLabel className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             Branding
           </SidebarGroupLabel>
           <SidebarGroupContent>
-            {renderItems(brandingItems)}
+            {renderItems(filterItems(brandingItems))}
           </SidebarGroupContent>
         </SidebarGroup>
+        )}
 
+        {filterItems(communicationItems).length > 0 && (
         <SidebarGroup>
           <SidebarGroupLabel className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             Communication
           </SidebarGroupLabel>
           <SidebarGroupContent>
-            {renderItems(communicationItems)}
+            {renderItems(filterItems(communicationItems))}
           </SidebarGroupContent>
         </SidebarGroup>
+        )}
 
+        {filterItems(otherItems).length > 0 && (
         <SidebarGroup>
           <SidebarGroupLabel className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             Settings
           </SidebarGroupLabel>
           <SidebarGroupContent>
-            {renderItems(otherItems)}
+            {renderItems(filterItems(otherItems))}
           </SidebarGroupContent>
         </SidebarGroup>
+        )}
       </SidebarContent>
 
       <SidebarFooter className="p-4">

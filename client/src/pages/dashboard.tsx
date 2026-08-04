@@ -8,7 +8,6 @@ import { AffiliateCard } from "@/components/AffiliateCard";
 import { DashboardTabs } from "@/components/DashboardTabs";
 import { AffiliateTable } from "@/components/AffiliateTable";
 import { VideoUploadModal } from "@/components/VideoUploadModal";
-import { AnnouncementBanner } from "@/components/AnnouncementBanner";
 import { CreatorRewardNotification } from "@/components/EarningsNotification";
 import { Eye, DollarSign, MousePointer, Upload, Play, TrendingUp } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -130,8 +129,7 @@ export default function Dashboard() {
   return (
     <div className="space-y-6 pb-24 md:pb-6">
       <div className="-mx-4 md:-mx-6 -mt-6 mb-4 overflow-hidden">
-        <AnnouncementBanner />
-      </div>
+        </div>
 
       <CreatorRewardNotification />
 

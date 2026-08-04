@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatCard } from "@/components/StatCard";
-import { AnnouncementBanner } from "@/components/AnnouncementBanner";
 import { 
   DollarSign, 
   TrendingUp, 
@@ -76,7 +75,6 @@ export default function AffiliateDashboard() {
 
   return (
     <div className="space-y-6 pb-24 md:pb-6">
-      <AnnouncementBanner />
       
       <div>
         <h1 className="text-2xl md:text-3xl font-bold tracking-tight" data-testid="text-welcome">

@@ -1,4 +1,4 @@
-import { Switch, Route, useLocation } from "wouter";
+import { Switch, Route, useLocation, Link } from "wouter";
 import materializedLogo from "@assets/MTRLZD_Logo_white_transparent.png";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -63,7 +63,7 @@ import { useCurrentUser, useLogout } from "@/hooks/useCurrentUser";
 import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { ChevronDown, LogOut, User, Layers } from "lucide-react";
+import { ChevronDown, LogOut, User, Layers, Settings, Shield, LifeBuoy } from "lucide-react";
 
 function CreatorRouter() {
   return (
@@ -342,6 +342,39 @@ function AppContent() {
                       <p className="text-xs font-medium truncate">{user.displayName}</p>
                       <p className="text-xs text-muted-foreground truncate">{user.email}</p>
                     </div>
+                    <DropdownMenuSeparator />
+                    {/*
+                      Settings / Privacy / Support, per the client's review — the
+                      menu previously held Sign out alone. Destinations are
+                      role-aware because each portal has its own settings and
+                      help routes; every path below is defined in the routers.
+                    */}
+                    <DropdownMenuItem asChild data-testid="menu-settings">
+                      <Link href={
+                        user.role === "brand" ? "/brand/settings"
+                        : user.role === "affiliate" ? "/affiliate/settings"
+                        : "/creator/more"
+                      }>
+                        <Settings className="h-4 w-4 mr-2" />
+                        Settings
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild data-testid="menu-privacy">
+                      <Link href="/privacy">
+                        <Shield className="h-4 w-4 mr-2" />
+                        Privacy
+                      </Link>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem asChild data-testid="menu-support">
+                      <Link href={
+                        user.role === "brand" ? "/brand/help"
+                        : user.role === "affiliate" ? "/affiliate/help"
+                        : "/creator/help"
+                      }>
+                        <LifeBuoy className="h-4 w-4 mr-2" />
+                        Support
+                      </Link>
+                    </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem
                       onClick={() => logoutMutation.mutate()}
