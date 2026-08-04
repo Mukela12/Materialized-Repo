@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { planPayouts, executePayouts, type PayoutExecDeps, type PayableCommission } from '../../server/payouts';
+import { planPayouts, executePayouts, idempotencyKeyFor, type PayoutExecDeps, type PayableCommission } from '../../server/payouts';
 
 describe('planPayouts', () => {
   it('groups approved commissions per affiliate and sums cents', () => {
@@ -80,7 +80,11 @@ describe('executePayouts', () => {
     expect(summary.paid[0].amountCents).toBe(1000);
     expect(summary.paid[0].transferId).toBe('tr_1');
     expect(calls.transfers[0].amountCents).toBe(1000);
-    expect(calls.transfers[0].idempotencyKey).toBe('payout_po_1');
+    // Keyed on the COMMISSIONS, not the payout row. This used to assert
+    // 'payout_po_1', which encoded the double-pay bug: payout ids are minted
+    // fresh every run, so a retry presented a new key and Stripe sent the money
+    // again. See tests/unit/payout-double-pay.test.ts.
+    expect(calls.transfers[0].idempotencyKey).toBe(idempotencyKeyFor('a1', ['c1', 'c2']));
     expect(calls.transfers[0].metadata).toMatchObject({ payoutId: 'po_1', affiliateId: 'a1' });
     expect(calls.commissionsPaid[0].commissionIds).toEqual(['c1', 'c2']);
     expect(calls.statusUpdates.map(s => s.status)).toEqual(['processing', 'paid']);

@@ -3,12 +3,28 @@
  *
  * Approved commission ledger rows are batched per affiliate and paid out as a
  * single Stripe Connect transfer to their connected account. Money is handled in
- * integer cents; transfers are idempotent (keyed by payout id) so a retried run
- * never double-pays; balances below the Stripe minimum are held until they clear.
+ * integer cents; balances below the Stripe minimum are held until they clear.
+ *
+ * ── The two ways this used to double-pay, and how both are closed ────────────
+ * 1. The transfer was keyed on the payout row id, which is minted fresh on every
+ *    run. A retry therefore presented a NEW idempotency key and Stripe genuinely
+ *    sent the money a second time. The key is now derived from the commission
+ *    set being settled (idempotencyKeyFor), so retrying the same debt replays
+ *    the same key and Stripe returns the original transfer.
+ * 2. A bookkeeping failure AFTER a successful transfer marked the payout
+ *    "failed" and left the commissions approved — so the next run paid them
+ *    again, on top of money that had already landed. Post-transfer failures now
+ *    record the transfer id, mark the payout paid, and report the row under
+ *    `needsReconciliation` for a human. `failed` now means, and only means,
+ *    that no money moved.
+ *
+ * Callers that run this unattended MUST hold a lock — see server/scheduler.ts.
+ * Two overlapping runs would each plan the same approved commissions.
  *
  * planPayouts() is pure (unit-tested). executePayouts() takes injected deps so the
  * orchestration is testable without a live DB or Stripe.
  */
+import { createHash } from "crypto";
 import { toCents } from "./feeConfig";
 import { MIN_PAYOUT_CENTS } from "../shared/pricing";
 
@@ -91,6 +107,31 @@ export interface PayoutRunSummary {
   heldBelowThreshold: Array<{ affiliateId: string; amountCents: number }>;
   skippedNoAccount: Array<{ affiliateId: string; amountCents: number }>;
   failed: Array<{ affiliateId: string; payoutId?: string; amountCents: number; error: string }>;
+  /**
+   * Money LEFT but the ledger did not record it. Distinct from `failed`, where
+   * no money moved — conflating the two is what caused double payment. Every
+   * entry here needs a human before the next run.
+   */
+  needsReconciliation: Array<{
+    affiliateId: string; payoutId: string; amountCents: number;
+    transferId: string; commissionIds: string[]; error: string;
+  }>;
+}
+
+/**
+ * Idempotency key for a transfer, derived from WHAT IS BEING PAID.
+ *
+ * Stable across runs: retrying the same debt replays the same key, so Stripe
+ * returns the original transfer instead of sending the money a second time.
+ * Sorted so that a different ordering of the same commissions cannot produce a
+ * different key.
+ */
+export function idempotencyKeyFor(affiliateId: string, commissionIds: string[]): string {
+  const digest = createHash("sha256")
+    .update(`${affiliateId}:${[...commissionIds].sort().join(",")}`)
+    .digest("hex")
+    .slice(0, 40);
+  return `payout_${digest}`;
 }
 
 /**
@@ -111,6 +152,7 @@ export async function executePayouts(
     heldBelowThreshold: plan.heldBelowThreshold.map(g => ({ affiliateId: g.affiliateId, amountCents: g.amountCents })),
     skippedNoAccount: [],
     failed: [],
+    needsReconciliation: [],
   };
 
   for (const g of plan.payable) {
@@ -120,17 +162,25 @@ export async function executePayouts(
       continue;
     }
 
-    // Create the payout first so it has a stable id to key the transfer on.
     const payout = await deps.createPayout(g.affiliateId, g.amountCents);
+
+    // ── Phase 1: move the money ───────────────────────────────────────────────
+    // Anything that throws here means NO money left, so the commissions stay
+    // approved and the next run retries them. That is the safe direction.
+    let transfer: { id: string };
     try {
       await deps.updatePayoutStatus(payout.id, "processing");
-      const transfer = await deps.transfer(g.amountCents, acct.accountId, `payout_${payout.id}`, {
-        payoutId: payout.id,
-        affiliateId: g.affiliateId,
-      });
-      await deps.markCommissionsPaid(g.commissionIds, payout.id);
-      await deps.updatePayoutStatus(payout.id, "paid", transfer.id);
-      summary.paid.push({ affiliateId: g.affiliateId, payoutId: payout.id, amountCents: g.amountCents, transferId: transfer.id });
+      transfer = await deps.transfer(
+        g.amountCents,
+        acct.accountId,
+        // KEYED ON WHAT IS BEING PAID, NOT ON THIS ROW. It used to be
+        // `payout_${payout.id}`, and payout.id is minted fresh on every run — so
+        // a retry produced a NEW key and Stripe genuinely sent the money twice.
+        // Deriving it from the commission set means a retry of the same debt
+        // replays the same key and Stripe returns the original transfer.
+        idempotencyKeyFor(g.affiliateId, g.commissionIds),
+        { payoutId: payout.id, affiliateId: g.affiliateId },
+      );
     } catch (err: any) {
       await deps.updatePayoutStatus(payout.id, "failed").catch(() => {});
       summary.failed.push({
@@ -139,6 +189,37 @@ export async function executePayouts(
         amountCents: g.amountCents,
         error: err?.message || "transfer failed",
       });
+      continue;
+    }
+
+    // ── Phase 2: bookkeeping, AFTER the money has gone ────────────────────────
+    // From here the transfer has SUCCEEDED. A failure below must never mark this
+    // payout "failed": that is the lie that caused double payment, because the
+    // commissions stayed approved and the next run paid them again while the
+    // first transfer had already landed.
+    try {
+      await deps.markCommissionsPaid(g.commissionIds, payout.id);
+      await deps.updatePayoutStatus(payout.id, "paid", transfer.id);
+      summary.paid.push({
+        affiliateId: g.affiliateId, payoutId: payout.id,
+        amountCents: g.amountCents, transferId: transfer.id,
+      });
+    } catch (err: any) {
+      // Record the transfer id whatever happens, so the money is traceable and
+      // the payout never reads as unpaid.
+      await deps.updatePayoutStatus(payout.id, "paid", transfer.id).catch(() => {});
+      const message =
+        `PAID BUT NOT RECONCILED — transfer ${transfer.id} succeeded for affiliate ` +
+        `${g.affiliateId} (payout ${payout.id}), but marking its commissions paid failed: ` +
+        `${err?.message || err}. DO NOT re-run blindly; mark commissions ` +
+        `${g.commissionIds.join(",")} paid by hand.`;
+      summary.needsReconciliation.push({
+        affiliateId: g.affiliateId, payoutId: payout.id,
+        amountCents: g.amountCents, transferId: transfer.id,
+        commissionIds: g.commissionIds, error: err?.message || String(err),
+      });
+      // Loud: this is the one state a human must act on.
+      console.error(`[Payouts] ${message}`);
     }
   }
 

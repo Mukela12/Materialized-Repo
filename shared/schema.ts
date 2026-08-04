@@ -1301,6 +1301,42 @@ export const feeInvoices = pgTable("fee_invoices", {
 
 export type FeeInvoice = typeof feeInvoices.$inferSelect;
 
+// ─── Scheduled job runs ──────────────────────────────────────────────────────
+//
+// The ledger behind server/scheduler.ts. An in-memory cron is not enough for
+// money: it fires only while the process is alive, so a redeploy at the
+// scheduled minute skips a payout run silently, and with two instances running
+// every instance fires and everyone is paid twice.
+//
+// A row here is a CLAIM on one occurrence of one schedule. The unique index on
+// (job_name, scheduled_for) is the real guard — two instances racing the same
+// window both insert, exactly one wins, the loser takes 23505 and stands down.
+// `scheduled_for` is the schedule occurrence, not the wall clock, so a run
+// catching up a missed Monday cannot be confused with next Monday's.
+export const scheduledRunStatusEnum = pgEnum("scheduled_run_status", [
+  /** Claimed and in flight. Stuck here = the process died mid-run; deliberately
+   *  left visible rather than silently retried, since re-running a half-finished
+   *  payout is precisely what must never happen unattended. */
+  "running",
+  "success",
+  "failed",
+  /** Nothing to do — no payable commissions, or no billable accruals. */
+  "skipped",
+]);
+
+export const scheduledJobRuns = pgTable("scheduled_job_runs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  jobName: text("job_name").notNull(),
+  scheduledFor: timestamp("scheduled_for").notNull(),
+  status: scheduledRunStatusEnum("status").notNull().default("running"),
+  startedAt: timestamp("started_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  finishedAt: timestamp("finished_at"),
+  items: integer("items").notNull().default(0),
+  detail: text("detail"),
+});
+
+export type ScheduledJobRun = typeof scheduledJobRuns.$inferSelect;
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Country list for dropdown

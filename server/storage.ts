@@ -80,8 +80,10 @@ import {
   commissionTransactions,
   platformFeeAccruals,
   feeInvoices,
+  scheduledJobRuns,
   type PlatformFeeAccrual,
   type FeeInvoice,
+  type ScheduledJobRun,
   brandOutreachRequests,
   publisherNotifications,
   brandSubscriptions,
@@ -233,6 +235,13 @@ export interface IStorage {
   getFeeInvoice(feeInvoiceId: string): Promise<FeeInvoiceRecord | null>;
   listFeeInvoices(brandUserId?: string): Promise<FeeInvoice[]>;
   getBrandStripeCustomerId(brandUserId: string): Promise<string | null>;
+  getBrandsWithBillableAccruals(from: Date, to: Date): Promise<Array<{ brandUserId: string; currency: string }>>;
+
+  // Scheduler — see server/scheduler.ts.
+  claimRun(jobName: string, scheduledFor: Date): Promise<{ id: string } | null>;
+  completeRun(runId: string, result: { status: "success" | "failed" | "skipped"; items: number; detail: string }): Promise<void>;
+  lastRunOccurrence(jobName: string): Promise<Date | null>;
+  listScheduledRuns(limit?: number): Promise<ScheduledJobRun[]>;
   getCommissionsByExternalOrder(externalOrderId: string, storeConnectionId?: string | null): Promise<CommissionTransaction[]>;
   
   // Campaigns
@@ -2089,6 +2098,53 @@ export class MemStorage implements IStorage {
     return this.users.get(brandUserId)?.stripeCustomerId ?? null;
   }
 
+  async getBrandsWithBillableAccruals(from: Date, to: Date): Promise<Array<{ brandUserId: string; currency: string }>> {
+    const seen = new Map<string, { brandUserId: string; currency: string }>();
+    for (const r of Array.from(this.feeAccrualsMap.values())) {
+      if (r.status !== "accrued" || r.marketplaceFeeCents <= 0) continue;
+      if (r.occurredAt < from || r.occurredAt >= to) continue;
+      seen.set(`${r.brandUserId}::${r.currency}`, { brandUserId: r.brandUserId, currency: r.currency });
+    }
+    return Array.from(seen.values());
+  }
+
+  // ── Scheduler ──────────────────────────────────────────────────────────────
+  // The unique (jobName, scheduledFor) claim is mirrored so the race path is
+  // exercised, but see the wallet caveat above: single-threaded Node proves
+  // nothing about Postgres. The real guarantee is the unique index.
+  private scheduledRuns = new Map<string, any>();
+
+  async claimRun(jobName: string, scheduledFor: Date): Promise<{ id: string } | null> {
+    const key = `${jobName}::${scheduledFor.toISOString()}`;
+    if (this.scheduledRuns.has(key)) return null;
+    const id = randomUUID();
+    this.scheduledRuns.set(key, {
+      id, jobName, scheduledFor, status: "running", startedAt: new Date(),
+      finishedAt: null, items: 0, detail: null,
+    });
+    return { id };
+  }
+
+  async completeRun(runId: string, result: { status: "success" | "failed" | "skipped"; items: number; detail: string }): Promise<void> {
+    for (const r of Array.from(this.scheduledRuns.values())) {
+      if (r.id === runId) {
+        r.status = result.status; r.items = result.items;
+        r.detail = result.detail.slice(0, 4000); r.finishedAt = new Date();
+      }
+    }
+  }
+
+  async lastRunOccurrence(jobName: string): Promise<Date | null> {
+    const times = Array.from(this.scheduledRuns.values())
+      .filter(r => r.jobName === jobName)
+      .map(r => r.scheduledFor.getTime());
+    return times.length ? new Date(Math.max(...times)) : null;
+  }
+
+  async listScheduledRuns(limit = 50): Promise<ScheduledJobRun[]> {
+    return Array.from(this.scheduledRuns.values()).slice(0, limit) as ScheduledJobRun[];
+  }
+
   async markCommissionsPaid(commissionIds: string[], payoutId: string): Promise<void> {
     for (const id of commissionIds) {
       const tx = this.commissionTransactionsMap.get(id);
@@ -3509,6 +3565,69 @@ export class DatabaseStorage implements IStorage {
     const [row] = await db.select({ id: users.stripeCustomerId }).from(users)
       .where(eq(users.id, brandUserId)).limit(1);
     return row?.id ?? null;
+  }
+
+  /** Every brand with at least one billable accrual in the window. */
+  async getBrandsWithBillableAccruals(from: Date, to: Date): Promise<Array<{ brandUserId: string; currency: string }>> {
+    const rows = await db.selectDistinct({
+      brandUserId: platformFeeAccruals.brandUserId,
+      currency: platformFeeAccruals.currency,
+    }).from(platformFeeAccruals).where(and(
+      sql`${platformFeeAccruals.status} = 'accrued'`,
+      sql`${platformFeeAccruals.marketplaceFeeCents} > 0`,
+      gte(platformFeeAccruals.occurredAt, from),
+      lt(platformFeeAccruals.occurredAt, to),
+    ));
+    return rows;
+  }
+
+  // ── Scheduler ──────────────────────────────────────────────────────────────
+
+  /**
+   * Claim one schedule occurrence. Returns null when it is already claimed.
+   *
+   * The advisory lock serialises the racing instances; the UNIQUE INDEX is what
+   * actually decides. Catching 23505 rather than reading first is deliberate —
+   * a read-then-write here is the classic lost update, and losing it means
+   * paying every publisher twice.
+   */
+  async claimRun(jobName: string, scheduledFor: Date): Promise<{ id: string } | null> {
+    try {
+      return await db.transaction(async (trx) => {
+        await trx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`sched:${jobName}`}, 0))`);
+        const [row] = await trx.insert(scheduledJobRuns)
+          .values({ jobName, scheduledFor, status: "running" })
+          .returning({ id: scheduledJobRuns.id });
+        return { id: row.id };
+      });
+    } catch (err: any) {
+      const code = err?.code ?? err?.cause?.code;
+      if (code === "23505") return null; // another instance got there first
+      throw err;
+    }
+  }
+
+  async completeRun(runId: string, result: { status: "success" | "failed" | "skipped"; items: number; detail: string }): Promise<void> {
+    await db.update(scheduledJobRuns).set({
+      status: result.status,
+      items: result.items,
+      detail: result.detail.slice(0, 4000),
+      finishedAt: new Date(),
+    }).where(eq(scheduledJobRuns.id, runId));
+  }
+
+  async lastRunOccurrence(jobName: string): Promise<Date | null> {
+    const [row] = await db.select({ scheduledFor: scheduledJobRuns.scheduledFor })
+      .from(scheduledJobRuns)
+      .where(eq(scheduledJobRuns.jobName, jobName))
+      .orderBy(desc(scheduledJobRuns.scheduledFor))
+      .limit(1);
+    return row?.scheduledFor ?? null;
+  }
+
+  async listScheduledRuns(limit = 50): Promise<ScheduledJobRun[]> {
+    return db.select().from(scheduledJobRuns)
+      .orderBy(desc(scheduledJobRuns.startedAt)).limit(Math.min(limit, 200));
   }
 
   async hasCommissionForExternalOrder(externalOrderId: string, storeConnectionId?: string | null): Promise<boolean> {

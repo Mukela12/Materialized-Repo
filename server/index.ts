@@ -12,6 +12,11 @@ import { createServer } from "http";
 import { getUncachableStripeClient } from "./stripeClient";
 import { dispatchStripeEvent } from "./webhookHandlers";
 import Stripe from 'stripe';
+import { Scheduler } from "./scheduler";
+import { makePayoutJob, makeFeeInvoiceJob, schedulerEnabled } from "./scheduledJobs";
+import { runPayouts } from "./payoutRunner";
+import { feeInvoiceStripeAdapter } from "./feeInvoiceStripe";
+import { storage } from "./storage";
 
 declare module "express-session" {
   interface SessionData {
@@ -412,6 +417,35 @@ app.use((req, res, next) => {
     },
     () => {
       log(`serving on port ${port}`);
+      startScheduler();
     },
   );
 })();
+
+/**
+ * Bring up the payout + invoicing scheduler, if it has been switched on.
+ *
+ * OFF UNLESS SCHEDULER_ENABLED=true. Automated money movement should be enabled
+ * once, deliberately, by someone who means it — never acquired as a side effect
+ * of a deploy. When it is off this logs that fact rather than staying silent, so
+ * "why did nobody get paid" has an answer in the logs.
+ *
+ * Safe to start on every instance: each schedule occurrence is claimed as a row
+ * under a unique index, so exactly one instance runs it. See server/scheduler.ts.
+ */
+function startScheduler() {
+  if (!schedulerEnabled()) {
+    log("[Scheduler] disabled (set SCHEDULER_ENABLED=true to enable payouts + fee invoicing)");
+    return;
+  }
+  try {
+    const scheduler = new Scheduler(storage, [
+      makePayoutJob({ runPayouts }),
+      makeFeeInvoiceJob(storage as any, feeInvoiceStripeAdapter),
+    ], (m) => log(m));
+    scheduler.start();
+  } catch (err) {
+    // A bad cron expression must not take the API down with it.
+    console.error("[Scheduler] failed to start:", err);
+  }
+}

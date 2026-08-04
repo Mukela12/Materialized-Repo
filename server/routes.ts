@@ -9,19 +9,10 @@ import { encryptSecret, decryptSecret } from "./crypto";
 import { hashPassword } from "./auth";
 import { recordSaleCommissions, clawbackSaleCommissions } from "./commissions";
 import { recordFeeAccrual, voidFeeAccrual } from "./feeAccruals";
-import { generateFeeInvoice, type FeeInvoiceStripe } from "./feeInvoicing";
+import { generateFeeInvoice } from "./feeInvoicing";
+import { feeInvoiceStripeAdapter } from "./feeInvoiceStripe";
 
-/**
- * Adapts stripeService to the narrow surface feeInvoicing needs, so the
- * invoicing logic stays testable against a fake instead of the Stripe SDK.
- */
-const feeInvoiceStripeAdapter: FeeInvoiceStripe = {
-  createInvoice: (a) => stripeService.createFeeInvoice(a) as any,
-  createInvoiceItem: (a) => stripeService.createFeeInvoiceItem(a),
-  finalizeInvoice: (id) => stripeService.finalizeFeeInvoice(id) as any,
-  findInvoiceByFeeInvoiceId: (customerId, feeInvoiceId) =>
-    stripeService.findFeeInvoiceByFeeInvoiceId(customerId, feeInvoiceId) as any,
-};
+
 import { appendUtm } from "./embedUtils";
 import { resolveFeeConfig, userRateOr, centsToAmount, formatMoney, getPlatformCurrency } from "./feeConfig";
 import { buildNotifications, countUnread, parseMailboxId, type MailboxSources } from "./mailbox";
@@ -31,7 +22,8 @@ import {
   spendTokens, creditTokens, revokeTokens, summarizeLedger, ledgerRowValues,
 } from "./wallet";
 import { applyTokenSubsidy } from "./subscriptionSubsidy";
-import { executePayouts } from "./payouts";
+import { runPayouts } from "./payoutRunner";
+import { schedulerEnabled } from "./scheduledJobs";
 import { verifyStoreHmac, extractShopifyAttribution, extractWooAttribution, type OrderAttribution } from "./storeWebhooks";
 import { 
   insertVideoSchema, 
@@ -5041,54 +5033,31 @@ Identify which products from the catalog are most likely to appear or be feature
   // transfer to their Stripe Connect account (idempotent, min €0.50, onboarded only).
   app.post("/api/admin/payouts/run", requireAdmin, async (_req, res) => {
     try {
-      const summary = await executePayouts({
-        getApprovedCommissions: async () =>
-          (await storage.getCommissionsByStatus("approved")).map(c => ({
-            id: c.id,
-            affiliateId: c.affiliateId,
-            commissionAmount: c.commissionAmount,
-            status: c.status ?? "approved",
-          })),
-        getConnectAccount: async (affiliateId) => {
-          const u = await storage.getUser(affiliateId);
-          return { accountId: u?.stripeConnectAccountId ?? null, onboarded: !!u?.stripeConnectOnboarded };
-        },
-        createPayout: async (affiliateId, amountCents) =>
-          storage.createPayout({ userId: affiliateId, amount: centsToAmount(amountCents), status: "pending" }),
-        updatePayoutStatus: async (id, status, stripeTransferId) => {
-          await storage.updatePayoutStatus(id, status, stripeTransferId);
-        },
-        markCommissionsPaid: (ids, payoutId) => storage.markCommissionsPaid(ids, payoutId),
-        transfer: async (amountCents, dest, idempotencyKey, metadata) => {
-          const t = await stripeService.createTransferCents(amountCents, dest, idempotencyKey, metadata);
-          return { id: t.id };
-        },
-      });
+      // Same code path the scheduler uses — see server/payoutRunner.ts. Two
+      // separate implementations of "move the money" would drift, and the one
+      // that drifts is the unattended one nobody is watching.
+      const summary = await runPayouts();
 
-      // Notify each paid affiliate (best-effort; never let email fail the payout run).
-      if (isEmailConfigured()) {
-        for (const p of summary.paid) {
-          try {
-            const affiliate = await storage.getUser(p.affiliateId);
-            if (affiliate?.email) {
-              await sendPayoutExecutedEmail({
-                affiliateName: affiliate.displayName,
-                affiliateEmail: affiliate.email,
-                amount: formatMoney(centsToAmount(p.amountCents)),
-                transferId: p.transferId,
-                payoutId: p.payoutId,
-              });
-            }
-          } catch (emailErr) {
-            console.error(`Payout executed email failed for ${p.affiliateId}:`, emailErr);
-          }
-        }
-      }
-
+      // needsReconciliation means money LEFT but the ledger did not record it.
+      // Reported as 207 so it cannot be mistaken for a clean run in a dashboard
+      // or a log filter — it is the one outcome that needs a human before the
+      // next run.
+      if (summary.needsReconciliation.length) return res.status(207).json(summary);
       res.json(summary);
     } catch (error) {
       console.error("Payout run error:", error);
       res.status(500).json({ error: "Failed to run payouts" });
+    }
+  });
+
+  /** Admin: the scheduled-run ledger — what ran, when, and what it did. */
+  app.get("/api/admin/scheduled-runs", requireAdmin, async (req, res) => {
+    try {
+      const runs = await storage.listScheduledRuns(Number(req.query.limit) || 50);
+      res.json({ enabled: schedulerEnabled(), runs });
+    } catch (error) {
+      console.error("Scheduled runs error:", error);
+      res.status(500).json({ error: "Failed to load scheduled runs" });
     }
   });
 
