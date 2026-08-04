@@ -1,5 +1,5 @@
 import { getUncachableStripeClient } from './stripeClient';
-import { getPlatformCurrency } from './feeConfig';
+import { getPlatformCurrency, feeInvoiceAutoCharge } from './feeConfig';
 
 // Plan catalogue lives in shared/ so the client renders exactly the amounts the
 // server charges. See shared/plans.ts for why the keys must never be renamed.
@@ -382,6 +382,28 @@ export class StripeService {
   // receives a hosted invoice with a due date rather than having their card
   // silently charged for an amount they have not seen before.
 
+  /**
+   * Create the fee invoice.
+   *
+   * TWO COLLECTION MODES, and the difference is who has to do something.
+   *
+   *   send_invoice          Stripe emails a hosted invoice with a due date. The
+   *                         brand chooses to pay it. Someone has to chase the
+   *                         ones that do not.
+   *   charge_automatically  Charged to the card the brand already has on file
+   *                         for their subscription. Nobody touches it, which is
+   *                         the only version that survives thousands of brands.
+   *
+   * Auto-charge is the platform default (FEE_INVOICE_COLLECTION), because the
+   * alternative does not scale and because these brands are already paying us a
+   * subscription on that same card.
+   *
+   * It is still an invoice, not a Stripe application fee: the money is collected
+   * FROM the brand after the sale, rather than withheld from the shopper's
+   * payment as it passes through. That distinction matters for what we tell
+   * brands, and it is why `auto_advance` stays false either way — the invoice is
+   * created as a draft and finalising it is a separate, deliberate call.
+   */
   async createFeeInvoice(args: {
     customerId: string;
     currency: string;
@@ -389,18 +411,21 @@ export class StripeService {
     metadata: Record<string, string>;
     idempotencyKey: string;
     daysUntilDue: number;
+    /** Defaults to the platform setting; pass explicitly to override per run. */
+    autoCharge?: boolean;
   }) {
     const stripe = await getUncachableStripeClient();
-    // auto_advance false — created as a DRAFT. Finalising is a separate call, so
-    // the first fee invoices a brand ever gets can be looked at before sending.
+    const autoCharge = args.autoCharge ?? feeInvoiceAutoCharge();
+
     return await stripe.invoices.create({
       customer: args.customerId,
       currency: args.currency,
-      collection_method: 'send_invoice',
-      days_until_due: args.daysUntilDue,
+      ...(autoCharge
+        ? { collection_method: 'charge_automatically' as const }
+        : { collection_method: 'send_invoice' as const, days_until_due: args.daysUntilDue }),
       auto_advance: false,
       description: args.description,
-      metadata: args.metadata,
+      metadata: { ...args.metadata, collection: autoCharge ? 'auto_charge' : 'send_invoice' },
     }, { idempotencyKey: args.idempotencyKey });
   }
 

@@ -66,6 +66,24 @@ export function getFeeConfig(): FeeConfig {
  * USD, so transferring EUR fails with "insufficient funds"). Defaults to USD;
  * set PLATFORM_CURRENCY=eur for a EUR account.
  */
+/**
+ * Collect the marketplace fee by charging the card the brand already has on
+ * file, rather than emailing them an invoice to pay.
+ *
+ * Default TRUE. Emailing thousands of brands an invoice each month and chasing
+ * the unpaid ones is not a process that scales, and these brands are already
+ * paying a subscription on the same card. Set FEE_INVOICE_COLLECTION=send_invoice
+ * to switch a deployment back to emailed invoices.
+ *
+ * This does NOT make the fee a Stripe application fee. The money is collected
+ * from the brand after the sale, not withheld from the shopper's payment as it
+ * passes through — that requires the checkout itself to run through MTRLZD.
+ * Keep the two straight when describing this to a brand.
+ */
+export function feeInvoiceAutoCharge(): boolean {
+  return (process.env.FEE_INVOICE_COLLECTION || "auto_charge").toLowerCase() !== "send_invoice";
+}
+
 export function getPlatformCurrency(): string {
   return (process.env.PLATFORM_CURRENCY || "usd").toLowerCase();
 }
