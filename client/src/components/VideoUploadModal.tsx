@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -45,7 +45,7 @@ import {
 import { Link } from "wouter";
 import { Switch } from "@/components/ui/switch";
 import { useUpload } from "@/hooks/use-upload";
-import { ProductCarouselEditor, defaultCarouselSettings, type CarouselSettings } from "@/components/ProductCarouselEditor";
+import { ProductCarouselEditor, defaultCarouselSettings, carouselSettingsFromBrandKit, type CarouselSettings } from "@/components/ProductCarouselEditor";
 import { useToast } from "@/hooks/use-toast";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -126,6 +126,46 @@ export function VideoUploadModal({
   const pollInterval = useRef<ReturnType<typeof setInterval> | null>(null);
   const { toast } = useToast();
 
+  /**
+   * The brand kit is this creator's saved carousel defaults. Every new video
+   * starts from it — that is what the Brand Kit page promises, and until now it
+   * was not true: the modal always opened on the generic defaults.
+   *
+   * `brandDefaults` is what "no choices made for this video yet" means, so it is
+   * also what Reset returns to. Resetting to the generic defaults would throw
+   * away the brand's own settings, which is not what a brand means by reset.
+   */
+  const { data: brandKit } = useQuery<unknown>({
+    queryKey: ["/api/brand-kit"],
+    enabled: open,
+  });
+
+  const brandDefaults = useMemo(
+    () => carouselSettingsFromBrandKit(brandKit),
+    [brandKit],
+  );
+
+  /**
+   * Seed the editor from the brand kit once per opening, and only when there is
+   * nothing to lose: a restored draft is the creator's own earlier work, and
+   * edits made in this session are their current work. Neither may be silently
+   * overwritten when the query resolves a moment after the modal opens.
+   */
+  const seededRef = useRef(false);
+  const draftRestoredRef = useRef(false);
+
+  useEffect(() => {
+    if (!open) {
+      seededRef.current = false;
+      draftRestoredRef.current = false;
+      return;
+    }
+    if (seededRef.current || draftRestoredRef.current) return;
+    if (brandKit === undefined) return; // still loading
+    seededRef.current = true;
+    setCarouselSettings(brandDefaults);
+  }, [open, brandKit, brandDefaults]);
+
   const { data: trialStatus } = useQuery<{
     hasActiveSubscription: boolean;
     videoCount: number;
@@ -152,9 +192,12 @@ export function VideoUploadModal({
         try {
           const draft = JSON.parse(savedDraft);
           if (draft.videoUrl) {
+            // A draft outranks the brand kit — it is work this creator already
+            // did on this video. Flagged so the seeding effect stands down.
+            draftRestoredRef.current = true;
             setVideoUrl(draft.videoUrl);
             setSelectedBrands(draft.selectedBrands || []);
-            setCarouselSettings(draft.carouselSettings || defaultCarouselSettings);
+            setCarouselSettings(draft.carouselSettings || brandDefaults);
             setEnableAiDetection(draft.enableAiDetection ?? true);
             form.setValue("title", draft.title || "");
             form.setValue("description", draft.description || "");
@@ -477,7 +520,7 @@ export function VideoUploadModal({
     setCreatedVideoId(null);
     setSelectedBrands([]);
     setEnableAiDetection(true);
-    setCarouselSettings(defaultCarouselSettings);
+    setCarouselSettings(brandDefaults);
     setDetectionJob(null);
     setScanProgress(0);
     setScanMsgIdx(0);
@@ -882,7 +925,7 @@ export function VideoUploadModal({
                 <ProductCarouselEditor
                   settings={carouselSettings}
                   onChange={setCarouselSettings}
-                  onReset={() => setCarouselSettings(defaultCarouselSettings)}
+                  onReset={() => setCarouselSettings(brandDefaults)}
                   videoUrl={videoUrl}
                   compact
                 />

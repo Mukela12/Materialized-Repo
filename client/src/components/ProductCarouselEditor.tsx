@@ -574,3 +574,49 @@ export function ProductCarouselEditor({
 }
 
 export { defaultSettings as defaultCarouselSettings };
+
+/**
+ * A saved brand kit, expressed as carousel settings.
+ *
+ * The upload modal used to start every video from `defaultSettings`, ignoring
+ * the brand kit entirely — so a brand that had chosen its colours, font and
+ * button label in Brand Kit still got the generic defaults every time it
+ * uploaded, and had to redo the work per video. The Brand Kit page's own copy
+ * said "These settings will be applied to all new video uploads", which was
+ * simply untrue.
+ *
+ * A brand kit only covers 11 of the 18 settings — offsets, delay, and the three
+ * font sizes have no column — so anything it does not specify falls back to the
+ * default rather than being blanked. Null and empty string both count as unset:
+ * `default_button_color` is nullable, and empty strings have been observed in
+ * this database in the equivalent video column.
+ *
+ * Lives here, next to CarouselSettings and defaultSettings, so that adding a
+ * field to the settings type puts the mapping right under your nose.
+ */
+export function carouselSettingsFromBrandKit(kit: unknown): CarouselSettings {
+  if (!kit || typeof kit !== "object") return defaultSettings;
+  const k = kit as Record<string, unknown>;
+
+  const str = (v: unknown, fallback: string) =>
+    typeof v === "string" && v.trim() !== "" ? v : fallback;
+  const num = (v: unknown, fallback: number) =>
+    typeof v === "number" && Number.isFinite(v) ? v : fallback;
+  const bool = (v: unknown, fallback: boolean) =>
+    typeof v === "boolean" ? v : fallback;
+
+  return {
+    ...defaultSettings,
+    buttonFont: str(k.defaultButtonFont, defaultSettings.buttonFont),
+    buttonColor: str(k.defaultButtonColor, defaultSettings.buttonColor),
+    buttonTextColor: str(k.defaultButtonTextColor, defaultSettings.buttonTextColor),
+    cornerRadius: num(k.defaultCornerRadius, defaultSettings.cornerRadius),
+    backgroundOpacity: num(k.defaultBackgroundOpacity, defaultSettings.backgroundOpacity),
+    showThumbnail: bool(k.defaultShowThumbnail, defaultSettings.showThumbnail),
+    showButton: bool(k.defaultShowButton, defaultSettings.showButton),
+    showPrice: bool(k.defaultShowPrice, defaultSettings.showPrice),
+    showTitle: bool(k.defaultShowTitle, defaultSettings.showTitle),
+    buttonLabel: str(k.defaultButtonLabel, defaultSettings.buttonLabel) as CarouselSettings["buttonLabel"],
+    position: str(k.defaultPosition, defaultSettings.position) as CarouselSettings["position"],
+  };
+}

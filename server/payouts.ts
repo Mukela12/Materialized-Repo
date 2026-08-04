@@ -10,9 +10,14 @@
  * orchestration is testable without a live DB or Stripe.
  */
 import { toCents } from "./feeConfig";
+import { MIN_PAYOUT_CENTS } from "../shared/pricing";
 
-/** Stripe's minimum transfer is €0.50. */
-export const DEFAULT_MIN_TRANSFER_CENTS = 50;
+/**
+ * Stripe's minimum transfer is $0.50. Defined in shared/pricing.ts because the
+ * publisher settings page has to quote the same number — it previously said
+ * "$50.00", a hundredfold overstatement, because it held its own copy.
+ */
+export const DEFAULT_MIN_TRANSFER_CENTS = MIN_PAYOUT_CENTS;
 
 export interface PayableCommission {
   id: string;

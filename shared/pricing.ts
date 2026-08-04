@@ -22,6 +22,24 @@ export const LICENSE_FEE_DECIMAL = LICENSE_FEE.toFixed(2);
  */
 export const LICENSE_FEE_PER_VIDEO = LICENSE_FEE;
 
+// ─── Payouts ─────────────────────────────────────────────────────────────────
+
+/**
+ * The smallest balance that will be paid out, in integer CENTS.
+ *
+ * Shared rather than server-only because the publisher-facing payout settings
+ * page has to state it, and stating it from memory went wrong: the page read
+ * "$50.00" while the engine's floor was 50 cents — a hundredfold overstatement
+ * of the threshold, shown to the people waiting to be paid. One constant, read
+ * by both the engine and the page, so the two cannot disagree again.
+ *
+ * The value is Stripe's own minimum transfer amount, not a policy choice.
+ */
+export const MIN_PAYOUT_CENTS = 50;
+
+/** The same figure, formatted for display. */
+export const MIN_PAYOUT_DISPLAY = `$${(MIN_PAYOUT_CENTS / 100).toFixed(2)}`;
+
 // ─── Wallet tokens ───────────────────────────────────────────────────────────
 //
 // Client spec (27 Jul 2026): "1 Token = $49". A token is a PREPAID PLATFORM

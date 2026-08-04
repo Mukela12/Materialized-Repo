@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { MIN_PAYOUT_DISPLAY } from "@shared/pricing";
 
 type StripeConnectStatus = {
   connected: boolean;
@@ -247,7 +248,13 @@ export default function AffiliateSettings() {
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">Minimum Payout</p>
-                  <p className="font-medium">$50.00</p>
+                  {/*
+                    Read from the constant the payout engine actually uses. This
+                    said "$50.00" against an engine floor of 50 cents — telling
+                    publishers they had to earn a hundred times more than they
+                    do before seeing any money.
+                  */}
+                  <p className="font-medium" data-testid="text-minimum-payout">{MIN_PAYOUT_DISPLAY}</p>
                   <p className="text-xs text-muted-foreground mt-1">
                     Balance carries over if threshold not met
                   </p>
