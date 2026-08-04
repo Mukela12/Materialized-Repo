@@ -66,6 +66,15 @@ export const users = pgTable("users", {
   stripeCustomerId: text("stripe_customer_id"),
   stripeConnectAccountId: text("stripe_connect_account_id"),
   stripeConnectOnboarded: boolean("stripe_connect_onboarded").default(false),
+  /**
+   * Can this account ACCEPT card payments, as opposed to merely receiving
+   * payouts? Connect accounts here were created for payouts and request only
+   * the `transfers` capability; selling through a brand's account additionally
+   * needs `card_payments`, which Stripe verifies separately. Kept apart from
+   * stripeConnectOnboarded so a brand cannot look ready to sell while Stripe
+   * would reject the charge.
+   */
+  stripeConnectChargesEnabled: boolean("stripe_connect_charges_enabled").notNull().default(false),
   isAdmin: boolean("is_admin").default(false),
   freeAccess: boolean("free_access").default(false),
   emailVerified: boolean("email_verified").default(false),
@@ -382,7 +391,14 @@ export const videoProductOverlays = pgTable("video_product_overlays", {
   name: text("name").notNull(),
   productUrl: text("product_url"),
   imageUrl: text("image_url"),
+  /** Display label as typed — "$49", "from £20". NEVER charge from this. */
   price: text("price"),
+  /**
+   * The authoritative amount, and the only thing in-video checkout reads.
+   * A price is a number or it is not chargeable; free text is a label.
+   */
+  priceCents: integer("price_cents"),
+  currency: text("currency"),
   brandName: text("brand_name"),
   position: carouselPositionEnum("position").notNull().default("bottom"),
   startTime: decimal("start_time", { precision: 10, scale: 2 }).notNull().default("0"),
@@ -1336,6 +1352,48 @@ export const scheduledJobRuns = pgTable("scheduled_job_runs", {
 });
 
 export type ScheduledJobRun = typeof scheduledJobRuns.$inferSelect;
+
+// ─── In-video orders ─────────────────────────────────────────────────────────
+//
+// A shopper buying from the video overlay, paid through MTRLZD so Stripe can
+// split the money at the moment of the charge.
+//
+// This is the difference between "invoices a 15% fee" and "retains" one. On the
+// invoicing path the brand's own checkout takes the money and we bill them
+// later; here the charge is created by the platform on the brand's connected
+// account, Stripe routes the brand their share and withholds our fee, and the
+// brand stays merchant of record via `on_behalf_of`.
+//
+// commission_transactions records what people EARN from a sale and has nowhere
+// to put the shopper's payment itself. This is that record, and it is what a
+// refund or dispute gets reconciled against.
+export const videoOrderStatusEnum = pgEnum("video_order_status", [
+  "pending", "paid", "failed", "refunded",
+]);
+
+export const videoOrders = pgTable("video_orders", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  videoId: varchar("video_id").notNull().references(() => videos.id),
+  overlayId: integer("overlay_id"),
+  // Denormalised so an order stays readable after a video or overlay is edited.
+  brandUserId: varchar("brand_user_id").notNull().references(() => users.id),
+  creatorId: varchar("creator_id").references(() => users.id),
+  affiliateId: varchar("affiliate_id").references(() => users.id),
+  /** The utm/ref carried from the embed click, kept for reconciliation. */
+  attributionRef: text("attribution_ref"),
+  stripeCheckoutSessionId: text("stripe_checkout_session_id").notNull(),
+  stripePaymentIntentId: text("stripe_payment_intent_id"),
+  currency: text("currency").notNull(),
+  amountCents: integer("amount_cents").notNull(),
+  /** What Stripe withheld for the platform at the moment of the charge. */
+  applicationFeeCents: integer("application_fee_cents").notNull().default(0),
+  status: videoOrderStatusEnum("status").notNull().default("pending"),
+  createdAt: timestamp("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  paidAt: timestamp("paid_at"),
+  refundedAt: timestamp("refunded_at"),
+});
+
+export type VideoOrder = typeof videoOrders.$inferSelect;
 
 // ─────────────────────────────────────────────────────────────────────────────
 

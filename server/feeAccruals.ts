@@ -52,6 +52,17 @@ export interface FeeAccrualInput {
   attributionState: AttributionState;
   /** Present only when attributionState is "attributed". */
   split?: SaleSplit;
+  /**
+   * The fee was ALREADY taken at the moment of the charge — an in-video sale,
+   * where Stripe withheld it as an application fee.
+   *
+   * Written as `paid` rather than `accrued` so the monthly invoice run cannot
+   * pick it up. Its claim query takes only `accrued` rows, so an in-video sale
+   * recorded the ordinary way would be billed to the brand a SECOND time for
+   * money we had already collected. The row is still written, because the fee is
+   * real revenue and belongs in the ledger for reporting.
+   */
+  alreadyCollected?: boolean;
 }
 
 export interface AccrualRow {
@@ -68,6 +79,8 @@ export interface AccrualRow {
   marketplaceFeePct: string;
   attributionState: AttributionState;
   occurredAt: Date;
+  /** 'paid' when Stripe already withheld the fee; 'accrued' when it is owed. */
+  status: "accrued" | "paid";
 }
 
 /** Minimal storage surface — keeps this unit-testable without a database. */
@@ -119,6 +132,7 @@ export function buildAccrualRow(input: FeeAccrualInput, now: Date): AccrualRow {
     marketplaceFeePct: split ? split.effectiveRates.marketplaceFeePct.toFixed(2) : "0.00",
     attributionState: input.attributionState,
     occurredAt: now,
+    status: input.alreadyCollected ? "paid" : "accrued",
   };
 }
 

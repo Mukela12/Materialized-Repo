@@ -307,14 +307,24 @@ export class StripeService {
     }
   }
 
-  async createConnectAccount(email: string, userId: string) {
+  /**
+   * `forSelling` requests `card_payments` as well as `transfers`.
+   *
+   * Publishers only ever RECEIVE money, so transfers alone is right for them and
+   * asks for less verification. A brand selling through in-video checkout has to
+   * ACCEPT a card, which is a separate capability Stripe verifies separately —
+   * request it up front or the first charge fails with the account looking
+   * perfectly healthy.
+   */
+  async createConnectAccount(email: string, userId: string, forSelling = false) {
     const stripe = await getUncachableStripeClient();
     return await stripe.accounts.create({
       type: 'express',
       email,
-      metadata: { userId },
+      metadata: { userId, ...(forSelling ? { role: 'brand_seller' } : {}) },
       capabilities: {
         transfers: { requested: true },
+        ...(forSelling ? { card_payments: { requested: true } } : {}),
       },
     });
   }
@@ -450,6 +460,76 @@ export class StripeService {
       currency: args.currency,
       description: args.description,
     }, { idempotencyKey: args.idempotencyKey });
+  }
+
+  /**
+   * The in-video checkout. THIS is where the 15% is genuinely retained.
+   *
+   * A DESTINATION CHARGE: the platform creates the charge, Stripe moves the
+   * brand their share automatically via `transfer_data.destination`, and keeps
+   * `application_fee_amount` for us in the same movement. Nothing is invoiced
+   * afterwards and nothing can go unpaid, because the split happens at the
+   * moment the shopper's card is charged.
+   *
+   * `on_behalf_of` makes the BRAND the merchant of record. That is not cosmetic:
+   * it decides whose name appears on the shopper's statement, whose country sets
+   * the settlement currency, and who owns the customer relationship for tax and
+   * refunds. The brand keeps all of that; MTRLZD is the technology in the middle.
+   *
+   * `ui_mode: 'embedded'` returns a client secret to mount inside the video
+   * overlay, so the shopper never leaves the brand's page. Stripe's own guidance
+   * prefers Checkout over assembling a Payment Element by hand.
+   *
+   * AMOUNTS ARE CALLER-SUPPLIED IN CENTS AND MUST COME FROM THE DATABASE. The
+   * caller reads price_cents from the overlay row; a client-supplied price is a
+   * shopper choosing what to pay.
+   */
+  async createInVideoCheckout(args: {
+    brandAccountId: string;
+    productName: string;
+    imageUrl?: string | null;
+    amountCents: number;
+    applicationFeeCents: number;
+    currency: string;
+    returnUrl: string;
+    metadata: Record<string, string>;
+    idempotencyKey: string;
+  }) {
+    const stripe = await getUncachableStripeClient();
+    return await stripe.checkout.sessions.create({
+      mode: 'payment',
+      ui_mode: 'embedded',
+      return_url: args.returnUrl,
+      line_items: [{
+        quantity: 1,
+        price_data: {
+          currency: args.currency,
+          unit_amount: args.amountCents,
+          product_data: {
+            name: args.productName,
+            ...(args.imageUrl ? { images: [args.imageUrl] } : {}),
+          },
+        },
+      }],
+      payment_intent_data: {
+        application_fee_amount: args.applicationFeeCents,
+        transfer_data: { destination: args.brandAccountId },
+        on_behalf_of: args.brandAccountId,
+        metadata: args.metadata,
+      },
+      metadata: args.metadata,
+    }, { idempotencyKey: args.idempotencyKey });
+  }
+
+  /** Whether a connected account can actually accept a card today. */
+  async getConnectChargeStatus(accountId: string) {
+    const stripe = await getUncachableStripeClient();
+    const acct = await stripe.accounts.retrieve(accountId);
+    return {
+      chargesEnabled: !!acct.charges_enabled,
+      payoutsEnabled: !!acct.payouts_enabled,
+      detailsSubmitted: !!acct.details_submitted,
+    };
   }
 
   async finalizeFeeInvoice(invoiceId: string) {

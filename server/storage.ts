@@ -81,9 +81,11 @@ import {
   platformFeeAccruals,
   feeInvoices,
   scheduledJobRuns,
+  videoOrders,
   type PlatformFeeAccrual,
   type FeeInvoice,
   type ScheduledJobRun,
+  type VideoOrder,
   brandOutreachRequests,
   publisherNotifications,
   brandSubscriptions,
@@ -242,6 +244,11 @@ export interface IStorage {
   completeRun(runId: string, result: { status: "success" | "failed" | "skipped"; items: number; detail: string }): Promise<void>;
   lastRunOccurrence(jobName: string): Promise<Date | null>;
   listScheduledRuns(limit?: number): Promise<ScheduledJobRun[]>;
+
+  // In-video orders — see server/inVideoCheckout.ts.
+  createVideoOrder(row: Omit<VideoOrder, "id" | "createdAt" | "paidAt" | "refundedAt" | "status">): Promise<{ id: string }>;
+  markVideoOrderPaid(sessionId: string, paymentIntentId: string | null): Promise<VideoOrder | null>;
+  getVideoOrderBySession(sessionId: string): Promise<VideoOrder | null>;
   getCommissionsByExternalOrder(externalOrderId: string, storeConnectionId?: string | null): Promise<CommissionTransaction[]>;
   
   // Campaigns
@@ -1955,6 +1962,26 @@ export class MemStorage implements IStorage {
       (storeConnectionId == null || t.storeConnectionId === storeConnectionId));
   }
 
+  private videoOrdersMap = new Map<string, any>();
+
+  async createVideoOrder(row: any): Promise<{ id: string }> {
+    const id = randomUUID();
+    this.videoOrdersMap.set(row.stripeCheckoutSessionId, { id, ...row, status: "pending", createdAt: new Date(), paidAt: null, refundedAt: null });
+    return { id };
+  }
+
+  async markVideoOrderPaid(sessionId: string, paymentIntentId: string | null): Promise<VideoOrder | null> {
+    const o = this.videoOrdersMap.get(sessionId);
+    if (!o || o.status !== "pending") return null;   // same one-shot guard as SQL
+    o.status = "paid"; o.paidAt = new Date();
+    if (paymentIntentId) o.stripePaymentIntentId = paymentIntentId;
+    return o as VideoOrder;
+  }
+
+  async getVideoOrderBySession(sessionId: string): Promise<VideoOrder | null> {
+    return (this.videoOrdersMap.get(sessionId) as VideoOrder) ?? null;
+  }
+
   async getCommissionsByExternalOrder(externalOrderId: string, storeConnectionId?: string | null): Promise<CommissionTransaction[]> {
     return Array.from(this.commissionTransactionsMap.values()).filter(t =>
       t.externalOrderId === externalOrderId &&
@@ -1975,7 +2002,7 @@ export class MemStorage implements IStorage {
       throw err;
     }
     const id = randomUUID();
-    this.feeAccrualsMap.set(key, { id, ...row, status: "accrued", voidedAt: null, createdAt: new Date() });
+    this.feeAccrualsMap.set(key, { id, ...row, status: row.status ?? "accrued", voidedAt: null, createdAt: new Date() });
     return { id };
   }
 
@@ -3375,6 +3402,9 @@ export class DatabaseStorage implements IStorage {
       marketplaceFeePct: row.marketplaceFeePct,
       attributionState: row.attributionState,
       occurredAt: row.occurredAt,
+      // 'paid' for an in-video sale: Stripe already withheld the fee, so the
+      // invoice run (which claims only 'accrued') must never see this row.
+      status: row.status,
     }).returning({ id: platformFeeAccruals.id });
     return { id: created.id };
   }
@@ -3628,6 +3658,35 @@ export class DatabaseStorage implements IStorage {
   async listScheduledRuns(limit = 50): Promise<ScheduledJobRun[]> {
     return db.select().from(scheduledJobRuns)
       .orderBy(desc(scheduledJobRuns.startedAt)).limit(Math.min(limit, 200));
+  }
+
+  async createVideoOrder(row: any): Promise<{ id: string }> {
+    const [created] = await db.insert(videoOrders).values(row).returning({ id: videoOrders.id });
+    return { id: created.id };
+  }
+
+  /**
+   * Mark an order paid, ONCE. Returns null if it was already paid.
+   *
+   * The `status = 'pending'` predicate is the idempotency guard: Stripe retries
+   * webhooks, and a second delivery must not re-record commissions or re-write
+   * the fee. Whoever flips the row wins; everyone else gets null and stops.
+   */
+  async markVideoOrderPaid(sessionId: string, paymentIntentId: string | null): Promise<VideoOrder | null> {
+    const [updated] = await db.update(videoOrders)
+      .set({ status: "paid", paidAt: new Date(), ...(paymentIntentId ? { stripePaymentIntentId: paymentIntentId } : {}) })
+      .where(and(
+        eq(videoOrders.stripeCheckoutSessionId, sessionId),
+        sql`${videoOrders.status} = 'pending'`,
+      ))
+      .returning();
+    return updated ?? null;
+  }
+
+  async getVideoOrderBySession(sessionId: string): Promise<VideoOrder | null> {
+    const [row] = await db.select().from(videoOrders)
+      .where(eq(videoOrders.stripeCheckoutSessionId, sessionId)).limit(1);
+    return row ?? null;
   }
 
   async hasCommissionForExternalOrder(externalOrderId: string, storeConnectionId?: string | null): Promise<boolean> {

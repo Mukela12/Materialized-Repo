@@ -1,6 +1,9 @@
 import Stripe from 'stripe';
 import { getUncachableStripeClient } from './stripeClient';
 import { storage } from './storage';
+import { recordSaleCommissions } from './commissions';
+import { recordFeeAccrual } from './feeAccruals';
+import { computeSaleSplit } from './feeConfig';
 import { toCents, centsToAmount } from './feeConfig';
 import { PLAN_CONFIG, isPlanKey, type PlanKey } from './stripeService';
 import { mintBrandConversionToken } from './wallet';
@@ -131,7 +134,74 @@ export function extractSubscriptionId(
   return sub.id;
 }
 
+/**
+ * A shopper completed an in-video purchase.
+ *
+ * The money has already moved and the fee is already ours — Stripe withheld it
+ * as an application fee on the charge. Nothing here collects anything; it
+ * records what happened.
+ *
+ * IDEMPOTENT VIA THE ORDER ROW. markVideoOrderPaid only flips a row that is
+ * still `pending`, so a retried delivery returns null and this returns early.
+ * Without that, a Stripe retry would write the commissions twice.
+ */
+async function handleInVideoOrderCompleted(session: Stripe.Checkout.Session): Promise<void> {
+  const meta = session.metadata ?? {};
+  const paymentIntentId = typeof session.payment_intent === 'string'
+    ? session.payment_intent
+    : session.payment_intent?.id ?? null;
+
+  const order = await storage.markVideoOrderPaid(session.id, paymentIntentId);
+  if (!order) return; // already handled, or unknown session
+
+  const saleAmount = (order.amountCents / 100).toFixed(2);
+
+  // Same helper the store-webhook path uses, so an in-video sale and an
+  // on-store sale cannot disagree about what a creator or publisher earns.
+  await recordSaleCommissions(
+    storage,
+    saleAmount,
+    {
+      videoId: order.videoId,
+      creatorId: order.creatorId,
+      affiliateId: order.affiliateId,
+      campaignAffiliateId: null,
+      resolvedCommissionRate: null,
+      externalOrderId: session.id,
+      storeConnectionId: null,
+    },
+    null,
+  );
+
+  // Recorded as ALREADY COLLECTED. The fee was withheld at the charge, so an
+  // `accrued` row here would make the monthly invoice run bill this brand a
+  // second time for money we already have.
+  await recordFeeAccrual(storage as any, {
+    storeConnectionId: order.videoId, // no store connection on this path
+    brandUserId: order.brandUserId,
+    externalOrderId: session.id,
+    videoId: order.videoId,
+    currency: order.currency,
+    saleAmount,
+    attributionState: 'attributed',
+    split: computeSaleSplit(order.amountCents, {
+      hasPublisher: !!order.affiliateId && order.affiliateId !== order.creatorId,
+    }),
+    alreadyCollected: true,
+  });
+
+  console.log(
+    `[Webhook] in-video order ${order.id} paid — ${saleAmount} ${order.currency}, ` +
+    `fee ${(order.applicationFeeCents / 100).toFixed(2)} retained at charge`,
+  );
+}
+
 async function handleCheckoutCompleted(session: Stripe.Checkout.Session): Promise<void> {
+  // Two kinds of completed checkout arrive here now. An in-video purchase is
+  // mode 'payment' and carries our marker; subscriptions are everything else.
+  if (session.mode === 'payment' && session.metadata?.kind === 'in_video_order') {
+    return handleInVideoOrderCompleted(session);
+  }
   if (session.mode !== 'subscription') return;
 
   const customerId = extractCustomerId(session.customer);

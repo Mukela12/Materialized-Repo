@@ -10,6 +10,7 @@ import { hashPassword } from "./auth";
 import { recordSaleCommissions, clawbackSaleCommissions } from "./commissions";
 import { recordFeeAccrual, voidFeeAccrual } from "./feeAccruals";
 import { generateFeeInvoice } from "./feeInvoicing";
+import { quoteCheckout, checkoutIdempotencyKey } from "./inVideoCheckout";
 import { feeInvoiceStripeAdapter } from "./feeInvoiceStripe";
 
 
@@ -5871,6 +5872,123 @@ Identify which products from the catalog are most likely to appear or be feature
     });
   }
 
+
+  // ==================== IN-VIDEO CHECKOUT (public, no auth) ==================
+  //
+  // The shopper buys from the video overlay. This is the path where the 15% is
+  // genuinely RETAINED: the platform creates the charge on the brand's connected
+  // account, Stripe routes the brand their share and withholds our fee in the
+  // same movement, and the brand stays merchant of record.
+  //
+  // Public because the embed runs on the brand's own site with no session. That
+  // is why the PRICE IS READ FROM THE DATABASE and never from the request — a
+  // public endpoint that trusts a client-supplied amount is one where the
+  // shopper decides what to pay.
+  app.post("/api/embed/:videoId/checkout", async (req, res) => {
+    try {
+      const { videoId } = req.params;
+      const overlayId = Number(req.body?.overlayId);
+      if (!Number.isInteger(overlayId)) {
+        return res.status(400).json({ error: "overlayId is required" });
+      }
+
+      const video = await storage.getVideo(videoId);
+      if (!video) return res.status(404).json({ error: "Video not found" });
+
+      const overlays = await storage.getVideoProductOverlays(videoId);
+      const overlay = overlays.find((o) => o.id === overlayId);
+      if (!overlay) return res.status(404).json({ error: "Product not found" });
+
+      // The brand being paid is the overlay's product owner. Resolved from the
+      // product, not from the request.
+      const product = overlay.productId ? await storage.getProduct(overlay.productId) : null;
+      const brandId = product?.brandId ?? null;
+      const brand = brandId ? await storage.getBrand(brandId) : null;
+      const brandUser = brand?.ownerId ? await storage.getUser(brand.ownerId) : null;
+
+      if (!brandUser) {
+        return res.status(409).json({
+          error: "This product is not linked to a brand that can take payments.",
+          reason: "brand_not_ready",
+        });
+      }
+
+      const ref = typeof req.body?.ref === "string" ? req.body.ref : (video.utmCode ?? null);
+      const resolved = ref ? await storage.resolveUtmToAffiliate(ref) : null;
+      const hasPublisher = !!(resolved?.affiliateId && resolved.affiliateId !== video.creatorId);
+
+      const cfg = resolveFeeConfig(await storage.getPlatformSettings());
+      const quote = quoteCheckout(
+        {
+          overlayId: overlay.id,
+          videoId,
+          name: overlay.name,
+          imageUrl: overlay.imageUrl,
+          priceCents: overlay.priceCents ?? null,
+          currency: overlay.currency ?? getPlatformCurrency(),
+        },
+        {
+          brandUserId: brandUser.id,
+          stripeAccountId: brandUser.stripeConnectAccountId ?? null,
+          chargesEnabled: !!brandUser.stripeConnectChargesEnabled,
+        },
+        {
+          marketplaceFeePct: cfg.marketplaceFeePct,
+          creatorPct: cfg.creatorPct,
+          publisherPct: cfg.publisherPct,
+        },
+        { hasPublisher },
+      );
+
+      if (!quote.ok) {
+        return res.status(409).json({ error: quote.message, reason: quote.reason });
+      }
+
+      const baseUrl = process.env.APP_URL || `${req.protocol}://${req.get("host")}`;
+      const nonce = crypto.randomUUID();
+      const session = await stripeService.createInVideoCheckout({
+        brandAccountId: brandUser.stripeConnectAccountId!,
+        productName: overlay.name,
+        imageUrl: overlay.imageUrl,
+        amountCents: quote.amountCents,
+        applicationFeeCents: quote.applicationFeeCents,
+        currency: quote.currency,
+        returnUrl: `${baseUrl}/embed/${videoId}/order-complete?session_id={CHECKOUT_SESSION_ID}`,
+        metadata: {
+          kind: "in_video_order",
+          videoId,
+          overlayId: String(overlay.id),
+          brandUserId: brandUser.id,
+          ...(video.creatorId ? { creatorId: video.creatorId } : {}),
+          ...(resolved?.affiliateId ? { affiliateId: resolved.affiliateId } : {}),
+          ...(ref ? { ref } : {}),
+        },
+        idempotencyKey: checkoutIdempotencyKey(videoId, overlay.id, nonce),
+      });
+
+      // Recorded as pending BEFORE the shopper pays, so the webhook has a row to
+      // flip and cannot race ahead of us.
+      await storage.createVideoOrder({
+        videoId,
+        overlayId: overlay.id,
+        brandUserId: brandUser.id,
+        creatorId: video.creatorId ?? null,
+        affiliateId: resolved?.affiliateId ?? null,
+        attributionRef: ref,
+        stripeCheckoutSessionId: session.id,
+        stripePaymentIntentId: null,
+        currency: quote.currency,
+        amountCents: quote.amountCents,
+        applicationFeeCents: quote.applicationFeeCents,
+      } as any);
+
+      res.json({ clientSecret: session.client_secret, sessionId: session.id });
+    } catch (error) {
+      console.error("In-video checkout error:", error);
+      res.status(500).json({ error: "Could not start checkout" });
+    }
+  });
+
   // ==================== EMBED ROUTES (public, no auth) ====================
 
   // Serve embed iframe page
@@ -5887,6 +6005,12 @@ Identify which products from the catalog are most likely to appear or be feature
         price: o.price,
         productUrl: appendUtm(o.productUrl, utm),
         brandName: (o.brandName || "").replace(/[<>"'&]/g, ""),
+        // For the in-video buy button. `buyable` is decided here, from the
+        // stored price — never from anything the page can influence. The
+        // AMOUNT is deliberately not sent: the checkout endpoint re-reads it
+        // from the database, so nothing on this page can change what is charged.
+        overlayId: o.id,
+        buyable: o.priceCents != null && o.priceCents > 0,
       }));
 
       const apiBase = `${req.protocol}://${req.get("host")}`;
@@ -5913,6 +6037,15 @@ Identify which products from the catalog are most likely to appear or be feature
     .product-card img{width:100%;height:clamp(40px,10vw,80px);object-fit:cover;border-radius:clamp(4px,1vw,8px)}
     .product-name{font-size:clamp(8px,2vw,11px);font-weight:600;margin-top:clamp(2px,0.5vw,4px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#333}
     .product-price{font-size:clamp(7px,1.8vw,10px);color:#677A67;font-weight:700;margin-top:1px}
+    .buy-btn{margin-top:3px;width:100%;border:0;border-radius:999px;background:#1351aa;color:#fff;font-size:clamp(7px,1.7vw,10px);font-weight:700;padding:3px 0;cursor:pointer;font-family:inherit}
+    .buy-btn:hover{background:#0f4189}
+    /* The checkout sits OVER the video, inside the same frame — the shopper
+       never leaves the brand's page. */
+    #pay{position:absolute;inset:0;background:rgba(12,14,16,.92);z-index:20;display:none;overflow-y:auto;padding:12px}
+    #pay.open{display:block}
+    #pay-close{position:absolute;top:8px;right:10px;z-index:21;border:0;background:rgba(255,255,255,.9);border-radius:999px;width:26px;height:26px;font-size:15px;line-height:1;cursor:pointer}
+    #pay-inner{background:#fff;border-radius:10px;max-width:460px;margin:26px auto;overflow:hidden}
+    #pay-err{color:#fff;text-align:center;font-size:12px;padding:18px;font-family:-apple-system,sans-serif}
   </style>
 </head>
 <body>
@@ -5923,9 +6056,14 @@ Identify which products from the catalog are most likely to appear or be feature
     </div>
     <video id="vid" muted loop playsinline preload="auto"></video>
     <div id="carousel"></div>
+    <div id="pay">
+      <button id="pay-close" onclick="closePay()" aria-label="Close">&times;</button>
+      <div id="pay-inner"><div id="checkout"></div></div>
+      <div id="pay-err" style="display:none"></div>
+    </div>
   </div>
   <script>
-    var utm="${utm.replace(/[<>"'\\]/g, "")}",videoId="${video.id}",apiBase="${apiBase}",CURRENCY_SYMBOL="${embedCurrencySymbol()}";
+    var utm="${utm.replace(/[<>"'\\]/g, "")}",videoId="${video.id}",apiBase="${apiBase}",CURRENCY_SYMBOL="${embedCurrencySymbol()}",PK="${process.env.STRIPE_PUBLISHABLE_KEY || ""}";
     var vid=document.getElementById("vid");
     var rawUrl="${(video.videoUrl || "").replace(/[<>"'\\]/g, "")}";
     // Optimize Cloudinary URL for streaming
@@ -5953,7 +6091,65 @@ Identify which products from the catalog are most likely to appear or be feature
       if(p.price){var priceDiv=document.createElement("div");priceDiv.className="product-price";priceDiv.textContent=CURRENCY_SYMBOL+p.price;a.appendChild(priceDiv);}
       a.addEventListener("click",function(){track("click")});
       carousel.appendChild(a);
+
+      // Buy in-video. Only rendered when the SERVER said this product has a
+      // price; the amount itself is never sent from here.
+      if(p.buyable){
+        var b=document.createElement("button");
+        b.className="buy-btn";b.type="button";b.textContent="Buy";
+        b.addEventListener("click",function(ev){ev.preventDefault();ev.stopPropagation();openPay(p.overlayId);});
+        a.appendChild(b);
+      }
     });
+
+    // ── In-video checkout ───────────────────────────────────────────────────
+    // Stripe's embedded Checkout, mounted over the video. Stripe.js loads only
+    // when someone actually presses Buy, so a video nobody buys from costs the
+    // host page nothing.
+    var _checkout=null;
+    function payError(msg){
+      document.getElementById("checkout").innerHTML="";
+      var e=document.getElementById("pay-err");
+      e.textContent=msg;e.style.display="block";
+      document.getElementById("pay").classList.add("open");
+    }
+    function closePay(){
+      document.getElementById("pay").classList.remove("open");
+      document.getElementById("pay-err").style.display="none";
+      if(_checkout){try{_checkout.destroy()}catch(e){}_checkout=null;}
+      vid.play().catch(function(){});
+    }
+    function loadStripeJs(){
+      return new Promise(function(res,rej){
+        if(window.Stripe)return res();
+        var sc=document.createElement("script");
+        sc.src="https://js.stripe.com/v3/";sc.onload=res;sc.onerror=rej;
+        document.head.appendChild(sc);
+      });
+    }
+    function openPay(overlayId){
+      if(!PK){return payError("Payments are not configured for this site yet.");}
+      vid.pause();
+      document.getElementById("pay").classList.add("open");
+      track("checkout_open");
+      fetch(apiBase+"/api/embed/"+videoId+"/checkout",{
+        method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({overlayId:overlayId,ref:utm})
+      })
+      .then(function(r){return r.json().then(function(j){return{ok:r.ok,body:j}})})
+      .then(function(res){
+        if(!res.ok||!res.body.clientSecret){
+          // A refusal is a real condition — no price set, or the brand is not
+          // approved by Stripe to accept payments. Say so rather than failing
+          // silently with a spinner.
+          throw new Error(res.body.error||"Checkout is unavailable for this product.");
+        }
+        return loadStripeJs().then(function(){
+          return Stripe(PK).initEmbeddedCheckout({clientSecret:res.body.clientSecret});
+        }).then(function(c){_checkout=c;c.mount("#checkout");});
+      })
+      .catch(function(e){payError(e.message||"Checkout is unavailable right now.");});
+    }
     function track(type,extra){
       fetch(apiBase+"/api/analytics/events",{
         method:"POST",headers:{"Content-Type":"application/json"},
