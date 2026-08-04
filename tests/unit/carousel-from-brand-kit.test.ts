@@ -36,7 +36,7 @@ describe("carouselSettingsFromBrandKit", () => {
       defaultShowButton: false,
       defaultShowPrice: false,
       defaultShowTitle: false,
-      defaultButtonLabel: "SHOP NOW",
+      defaultButtonLabel: "PRE ORDER",
       defaultPosition: "top",
     });
 
@@ -50,7 +50,7 @@ describe("carouselSettingsFromBrandKit", () => {
       showButton: false,
       showPrice: false,
       showTitle: false,
-      buttonLabel: "SHOP NOW",
+      buttonLabel: "PRE ORDER",
       position: "top",
     });
   });
