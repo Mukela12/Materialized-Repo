@@ -79,9 +79,6 @@ export function AffiliateCard({ trackingId, referralCode, commissionRate }: Affi
               </p>
               <p className="text-xs text-muted-foreground">Commission Rate</p>
             </div>
-            <Button variant="outline" size="sm" className="rounded-full text-xs">
-              Rate
-            </Button>
           </div>
         </div>
       </CardContent>

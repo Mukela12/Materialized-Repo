@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { ensureGoogleFont } from "@/lib/fonts";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -56,6 +57,7 @@ export default function BrandKitPage() {
     cmyk: { c: 0, m: 0, y: 0, k: 0 }
   });
   const [newFont, setNewFont] = useState<FontEntry>({ name: "", weight: "400" });
+  const [fontChecking, setFontChecking] = useState(false);
   
   const [carouselSettings, setCarouselSettings] = useState({
     buttonFont: "Inter",
@@ -332,13 +334,46 @@ export default function BrandKitPage() {
     setNewColor({ name: "", hex: "#1351aa", cmyk: { c: 0, m: 0, y: 0, k: 0 } });
   };
 
-  const addManualFont = () => {
-    if (!newFont.name) {
+  /**
+   * Add a custom font, and only accept it if it can actually render.
+   *
+   * This previously stored whatever name was typed. The name was then used as a
+   * CSS font-family with nothing ever loading a font by that name, so it always
+   * fell back silently — a font called "Hello" saved successfully and styled
+   * nothing, which is indistinguishable from the feature being broken.
+   *
+   * Now the name is looked up on Google Fonts and verified with the browser's
+   * own font check before being saved. A name Google does not publish returns a
+   * stylesheet that loads fine but defines nothing, so the check is on whether
+   * the FONT is usable, not on whether the request succeeded.
+   */
+  const addManualFont = async () => {
+    const name = newFont.name.trim();
+    if (!name) {
       toast({ title: "Error", description: "Please enter a font name", variant: "destructive" });
       return;
     }
-    setManualFonts([...manualFonts, { ...newFont }]);
+    if (manualFonts.some((f) => f.name.toLowerCase() === name.toLowerCase())) {
+      toast({ title: "Already added", description: `"${name}" is already in your brand kit.` });
+      return;
+    }
+
+    setFontChecking(true);
+    const available = await ensureGoogleFont(name);
+    setFontChecking(false);
+
+    if (!available) {
+      toast({
+        title: "Font not found",
+        description: `"${name}" isn't available on Google Fonts, so it can't be applied. Check the spelling, or pick one from fonts.google.com.`,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setManualFonts([...manualFonts, { ...newFont, name }]);
     setNewFont({ name: "", weight: "400" });
+    toast({ title: "Font added", description: `"${name}" is loaded and ready to use.` });
   };
 
   const removeColor = (index: number, type: "extracted" | "manual") => {

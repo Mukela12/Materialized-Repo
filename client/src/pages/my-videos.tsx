@@ -268,6 +268,10 @@ export default function MyVideos() {
               key={video.id}
               video={video}
               onOpen={handleOpenDetail}
+              // Same destination as clicking the card. The menu item existed but
+              // no handler was ever passed, and VideoCard calls it with optional
+              // chaining — so "Editing Suite" silently did nothing.
+              onEdit={handleOpenDetail}
               onViewEmbed={handleViewEmbed}
               onDelete={handleDelete}
             />

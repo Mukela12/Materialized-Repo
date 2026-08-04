@@ -1,7 +1,7 @@
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Play, Eye, MousePointer, DollarSign, MoreVertical, Code } from "lucide-react";
+import { Play, Eye, MousePointer, DollarSign, MoreVertical, Code, Pencil } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -95,7 +95,8 @@ export function VideoCard({ video, onOpen, onEdit, onViewEmbed, onDelete }: Vide
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
             <DropdownMenuItem onClick={() => onEdit?.(video)}>
-              Edit Video
+              <Pencil className="h-4 w-4 mr-2" />
+              Editing Suite
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => onViewEmbed?.(video)}>
               <Code className="h-4 w-4 mr-2" />

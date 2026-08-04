@@ -17,6 +17,7 @@ import {
   Save,
 } from "lucide-react";
 import { BUTTON_LABEL_OPTIONS, CAROUSEL_POSITION_OPTIONS, FONT_OPTIONS } from "@shared/schema";
+import { fontStack } from "@/lib/fonts";
 
 export interface CarouselSettings {
   position: typeof CAROUSEL_POSITION_OPTIONS[number];
@@ -69,19 +70,9 @@ const defaultSettings: CarouselSettings = {
   buttonFontSize: 100,
 };
 
-const getFontFamily = (font: string): string => {
-  const fontMap: Record<string, string> = {
-    "system": "system-ui, -apple-system, sans-serif",
-    "public-pixel": "'Public Pixel', monospace",
-    "inter": "'Inter', sans-serif",
-    "roboto": "'Roboto', sans-serif",
-    "poppins": "'Poppins', sans-serif",
-    "montserrat": "'Montserrat', sans-serif",
-    "playfair": "'Playfair Display', serif",
-    "oswald": "'Oswald', sans-serif",
-  };
-  return fontMap[font] || fontMap["system"];
-};
+// Stacks live in client/src/lib/fonts.ts alongside FONT_OPTIONS, so the list of
+// offered fonts and the list of loadable fonts cannot drift apart again.
+const getFontFamily = (font: string): string => fontStack(font);
 
 export function ProductCarouselEditor({
   settings,

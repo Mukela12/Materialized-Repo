@@ -897,16 +897,35 @@ export const CAROUSEL_POSITION_OPTIONS = [
   "bottom", "top", "left", "right", "bottom-left", "bottom-right", "top-left", "top-right"
 ] as const;
 
-// Font options for carousel text
+/**
+ * Fonts offered for carousel text.
+ *
+ * EVERY ENTRY HERE MUST ACTUALLY RENDER — either declared as a local @font-face
+ * in client/src/index.css, or present in the Google Fonts link in
+ * client/index.html. Two previous entries were not:
+ *
+ *   "Public Pixel" existed nowhere in the project at all.
+ *   "Oswald" was offered but missing from the Google Fonts request.
+ *
+ * Both silently fell back to system-ui, so the setting saved and changed
+ * nothing, which is indistinguishable from a broken feature. Adding a name here
+ * without loading the font reintroduces exactly that.
+ *
+ * The client mirror with CSS stacks is client/src/lib/fonts.ts.
+ */
 export const FONT_OPTIONS = [
   { value: "system", label: "System Default" },
-  { value: "public-pixel", label: "Public Pixel" },
+  { value: "aileron", label: "Aileron" },
+  { value: "lekton", label: "Lekton" },
   { value: "inter", label: "Inter" },
   { value: "roboto", label: "Roboto" },
   { value: "poppins", label: "Poppins" },
   { value: "montserrat", label: "Montserrat" },
   { value: "playfair", label: "Playfair Display" },
-  { value: "oswald", label: "Oswald" },
+  { value: "dm-sans", label: "DM Sans" },
+  { value: "outfit", label: "Outfit" },
+  { value: "lora", label: "Lora" },
+  { value: "space-grotesk", label: "Space Grotesk" },
 ] as const;
 
 // Video category options for taxonomy
