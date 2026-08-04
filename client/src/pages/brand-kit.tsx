@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { ensureGoogleFont } from "@/lib/fonts";
+import { ensureGoogleFont, fontStack } from "@/lib/fonts";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -38,6 +38,85 @@ interface ColorEntry {
 interface FontEntry {
   name: string;
   weight: string;
+}
+
+interface CarouselSettings {
+  buttonFont: string;
+  buttonColor: string;
+  buttonTextColor: string;
+  cornerRadius: number;
+  backgroundOpacity: number;
+  showThumbnail: boolean;
+  showButton: boolean;
+  showPrice: boolean;
+  showTitle: boolean;
+  buttonLabel: typeof BUTTON_LABEL_OPTIONS[number];
+  position: typeof CAROUSEL_POSITION_OPTIONS[number];
+}
+
+/**
+ * The carousel mock-up, rendered from live settings state.
+ *
+ * Extracted so it can appear in two places at once: on the Preview tab, and
+ * beside the controls on Default Carousel Settings. The client asked for the
+ * second — previously you changed a colour on one tab and had to switch to
+ * another to find out what it did, which is not a preview so much as a memory
+ * test. Both instances read the same state, so they cannot drift.
+ *
+ * `position` moves the strip to the top or bottom of the frame, matching where
+ * it will sit over the real video.
+ */
+function CarouselPreview({
+  settings,
+  testId,
+}: {
+  settings: CarouselSettings;
+  testId: string;
+}) {
+  return (
+    <div
+      className={`relative bg-muted rounded-lg overflow-hidden aspect-video flex justify-center ${
+        settings.position === "top" ? "items-start" : "items-end"
+      }`}
+    >
+      <div className="absolute inset-0 flex items-center justify-center text-muted-foreground text-sm">
+        Video Preview Area
+      </div>
+
+      <div
+        className="relative z-10 m-4 p-3 flex items-center gap-3"
+        style={{
+          backgroundColor: `rgba(0,0,0,${settings.backgroundOpacity / 100})`,
+          borderRadius: `${settings.cornerRadius}px`,
+        }}
+        data-testid={testId}
+      >
+        {settings.showThumbnail && (
+          <div className="w-16 h-16 bg-background/50 rounded-lg flex items-center justify-center shrink-0">
+            <div className="w-10 h-10 bg-primary/20 rounded" />
+          </div>
+        )}
+        <div className="flex-1 text-white min-w-0">
+          {settings.showTitle && <p className="font-medium text-sm">Product Name</p>}
+          {settings.showPrice && <p className="text-xs opacity-80">$99.00</p>}
+        </div>
+        {settings.showButton && (
+          <Button
+            size="sm"
+            className="rounded-full text-xs shrink-0"
+            style={{
+              backgroundColor: settings.buttonColor,
+              color: settings.buttonTextColor,
+              fontFamily: fontStack(settings.buttonFont),
+            }}
+            data-testid={`${testId}-cta`}
+          >
+            {settings.buttonLabel}
+          </Button>
+        )}
+      </div>
+    </div>
+  );
 }
 
 export default function BrandKitPage() {
@@ -829,6 +908,16 @@ export default function BrandKitPage() {
               </div>
             </CardHeader>
             <CardContent className="space-y-6">
+              {/*
+                Live preview, sticky so it stays in view while you scroll the
+                controls below it. Reads the same state the inputs write, so it
+                reflects every change as it is made rather than after a save.
+              */}
+              <div className="md:sticky md:top-4 z-10">
+                <p className="text-xs font-medium text-muted-foreground mb-2">Live preview</p>
+                <CarouselPreview settings={carouselSettings} testId="carousel-live-preview" />
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-4">
                   <div>
@@ -976,47 +1065,7 @@ export default function BrandKitPage() {
               </p>
             </CardHeader>
             <CardContent>
-              <div className="relative bg-muted rounded-lg overflow-hidden aspect-video flex items-end justify-center">
-                <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
-                  Video Preview Area
-                </div>
-                
-                <div 
-                  className="relative z-10 m-4 p-3 flex items-center gap-3"
-                  style={{
-                    backgroundColor: `rgba(0,0,0,${carouselSettings.backgroundOpacity / 100})`,
-                    borderRadius: `${carouselSettings.cornerRadius}px`,
-                  }}
-                  data-testid="carousel-preview"
-                >
-                  {carouselSettings.showThumbnail && (
-                    <div className="w-16 h-16 bg-background/50 rounded-lg flex items-center justify-center">
-                      <div className="w-10 h-10 bg-primary/20 rounded" />
-                    </div>
-                  )}
-                  <div className="flex-1 text-white">
-                    {carouselSettings.showTitle && (
-                      <p className="font-medium text-sm">Product Name</p>
-                    )}
-                    {carouselSettings.showPrice && (
-                      <p className="text-xs opacity-80">$99.00</p>
-                    )}
-                  </div>
-                  {carouselSettings.showButton && (
-                    <Button 
-                      size="sm"
-                      className="rounded-full text-xs"
-                      style={{
-                        backgroundColor: carouselSettings.buttonColor,
-                        color: carouselSettings.buttonTextColor,
-                      }}
-                      data-testid="button-preview-cta"
-                    >
-                      {carouselSettings.buttonLabel}
-                    </Button>
-                  )}
-                </div>
-              </div>
+              <CarouselPreview settings={carouselSettings} testId="carousel-preview" />
             </CardContent>
           </Card>
         </TabsContent>
