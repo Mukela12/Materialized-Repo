@@ -5,10 +5,10 @@
   "outputDirectory": "dist",
   "redirects": [
     {
-      "source": "/:path*",
+      "source": "/(.*)",
       "has": [{ "type": "host", "value": "mtrlzd.com" }],
       "missing": [{ "type": "host", "value": "www.mtrlzd.com" }],
-      "destination": "https://www.mtrlzd.com/:path*",
+      "destination": "https://www.mtrlzd.com/$1",
       "permanent": true
     }
   ],
