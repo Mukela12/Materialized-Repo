@@ -58,7 +58,22 @@ export default function BrandCampaignDetail() {
 
   const { data: detail, isLoading } = useQuery<CampaignDetail>({
     queryKey: ["/api/campaigns", campaignId, "detail"],
-    queryFn: () => fetch(`/api/campaigns/${campaignId}/detail`).then((r) => r.json()),
+    /**
+     * The res.ok check is load-bearing. Without it a 404 body — {error:"Campaign
+     * not found"} — is still a truthy object, so `detail` is set, the
+     * `if (!detail)` not-found branch never fires, and the page renders with an
+     * empty title, "Publishers (0)" and $0 everywhere. That is what "Create
+     * Campaign" landed on: it navigates to /brand/campaigns/new, no /new route
+     * exists, so it matches /brand/campaigns/:id with id="new".
+     *
+     * It also masked genuine 500s the same way.
+     */
+    queryFn: async () => {
+      const r = await fetch(`/api/campaigns/${campaignId}/detail`);
+      if (!r.ok) throw new Error(`Campaign not found (${r.status})`);
+      return r.json();
+    },
+    retry: false,
     enabled: !!campaignId,
   });
 

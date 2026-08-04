@@ -266,7 +266,10 @@ export default function CreatorSettingsSubscription() {
   return (
     <div className="space-y-6 max-w-2xl pb-12">
       <div className="flex items-center gap-3">
-        <Link href="/creator/settings">
+        {/* /creator/settings is not a route — this 404'd. The parent is
+            /creator/more ("Profile & Settings"), which is where this page is
+            linked from in the first place. */}
+        <Link href="/creator/more">
           <Button variant="ghost" size="icon" className="rounded-full" data-testid="button-back-settings">
             <ArrowLeft className="h-4 w-4" />
           </Button>

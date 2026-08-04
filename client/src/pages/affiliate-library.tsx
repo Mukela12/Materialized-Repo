@@ -200,11 +200,17 @@ export default function AffiliateLibrary() {
                       </div>
                     </div>
                   </div>
-                  <CardFooter onClick={(e) => e.stopPropagation()}>
-                    <Button className="w-full" data-testid={`button-license-${listing.id}`}>
-                      License Video
-                    </Button>
-                  </CardFooter>
+                  {/*
+                    Removed a full-width "License Video" button that had no
+                    onClick and no destination — nothing in the client calls the
+                    purchase endpoint, so licensing is not wired up here at all.
+                    It was worse than inert: its CardFooter stopped propagation,
+                    so it also blocked selecting the card underneath it.
+
+                    Selecting cards and acting on the selection (the bar at the
+                    bottom) is the flow that actually works, and is the shape the
+                    client asked for — pick videos, then license the selection.
+                  */}
                 </Card>
                 <WishlistHeart listingId={listing.id} wishlisted={wishlistedIds.has(listing.id)} />
               </div>
