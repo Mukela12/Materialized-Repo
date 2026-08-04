@@ -8,7 +8,7 @@ const DEFAULT_MESSAGE_TEMPLATE = `Hey [First_Name],
 
 I want to make my recent video for [Brand] shoppable using revolutionary video commerce, so my audience can shop your products instantly.
 
-Click this link to create an account for FREE and sync your inventory. My video will then be published as shoppable with direct links to your POS.
+Click this link to create your account — Subscription FREE for 30 days — and sync your inventory. My video will then be published as shoppable with direct links to your POS.
 
 I'm sure you'll love this!
 
@@ -135,7 +135,7 @@ export default function CRMAnalytics() {
       queryClient.invalidateQueries({ queryKey: ["/api/referrals"] });
       queryClient.invalidateQueries({ queryKey: ["/api/brands"] });
       toast({
-        title: "Brand Referral Sent",
+        title: "Brand Tagged",
         description: "An automated invitation email has been sent to the brand contact.",
       });
       setIsReferralOpen(false);
@@ -144,7 +144,7 @@ export default function CRMAnalytics() {
     onError: () => {
       toast({
         title: "Error",
-        description: "Failed to send brand referral. Please try again.",
+        description: "Couldn't tag that brand. Please try again.",
         variant: "destructive",
       });
     },
@@ -413,7 +413,7 @@ export default function CRMAnalytics() {
                   ) : (
                     <Send className="h-4 w-4" />
                   )}
-                  Send Referral
+                  Send
                 </Button>
               </div>
             </form>

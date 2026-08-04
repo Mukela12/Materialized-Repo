@@ -188,7 +188,7 @@ function ContactForm() {
           type="submit"
           disabled={mutation.isPending}
           data-testid="button-contact-submit"
-          className="w-full py-2.5 rounded-full bg-[#314d3b] text-white font-semibold text-sm hover:bg-[#24372b] transition-colors disabled:opacity-50 mt-1"
+          className="w-full py-2.5 rounded-full bg-[#1351aa] text-white font-semibold text-sm hover:bg-[#0f4189] transition-colors disabled:opacity-50 mt-1"
         >
           {mutation.isPending ? "Sending..." : "Connect"}
         </button>
@@ -1256,7 +1256,7 @@ function SignupSection() {
                     <Button
                       type="submit"
                       disabled={mutation.isPending}
-                      className="w-full bg-[#314d3b] hover:bg-[#24372b] text-white font-semibold py-6 rounded-full mt-6"
+                      className="w-full bg-[#1351aa] hover:bg-[#0f4189] text-white font-semibold py-6 rounded-full mt-6"
                       style={{ paddingLeft: "30px", paddingRight: "30px" }}
                       data-testid="button-submit-signup"
                     >

@@ -71,7 +71,7 @@ export function ReferralsTable({ referrals, isLoading, onResend, resendingId }: 
     return (
       <Card>
         <CardHeader>
-          <CardTitle className="text-lg font-semibold">Your Brand Referrals</CardTitle>
+          <CardTitle className="text-lg font-semibold">Your Brand Partners</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
@@ -88,7 +88,7 @@ export function ReferralsTable({ referrals, isLoading, onResend, resendingId }: 
     <Card>
       <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <CardTitle className="text-lg font-semibold">Your Brand Referrals</CardTitle>
+          <CardTitle className="text-lg font-semibold">Your Brand Partners</CardTitle>
           <p className="text-sm text-muted-foreground mt-1">
             Track the status of brands you've referred to the platform
           </p>

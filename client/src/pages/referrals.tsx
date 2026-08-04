@@ -39,14 +39,15 @@ export default function Referrals() {
     <div className="space-y-6 pb-24 md:pb-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Brand Referrals</h1>
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">My Brand Partners</h1>
           <p className="text-muted-foreground mt-1">
-            Track and manage your brand referrals to grow the network
+            Upload your video, tag a brand, and monetise it. Tag a brand and you earn
+            tokens and in-app credits when they subscribe.
           </p>
         </div>
         <Button className="rounded-full gap-2" onClick={() => navigate("/creator/crm")}>
           <Plus className="h-4 w-4" />
-          New Referral
+          Tag a Brand
         </Button>
       </div>
 

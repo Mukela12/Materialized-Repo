@@ -59,7 +59,7 @@ const affiliateItems = [
 
 const brandItems = [
   { path: "/creator/brand-kit", label: "Brand Kit", icon: Palette },
-  { path: "/creator/referrals", label: "Brand Referrals", icon: Send },
+  { path: "/creator/referrals", label: "My Brand Partners", icon: Send },
 ];
 
 // One credit surface only. This used to point at /creator/rewards, which rendered

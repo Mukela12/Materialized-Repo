@@ -253,7 +253,7 @@ export default function MyVideos() {
           {!searchQuery && statusFilter === "all" && categoryFilter === "all" && (
             <Button onClick={() => setUploadModalOpen(true)} className="rounded-full gap-2">
               <Upload className="h-4 w-4" />
-              Upload Your First Campaign
+              Upload your first video
             </Button>
           )}
         </div>

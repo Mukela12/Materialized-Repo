@@ -170,7 +170,7 @@ export default function BrandAuthorize() {
             </div>
 
             <Button
-              className="w-full rounded-full py-6 text-base font-bold bg-[#314d3b] hover:bg-[#24372b] text-white"
+              className="w-full rounded-full py-6 text-base font-bold bg-primary hover:bg-primary/90 text-primary-foreground"
               onClick={() => authorizeMutation.mutate()}
               disabled={authorizeMutation.isPending}
               data-testid="button-brand-authorize"

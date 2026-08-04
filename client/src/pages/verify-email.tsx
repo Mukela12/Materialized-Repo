@@ -84,7 +84,7 @@ export default function VerifyEmail() {
                 Your account is now active. You're automatically logged in.
               </p>
               <Button
-                className="w-full bg-[#314d3b] hover:bg-[#24372b] text-white"
+                className="w-full bg-primary hover:bg-primary/90 text-primary-foreground"
                 onClick={() => navigate(ROLE_ROUTES[userRole] || "/creator")}
               >
                 Go to Dashboard
@@ -103,7 +103,7 @@ export default function VerifyEmail() {
               <p className="text-sm text-muted-foreground mb-6">{errorMessage}</p>
               <div className="space-y-3">
                 <Link href="/login">
-                  <Button className="w-full bg-[#314d3b] hover:bg-[#24372b] text-white">
+                  <Button className="w-full bg-primary hover:bg-primary/90 text-primary-foreground">
                     Go to Login
                   </Button>
                 </Link>

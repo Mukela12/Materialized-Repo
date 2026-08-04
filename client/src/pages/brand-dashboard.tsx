@@ -120,7 +120,7 @@ export default function BrandDashboard() {
       return apiRequest("POST", "/api/brand-referrals", data);
     },
     onSuccess: () => {
-      toast({ title: "Referral Sent!", description: "Your brand referral has been submitted." });
+      toast({ title: "Brand Tagged!", description: "We'll let you know when they activate your video." });
     },
   });
 

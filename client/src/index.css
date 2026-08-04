@@ -57,7 +57,12 @@
 /* LIGHT MODE - Dark Charcoal, White, Black with MTRLZD Blue Accent
  * Background: White (#FFFFFF)
  * Foreground: Dark Charcoal (#43484D)
- * Accent: #1351aa, CTA buttons: #314d3b / #24372b hover
+ * Accent: #1351aa (= --primary, HSL 215 80% 37%).
+ * CTA buttons use --primary. The greens #314d3b / #24372b were removed from
+ * app chrome at the client's request — green is now reserved for "published"
+ * and other success states, where it means done rather than "act here".
+ * #314d3b survives only as the DEFAULT product-carousel button colour, which
+ * each brand overrides in their own brand kit.
  */
 :root {
   --button-outline: rgba(0,0,0, .10);
@@ -90,7 +95,7 @@
   --muted-foreground: 210 5% 45%;
   --accent: 215 80% 37%;
   --accent-foreground: 0 0% 100%;
-  --destructive: 0 84% 48%;
+  --destructive: 0 84% 40%;
   --destructive-foreground: 0 0% 100%;
   --input: 210 5% 85%;
   --ring: 215 80% 37%;
@@ -180,7 +185,7 @@
   --muted-foreground: 0 0% 65%;
   --accent: 215 80% 45%;
   --accent-foreground: 0 0% 100%;
-  --destructive: 0 84% 48%;
+  --destructive: 0 84% 40%;
   --destructive-foreground: 0 0% 100%;
   --input: 210 5% 28%;
   --ring: 215 80% 45%;
