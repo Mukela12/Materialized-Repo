@@ -1588,7 +1588,14 @@ export default function Landing() {
             {LANDING_PLANS.map((plan) => (
               <button
                 key={plan.id}
-                onClick={() => handleRoleSelect(plan.role)}
+                /*
+                  Scrolls to the signup section rather than calling
+                  handleRoleSelect — that function lives inside SignupSection and
+                  is NOT in scope here, so calling it threw a ReferenceError on
+                  every click. tsc caught it (TS2304); `npm run build` did not,
+                  because vite bundles without typechecking, so it shipped.
+                */
+                onClick={() => document.getElementById("signup")?.scrollIntoView({ behavior: "smooth" })}
                 data-testid={`card-pricing-${plan.id}`}
                 className={`text-left p-8 rounded-3xl backdrop-blur-sm flex flex-col transition-all hover:scale-[1.02] ${
                   plan.featured ? "ring-1 ring-white/40" : ""
