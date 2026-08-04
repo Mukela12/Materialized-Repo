@@ -178,14 +178,14 @@ function AdminOverview() {
   if (!stats) return <div className="flex justify-center py-12"><RefreshCw className="w-6 h-6 animate-spin text-muted-foreground" /></div>;
 
   const cards = [
-    { label: "Total Users", value: stats.totalUsers, icon: "👥" },
-    { label: "Videos", value: stats.totalVideos, icon: "🎬" },
-    { label: "Brands", value: stats.totalBrands, icon: "🏷" },
-    { label: "Campaigns", value: stats.totalCampaigns, icon: "📊" },
-    { label: "Active Subscriptions", value: stats.activeSubscriptions, icon: "💳" },
-    { label: "Creators", value: stats.usersByRole?.creator ?? 0, icon: "🎨" },
-    { label: "Brand Accounts", value: stats.usersByRole?.brand ?? 0, icon: "🏢" },
-    { label: "Affiliates", value: stats.usersByRole?.affiliate ?? 0, icon: "🔗" },
+    { label: "Total Users", value: stats.totalUsers },
+    { label: "Videos", value: stats.totalVideos },
+    { label: "Brands", value: stats.totalBrands },
+    { label: "Campaigns", value: stats.totalCampaigns },
+    { label: "Active Subscriptions", value: stats.activeSubscriptions },
+    { label: "Creators", value: stats.usersByRole?.creator ?? 0 },
+    { label: "Brand Accounts", value: stats.usersByRole?.brand ?? 0 },
+    { label: "Affiliates", value: stats.usersByRole?.affiliate ?? 0 },
   ];
 
   return (
@@ -193,7 +193,7 @@ function AdminOverview() {
       {cards.map(c => (
         <Card key={c.label}>
           <CardContent className="p-4">
-            <p className="text-xs text-muted-foreground mb-1">{c.icon} {c.label}</p>
+            <p className="text-xs text-muted-foreground mb-1">{c.label}</p>
             <p className="text-2xl font-bold">{c.value}</p>
           </CardContent>
         </Card>
@@ -1437,7 +1437,7 @@ export default function AdminPipeline() {
                         <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-muted-foreground">
                           <span>{entry.prContactName} · {entry.prContactEmail}</span>
                           <span>Creator: {entry.creatorName}</span>
-                          {entry.videoTitle && <span>📹 {entry.videoTitle}</span>}
+                          {entry.videoTitle && <span>{entry.videoTitle}</span>}
                           {entry.createdAt && <span>Sent {formatDistanceToNow(new Date(entry.createdAt), { addSuffix: true })}</span>}
                         </div>
                         {/* Video stats */}
