@@ -1,6 +1,17 @@
 [build]
 builder = "nixpacks"
-buildCommand = "npm install && npm run build"
+# --include=dev is load-bearing. NODE_ENV=production is set on this service (it
+# gates the dev-only Stripe routes and the Secure cookie flag, so it must stay),
+# and under that npm install SKIPS devDependencies. The build needs several of
+# them — vite.config.ts imports @vitejs/plugin-react, and the build script runs
+# through tsx — so the client build dies with ERR_MODULE_NOT_FOUND.
+#
+# This failed intermittently rather than always, which is why it went unnoticed:
+# nixpacks caches the node_modules layer, so builds succeeded while a cache
+# populated by an earlier (dev-deps present) install survived, and failed
+# whenever that cache was invalidated. Three failures on 3 Aug and two on 4 Aug
+# interleaved with successes, from commits that never touched package.json.
+buildCommand = "npm install --include=dev && npm run build"
 
 [deploy]
 startCommand = "node dist/index.cjs"
