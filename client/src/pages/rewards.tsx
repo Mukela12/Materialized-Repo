@@ -23,8 +23,7 @@ import { StatCard } from "@/components/StatCard";
 import { NOT_CASH_STATEMENT } from "@/components/TokenPayOption";
 import {
   Wallet, Coins, ArrowDownLeft, ArrowUpRight, Lock, Library,
-  ListVideo, CreditCard, Send, ChevronRight,
-} from "lucide-react";
+  ListVideo, CreditCard, Send, ChevronRight, ArrowUp, ArrowDown } from "lucide-react";
 import { format } from "date-fns";
 import {
   useWallet, tokenLabel, centsToMoney, usdWhole, reasonLabel,
@@ -169,13 +168,15 @@ export default function WalletPage() {
             title="Lifetime Earned"
             value={tokenLabel(wallet?.lifetimeEarned ?? 0)}
             subtitle={`${centsToMoney(wallet?.lifetimeEarnedUsdCents ?? 0)} earned in total`}
-            icon={ArrowDownLeft}
+            // Client's review: Earned reads up, Spent reads down. These were the
+            // other way round (in/out arrows), which read as inverted to her.
+            icon={ArrowUp}
           />
           <StatCard
             title="Lifetime Spent"
             value={tokenLabel(wallet?.lifetimeSpent ?? 0)}
             subtitle={`${centsToMoney(wallet?.lifetimeSpentUsdCents ?? 0)} used on fees`}
-            icon={ArrowUpRight}
+            icon={ArrowDown}
           />
         </div>
       )}

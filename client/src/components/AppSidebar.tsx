@@ -54,13 +54,16 @@ const analyticsItems = [
   { path: "/creator/crm", label: "CRM Analytics", icon: Users },
 ];
 
+// Client's review: "Move Brand Referrals to this section and delete from
+// Branding" — so My Brand Partners lives under Affiliates now, and Branding is
+// just the carousel styling it actually is.
 const affiliateItems = [
   { path: "/creator/affiliates", label: "Manage Affiliates", icon: UserPlus },
+  { path: "/creator/referrals", label: "My Brand Partners", icon: Send },
 ];
 
 const brandItems = [
-  { path: "/creator/brand-kit", label: "Brand Kit", icon: Palette },
-  { path: "/creator/referrals", label: "My Brand Partners", icon: Send },
+  { path: "/creator/brand-kit", label: "Product Carousel Styling", icon: Palette },
 ];
 
 // One credit surface only. This used to point at /creator/rewards, which rendered
@@ -246,7 +249,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
         {filterItems(brandItems).length > 0 && (
         <SidebarGroup>
           <SidebarGroupLabel className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            Branding
+            Styling
           </SidebarGroupLabel>
           <SidebarGroupContent>
             {renderItems(filterItems(brandItems))}

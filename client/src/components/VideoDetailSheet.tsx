@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
+import { useUpload } from "@/hooks/use-upload";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   Sheet,
@@ -12,7 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Eye, MousePointer, DollarSign, Image, CheckSquare, Square, Plus, Trash2, Link, ExternalLink, Layers, Clock, Library, CheckCircle2 } from "lucide-react";
+import { Eye, MousePointer, DollarSign, Image, CheckSquare, Square, Plus, Trash2, Link, ExternalLink, Layers, Clock, Library, CheckCircle2, Upload } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { Video, VideoProductOverlay } from "@shared/schema";
@@ -85,6 +86,34 @@ export function VideoDetailSheet({ video, open, onOpenChange }: Props) {
   const [categories, setCategories]   = useState<string[]>([]);
   const [thumbUrl, setThumbUrl]       = useState("");
   const [editingThumb, setEditingThumb] = useState(false);
+  const [dragActive, setDragActive]     = useState(false);
+  const [thumbUploading, setThumbUploading] = useState(false);
+  const thumbInputRef = useRef<HTMLInputElement>(null);
+
+  /**
+   * Upload a dropped/chosen image and use the hosted URL as the thumbnail.
+   * Shared with the video upload path, so thumbnails land in the same place
+   * rather than depending on the creator hosting an image themselves.
+   */
+  const { uploadFile } = useUpload();
+  const handleThumbFile = async (file: File) => {
+    if (!file.type.startsWith("image/")) {
+      toast({ title: "Not an image", description: "Choose a JPG, PNG or WebP.", variant: "destructive" });
+      return;
+    }
+    setThumbUploading(true);
+    try {
+      const res = await uploadFile(file);
+      const url = (res as any)?.objectUrl ?? (res as any)?.secure_url ?? (res as any)?.url;
+      if (!url) throw new Error("Upload returned no URL");
+      setThumbUrl(url);
+      toast({ title: "Thumbnail ready", description: "Save to apply it." });
+    } catch (e: any) {
+      toast({ title: "Upload failed", description: e?.message ?? "Please try again.", variant: "destructive" });
+    } finally {
+      setThumbUploading(false);
+    }
+  };
 
   const [productName, setProductName] = useState("");
   const [productUrl, setProductUrl]   = useState("");
@@ -329,16 +358,47 @@ export function VideoDetailSheet({ video, open, onOpenChange }: Props) {
           </button>
         </div>
 
+        {/*
+          Client's review: "delete Thumbnail URL field, and replace with Drag and
+          Drop Here or Choose from Computer". Asking a creator to paste a hosted
+          image URL meant they had to upload the image somewhere else first.
+          Uses the existing useUpload hook, the same one the video upload uses.
+        */}
         {editingThumb && (
           <div className="px-5 pt-3">
-            <Label className="text-xs text-muted-foreground mb-1 block">Thumbnail URL</Label>
-            <Input
-              data-testid="input-thumbnail-url"
-              placeholder="https://..."
-              value={thumbUrl}
-              onChange={(e) => setThumbUrl(e.target.value)}
-              className="text-sm"
-            />
+            <div
+              onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
+              onDragLeave={() => setDragActive(false)}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDragActive(false);
+                const file = e.dataTransfer.files?.[0];
+                if (file) handleThumbFile(file);
+              }}
+              onClick={() => thumbInputRef.current?.click()}
+              data-testid="dropzone-thumbnail"
+              className={`rounded-xl border border-dashed p-6 text-center cursor-pointer transition-colors ${
+                dragActive ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"
+              }`}
+            >
+              <Upload className="h-5 w-5 mx-auto mb-2 text-muted-foreground" />
+              <p className="text-sm font-medium">
+                {thumbUploading ? "Uploading…" : "Drag and drop here"}
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5">or choose from computer</p>
+              <input
+                ref={thumbInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                data-testid="input-thumbnail-file"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) handleThumbFile(file);
+                  e.target.value = "";
+                }}
+              />
+            </div>
           </div>
         )}
 
