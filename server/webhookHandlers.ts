@@ -177,7 +177,11 @@ async function handleInVideoOrderCompleted(session: Stripe.Checkout.Session): Pr
   // `accrued` row here would make the monthly invoice run bill this brand a
   // second time for money we already have.
   await recordFeeAccrual(storage as any, {
-    storeConnectionId: order.videoId, // no store connection on this path
+    // NULL, not the video id. This column is a foreign key into
+    // store_connections; passing a video id violated it on every in-video sale,
+    // and the error was swallowed by the webhook dispatcher so the platform's
+    // revenue row was silently never written. See migrations/0017.
+    storeConnectionId: null,
     brandUserId: order.brandUserId,
     externalOrderId: session.id,
     videoId: order.videoId,

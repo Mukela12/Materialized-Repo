@@ -189,3 +189,67 @@ describe("parsing a typed price", () => {
     expect(parsePriceToCents("0.07")).toBe(7);
   });
 });
+
+/**
+ * The in-video accrual must carry NO store connection.
+ *
+ * This is the shape of a bug that reached production. platform_fee_accruals
+ * .store_connection_id is a foreign key into store_connections, and the in-video
+ * handler passed the VIDEO id into it to satisfy a NOT NULL that no longer made
+ * sense. Every in-video sale raised a foreign-key violation; recordFeeAccrual
+ * only swallows unique violations so it re-threw, and the webhook dispatcher
+ * caught and logged it — returning 200 to Stripe, so nothing ever retried. The
+ * platform's own revenue row was silently never written, while the creator and
+ * publisher commissions, written moments earlier, were.
+ *
+ * It survived the existing tests because they call the pure builder with a fake
+ * store, and MemStorage has no foreign keys. Only the real database does. So
+ * this asserts the VALUE rather than the write: an in-video sale has no store
+ * connection, and saying so is the only correct thing to put in that column.
+ */
+describe("the in-video accrual's store connection", () => {
+  const split = computeSaleSplit(10000, { hasPublisher: false, ...RATES });
+
+  it("is null — an in-video sale has no store connection", () => {
+    const row = buildAccrualRow({
+      storeConnectionId: null,
+      brandUserId: "brand_1",
+      externalOrderId: "cs_test_123",
+      videoId: "vid_1",
+      currency: "usd",
+      saleAmount: "100.00",
+      attributionState: "attributed",
+      split,
+      alreadyCollected: true,
+    }, new Date());
+
+    expect(row.storeConnectionId).toBeNull();
+    // The video is recorded in its own column, which is where it belongs.
+    expect(row.videoId).toBe("vid_1");
+  });
+
+  it("never carries a video id in the store-connection column", () => {
+    // The exact defect: videoId smuggled into a foreign key that points at a
+    // completely different table.
+    const row = buildAccrualRow({
+      storeConnectionId: null,
+      brandUserId: "brand_1", externalOrderId: "cs_1", videoId: "vid_1",
+      currency: "usd", saleAmount: "100.00",
+      attributionState: "attributed", split, alreadyCollected: true,
+    }, new Date());
+
+    expect(row.storeConnectionId).not.toBe(row.videoId);
+  });
+
+  it("still carries a real connection id for an on-store sale", () => {
+    const row = buildAccrualRow({
+      storeConnectionId: "conn_real",
+      brandUserId: "brand_1", externalOrderId: "order_1",
+      currency: "usd", saleAmount: "100.00",
+      attributionState: "attributed", split,
+    }, new Date());
+
+    expect(row.storeConnectionId).toBe("conn_real");
+    expect(row.status).toBe("accrued");
+  });
+});

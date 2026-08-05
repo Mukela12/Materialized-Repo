@@ -41,7 +41,8 @@ export type AttributionState =
   | "video_missing";
 
 export interface FeeAccrualInput {
-  storeConnectionId: string;
+  /** NULL for an in-video sale — there is no store connection on that path. */
+  storeConnectionId: string | null;
   /** The brand that owes the fee — denormalised so an invoice outlives the connection. */
   brandUserId: string;
   externalOrderId: string;
@@ -66,7 +67,7 @@ export interface FeeAccrualInput {
 }
 
 export interface AccrualRow {
-  storeConnectionId: string;
+  storeConnectionId: string | null;
   brandUserId: string;
   externalOrderId: string;
   videoId: string | null;

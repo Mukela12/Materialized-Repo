@@ -1228,7 +1228,13 @@ export const feeAttributionStateEnum = pgEnum("fee_attribution_state", [
 
 export const platformFeeAccruals = pgTable("platform_fee_accruals", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  storeConnectionId: varchar("store_connection_id").notNull().references(() => storeConnections.id),
+  /**
+   * NULL for an in-video sale, which has no store connection — the sale happened
+   * in our own player. Was NOT NULL, and the in-video handler passed a video id
+   * to satisfy it, which is a foreign-key violation on every such sale. See
+   * migrations/0017.
+   */
+  storeConnectionId: varchar("store_connection_id").references(() => storeConnections.id),
   // Denormalised from the connection so an invoice survives the connection being
   // deleted or re-pointed at another store.
   brandUserId: varchar("brand_user_id").notNull().references(() => users.id),
