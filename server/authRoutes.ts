@@ -1,6 +1,7 @@
 import { type Express } from "express";
 import { storage } from "./storage";
 import { hashPassword, verifyPassword } from "./auth";
+import { checkRedeemable, grantsOf, normaliseCode } from "./vouchers";
 import { sendVerificationEmail, sendPasswordResetEmail, isEmailConfigured } from "./emailService";
 import { z } from "zod";
 import crypto from "crypto";
@@ -97,9 +98,6 @@ export function registerAuthRoutes(app: Express) {
 
     const { email, password, displayName, role, accessCode } = parsed.data;
 
-    const validCode = process.env.ACCESS_CODE;
-    const hasFreeAccess = !!(validCode && accessCode && accessCode.trim() === validCode);
-
     const existing = await storage.getUserByEmail(email);
     if (existing) {
       return res.status(409).json({ error: "An account with this email already exists" });
@@ -112,17 +110,69 @@ export function registerAuthRoutes(app: Express) {
     const verificationToken = crypto.randomUUID();
     const verificationExpires = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
+    /**
+     * Voucher validation happens BEFORE the account is created, so a bad code
+     * can be reported instead of silently producing an ordinary account.
+     *
+     * The old behaviour compared one env-var string and, on a mismatch, created
+     * the account anyway with no free access and no message. A creator handed a
+     * voucher by their brand would type it, get a normal trial, and never learn
+     * it had not worked — nor would the brand, until they asked why their people
+     * had no access.
+     *
+     * ACCESS_CODE is still honoured as a fallback so existing shared codes keep
+     * working through the transition, but it grants nothing a voucher does not.
+     */
+    let voucherGrants = { freeAccess: false, waiveSetupFee: false };
+    let voucherToRedeem: { id: string; maxRedemptions: number | null } | null = null;
+
+    if (accessCode && accessCode.trim()) {
+      const code = normaliseCode(accessCode);
+      const legacy = process.env.ACCESS_CODE;
+
+      if (legacy && code === normaliseCode(legacy)) {
+        voucherGrants = { freeAccess: true, waiveSetupFee: false };
+      } else {
+        const voucher = await storage.getVoucherByCode(code);
+        // Count read for the message only; the CAP is enforced inside
+        // redeemVoucher's transaction, where it cannot be raced.
+        const check = checkRedeemable(voucher, { role, redemptionCount: 0 });
+        if (!check.ok) {
+          return res.status(400).json({ error: check.message, reason: check.reason });
+        }
+        voucherGrants = grantsOf(check.voucher);
+        voucherToRedeem = { id: check.voucher.id, maxRedemptions: check.voucher.maxRedemptions };
+      }
+    }
+
     const user = await storage.createUser({
       username,
       password: hashed,
       email,
       displayName,
       role,
-      freeAccess: hasFreeAccess,
+      freeAccess: voucherGrants.freeAccess,
       emailVerified: false,
       emailVerificationToken: verificationToken,
       emailVerificationExpires: verificationExpires,
     } as any);
+
+    if (voucherToRedeem) {
+      // Now that the user row exists. If the last seat went to somebody else
+      // between the check above and here, the account still exists but WITHOUT
+      // the grant — reported honestly rather than quietly handing out seat 21.
+      const r = await storage.redeemVoucher(voucherToRedeem.id, user.id, voucherToRedeem.maxRedemptions);
+      if (!r.redeemed) {
+        await storage.updateUser(user.id, { freeAccess: false } as any).catch(() => {});
+        return res.status(409).json({
+          error: r.reason === "exhausted"
+            ? "That voucher was fully used moments ago. Your account was created, but without the voucher benefit."
+            : "That voucher has already been used on this account.",
+          reason: r.reason,
+          accountCreated: true,
+        });
+      }
+    }
 
     // Send verification email
     if (isEmailConfigured()) {

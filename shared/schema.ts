@@ -1409,6 +1409,58 @@ export const videoOrders = pgTable("video_orders", {
 
 export type VideoOrder = typeof videoOrders.$inferSelect;
 
+// ─── Vouchers ────────────────────────────────────────────────────────────────
+//
+// Replaces a single string in an environment variable that was the same for
+// everyone, uncapped, never expired, recorded nothing, and could only be revoked
+// by rotating it for everybody at once.
+//
+// The offer it exists for: 20 free creator accounts, tied to the brand who
+// earned them by subscribing, for a promotional period. That needs a code to be
+// unique, capped, owned, expirable and revocable — none of which a shared
+// constant can be.
+//
+// THE CAP IS A DATABASE GUARANTEE. Twenty creators given the same code do not
+// redeem one at a time; counting then inserting is a read-modify-write that
+// hands out 21+. Redemption re-counts under an advisory lock, and
+// (voucher_id, user_id) is unique so nobody can redeem the same voucher twice.
+export const voucherGrantEnum = pgEnum("voucher_grant", [
+  /** Permanent free access — no subscription, no upload caps. */
+  "free_access",
+  /** Waives the $29 setup fee; the subscription itself is still paid. */
+  "waive_setup_fee",
+]);
+
+export const vouchers = pgTable("vouchers", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  /** Stored and compared uppercase, so whoever types it need not care. */
+  code: text("code").notNull(),
+  /** Admin-only note, e.g. "GTM — Nike, 20 creator seats". */
+  label: text("label"),
+  grantType: voucherGrantEnum("grant_type").notNull().default("free_access"),
+  /** The brand this was issued to. Null for a general campaign code. */
+  brandUserId: varchar("brand_user_id").references(() => users.id),
+  /** "creator" restricts redemption to creator signups; null means any role. */
+  roleRestriction: text("role_restriction"),
+  /** Null means uncapped — which is what the old env-var code effectively was. */
+  maxRedemptions: integer("max_redemptions"),
+  expiresAt: timestamp("expires_at"),
+  /** Revocation is a timestamp, not a delete: redemptions already made stay valid. */
+  revokedAt: timestamp("revoked_at"),
+  createdBy: varchar("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+});
+
+export const voucherRedemptions = pgTable("voucher_redemptions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  voucherId: varchar("voucher_id").notNull().references(() => vouchers.id),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  redeemedAt: timestamp("redeemed_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+});
+
+export type Voucher = typeof vouchers.$inferSelect;
+export type VoucherRedemption = typeof voucherRedemptions.$inferSelect;
+
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Country list for dropdown

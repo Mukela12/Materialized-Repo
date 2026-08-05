@@ -4,6 +4,7 @@ import { db } from "./db";
 import { LICENSE_FEE_DECIMAL } from "@shared/pricing";
 import type { AccrualRow } from "./feeAccruals";
 import type { InvoiceClaim, FeeInvoiceRecord } from "./feeInvoicing";
+import type { VoucherRecord } from "./vouchers";
 
 /** One brand's outstanding marketplace fee over a period. */
 export interface FeeAccrualSummaryRow {
@@ -82,10 +83,13 @@ import {
   feeInvoices,
   scheduledJobRuns,
   videoOrders,
+  vouchers,
+  voucherRedemptions,
   type PlatformFeeAccrual,
   type FeeInvoice,
   type ScheduledJobRun,
   type VideoOrder,
+  type Voucher,
   brandOutreachRequests,
   publisherNotifications,
   brandSubscriptions,
@@ -249,6 +253,22 @@ export interface IStorage {
   createVideoOrder(row: Omit<VideoOrder, "id" | "createdAt" | "paidAt" | "refundedAt" | "status">): Promise<{ id: string }>;
   markVideoOrderPaid(sessionId: string, paymentIntentId: string | null): Promise<VideoOrder | null>;
   getVideoOrderBySession(sessionId: string): Promise<VideoOrder | null>;
+
+  // Vouchers — see server/vouchers.ts.
+  createVoucher(v: {
+    code: string; label: string | null; grantType: "free_access" | "waive_setup_fee";
+    brandUserId: string | null; roleRestriction: string | null;
+    maxRedemptions: number | null; expiresAt: Date | null; createdBy: string | null;
+  }): Promise<Voucher>;
+  getVoucherByCode(code: string): Promise<VoucherRecord | null>;
+  listVouchers(): Promise<Array<Voucher & { redemptionCount: number }>>;
+  revokeVoucher(id: string): Promise<boolean>;
+  /**
+   * Redeem atomically. Returns null when the cap was reached or the user has
+   * already redeemed — the caller must treat null as a refusal, never retry.
+   */
+  redeemVoucher(voucherId: string, userId: string, maxRedemptions: number | null):
+    Promise<{ redeemed: boolean; reason?: "exhausted" | "already_redeemed" }>;
   getCommissionsByExternalOrder(externalOrderId: string, storeConnectionId?: string | null): Promise<CommissionTransaction[]>;
   
   // Campaigns
@@ -1982,6 +2002,51 @@ export class MemStorage implements IStorage {
     return (this.videoOrdersMap.get(sessionId) as VideoOrder) ?? null;
   }
 
+  // ── Vouchers ───────────────────────────────────────────────────────────────
+  private vouchersMap = new Map<string, any>();
+  private voucherRedemptionsList: any[] = [];
+
+  async createVoucher(v: any): Promise<Voucher> {
+    const row = { id: randomUUID(), ...v, code: v.code.toUpperCase(), revokedAt: null, createdAt: new Date() };
+    this.vouchersMap.set(row.id, row);
+    return row as Voucher;
+  }
+
+  async getVoucherByCode(code: string): Promise<VoucherRecord | null> {
+    const up = code.toUpperCase();
+    const row = Array.from(this.vouchersMap.values()).find(v => v.code.toUpperCase() === up);
+    return row ?? null;
+  }
+
+  async listVouchers(): Promise<Array<Voucher & { redemptionCount: number }>> {
+    return Array.from(this.vouchersMap.values()).map(v => ({
+      ...v,
+      redemptionCount: this.voucherRedemptionsList.filter(r => r.voucherId === v.id).length,
+    }));
+  }
+
+  async revokeVoucher(id: string): Promise<boolean> {
+    const v = this.vouchersMap.get(id);
+    if (!v || v.revokedAt) return false;
+    v.revokedAt = new Date();
+    return true;
+  }
+
+  async redeemVoucher(voucherId: string, userId: string, maxRedemptions: number | null) {
+    // Same caveat as the wallet: single-threaded Node makes this trivially
+    // atomic and proves nothing about Postgres. The real guarantee is the
+    // advisory lock plus the unique index in DatabaseStorage.
+    if (this.voucherRedemptionsList.some(r => r.voucherId === voucherId && r.userId === userId)) {
+      return { redeemed: false, reason: "already_redeemed" as const };
+    }
+    const n = this.voucherRedemptionsList.filter(r => r.voucherId === voucherId).length;
+    if (maxRedemptions != null && n >= maxRedemptions) {
+      return { redeemed: false, reason: "exhausted" as const };
+    }
+    this.voucherRedemptionsList.push({ id: randomUUID(), voucherId, userId, redeemedAt: new Date() });
+    return { redeemed: true };
+  }
+
   async getCommissionsByExternalOrder(externalOrderId: string, storeConnectionId?: string | null): Promise<CommissionTransaction[]> {
     return Array.from(this.commissionTransactionsMap.values()).filter(t =>
       t.externalOrderId === externalOrderId &&
@@ -3687,6 +3752,82 @@ export class DatabaseStorage implements IStorage {
     const [row] = await db.select().from(videoOrders)
       .where(eq(videoOrders.stripeCheckoutSessionId, sessionId)).limit(1);
     return row ?? null;
+  }
+
+  // ── Vouchers ───────────────────────────────────────────────────────────────
+
+  async createVoucher(v: any): Promise<Voucher> {
+    const [row] = await db.insert(vouchers).values({
+      code: v.code.toUpperCase(),
+      label: v.label,
+      grantType: v.grantType,
+      brandUserId: v.brandUserId,
+      roleRestriction: v.roleRestriction,
+      maxRedemptions: v.maxRedemptions,
+      expiresAt: v.expiresAt,
+      createdBy: v.createdBy,
+    }).returning();
+    return row;
+  }
+
+  async getVoucherByCode(code: string): Promise<VoucherRecord | null> {
+    // upper() both sides so it uses the case-insensitive unique index and so
+    // "gtm20" finds "GTM20" — nobody types a voucher exactly as printed.
+    const [row] = await db.select().from(vouchers)
+      .where(sql`upper(${vouchers.code}) = ${code.toUpperCase()}`).limit(1);
+    return row ? {
+      id: row.id, code: row.code, grantType: row.grantType as any,
+      brandUserId: row.brandUserId, roleRestriction: row.roleRestriction,
+      maxRedemptions: row.maxRedemptions, expiresAt: row.expiresAt, revokedAt: row.revokedAt,
+    } : null;
+  }
+
+  async listVouchers(): Promise<Array<Voucher & { redemptionCount: number }>> {
+    const rows = await db.select({
+      v: vouchers,
+      redemptionCount: sql<number>`(select count(*) from ${voucherRedemptions} r where r.voucher_id = ${vouchers.id})::int`,
+    }).from(vouchers).orderBy(desc(vouchers.createdAt)).limit(500);
+    return rows.map(r => ({ ...r.v, redemptionCount: r.redemptionCount }));
+  }
+
+  async revokeVoucher(id: string): Promise<boolean> {
+    const [row] = await db.update(vouchers)
+      .set({ revokedAt: new Date() })
+      .where(and(eq(vouchers.id, id), isNull(vouchers.revokedAt)))
+      .returning({ id: vouchers.id });
+    return !!row;
+  }
+
+  /**
+   * Redeem, atomically.
+   *
+   * THE COUNT IS READ INSIDE THE TRANSACTION, UNDER A LOCK ON THE VOUCHER.
+   * Twenty creators handed the same code redeem at the same moment, not in
+   * turn; counting outside and inserting after is a read-modify-write that
+   * hands out 21, 22, 25 seats. The advisory lock serialises them, and the
+   * unique (voucher_id, user_id) index catches a double-submitted form even if
+   * the lock is somehow bypassed.
+   */
+  async redeemVoucher(voucherId: string, userId: string, maxRedemptions: number | null) {
+    return db.transaction(async (trx) => {
+      await trx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${`voucher:${voucherId}`}, 0))`);
+
+      const [{ n }] = await trx.select({ n: sql<number>`count(*)::int` })
+        .from(voucherRedemptions).where(eq(voucherRedemptions.voucherId, voucherId));
+
+      if (maxRedemptions != null && n >= maxRedemptions) {
+        return { redeemed: false, reason: "exhausted" as const };
+      }
+
+      try {
+        await trx.insert(voucherRedemptions).values({ voucherId, userId });
+      } catch (err: any) {
+        const code = err?.code ?? err?.cause?.code;
+        if (code === "23505") return { redeemed: false, reason: "already_redeemed" as const };
+        throw err;
+      }
+      return { redeemed: true };
+    });
   }
 
   async hasCommissionForExternalOrder(externalOrderId: string, storeConnectionId?: string | null): Promise<boolean> {

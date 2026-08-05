@@ -11,6 +11,7 @@ import { recordSaleCommissions, clawbackSaleCommissions } from "./commissions";
 import { recordFeeAccrual, voidFeeAccrual } from "./feeAccruals";
 import { generateFeeInvoice, finalizeFeeInvoice } from "./feeInvoicing";
 import { quoteCheckout, checkoutIdempotencyKey, parsePriceToCents } from "./inVideoCheckout";
+import { checkRedeemable, grantsOf, normaliseCode, generateVoucherCode } from "./vouchers";
 import { feeInvoiceStripeAdapter } from "./feeInvoiceStripe";
 
 
@@ -5074,6 +5075,114 @@ Identify which products from the catalog are most likely to appear or be feature
     } catch (error) {
       console.error("Fee accrual list error:", error);
       res.status(500).json({ error: "Failed to load fee accruals" });
+    }
+  });
+
+
+  // ==================== VOUCHERS ====================
+  //
+  // Replaces one shared string in an env var that was the same for everyone,
+  // uncapped, never expired, and revocable only by rotating it for everybody.
+
+  /** Admin: mint a voucher. The code is generated unless one is supplied. */
+  app.post("/api/admin/vouchers", requireAdmin, async (req, res) => {
+    try {
+      const {
+        code, label, grantType, brandUserId, roleRestriction, maxRedemptions, expiresAt,
+      } = req.body ?? {};
+
+      if (grantType && !["free_access", "waive_setup_fee"].includes(grantType)) {
+        return res.status(400).json({ error: "grantType must be free_access or waive_setup_fee" });
+      }
+      if (roleRestriction && !["creator", "brand", "affiliate"].includes(roleRestriction)) {
+        return res.status(400).json({ error: "roleRestriction must be a valid role" });
+      }
+      const cap = maxRedemptions == null || maxRedemptions === "" ? null : Number(maxRedemptions);
+      if (cap != null && (!Number.isInteger(cap) || cap < 1)) {
+        return res.status(400).json({ error: "maxRedemptions must be a whole number of 1 or more" });
+      }
+      const expiry = expiresAt ? new Date(expiresAt) : null;
+      if (expiry && Number.isNaN(expiry.getTime())) {
+        return res.status(400).json({ error: "expiresAt must be a valid date" });
+      }
+
+      const finalCode = normaliseCode(typeof code === "string" && code.trim() ? code : generateVoucherCode());
+      if (await storage.getVoucherByCode(finalCode)) {
+        return res.status(409).json({ error: "That code already exists" });
+      }
+
+      const voucher = await storage.createVoucher({
+        code: finalCode,
+        label: typeof label === "string" && label.trim() ? label.trim() : null,
+        grantType: grantType ?? "free_access",
+        brandUserId: typeof brandUserId === "string" && brandUserId ? brandUserId : null,
+        roleRestriction: roleRestriction ?? null,
+        maxRedemptions: cap,
+        expiresAt: expiry,
+        createdBy: (req.session as any)?.userId ?? null,
+      });
+      res.status(201).json(voucher);
+    } catch (error) {
+      console.error("Voucher create error:", error);
+      res.status(500).json({ error: "Failed to create voucher" });
+    }
+  });
+
+  /** Admin: every voucher with how many of its seats are gone. */
+  app.get("/api/admin/vouchers", requireAdmin, async (_req, res) => {
+    try {
+      const rows = await storage.listVouchers();
+      res.json(rows.map((v) => ({
+        ...v,
+        seatsRemaining: v.maxRedemptions == null ? null : Math.max(0, v.maxRedemptions - v.redemptionCount),
+      })));
+    } catch (error) {
+      console.error("Voucher list error:", error);
+      res.status(500).json({ error: "Failed to load vouchers" });
+    }
+  });
+
+  /**
+   * Admin: revoke. Sets a timestamp rather than deleting — the accounts already
+   * created under this voucher keep their access and stay explicable.
+   */
+  app.post("/api/admin/vouchers/:id/revoke", requireAdmin, async (req, res) => {
+    try {
+      const done = await storage.revokeVoucher(req.params.id);
+      if (!done) return res.status(409).json({ error: "Voucher not found, or already revoked" });
+      res.json({ ok: true });
+    } catch (error) {
+      console.error("Voucher revoke error:", error);
+      res.status(500).json({ error: "Failed to revoke voucher" });
+    }
+  });
+
+  /**
+   * Public: check a code before submitting the signup form.
+   *
+   * Deliberately says only whether it is usable and what it grants — never who
+   * it belongs to or how it was issued, since anyone can call this.
+   */
+  app.post("/api/vouchers/check", async (req, res) => {
+    try {
+      const raw = typeof req.body?.code === "string" ? req.body.code : "";
+      if (!raw.trim()) return res.status(400).json({ error: "A code is required" });
+      const role = typeof req.body?.role === "string" ? req.body.role : "creator";
+
+      const voucher = await storage.getVoucherByCode(normaliseCode(raw));
+      const check = checkRedeemable(voucher, { role, redemptionCount: 0 });
+      if (!check.ok) return res.status(404).json({ valid: false, message: check.message, reason: check.reason });
+
+      const grants = grantsOf(check.voucher);
+      res.json({
+        valid: true,
+        message: grants.freeAccess
+          ? "Voucher accepted — this account will have free access."
+          : "Voucher accepted — your setup fee will be waived.",
+      });
+    } catch (error) {
+      console.error("Voucher check error:", error);
+      res.status(500).json({ error: "Could not check that code" });
     }
   });
 

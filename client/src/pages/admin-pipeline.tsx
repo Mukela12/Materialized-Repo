@@ -6,6 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useTableControls, type SortDir } from "@/hooks/useTableControls";
 import { exportToCsv } from "@/lib/exportCsv";
 import { TableToolbar } from "@/components/TableToolbar";
+import { VoucherManager } from "@/components/VoucherManager";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -1230,7 +1231,7 @@ export default function AdminPipeline() {
   const [selectedFollowUp, setSelectedFollowUp] = useState<string>("");
   const [notesValues, setNotesValues] = useState<Record<string, string>>({});
   const [filterStage, setFilterStage] = useState<string>("all");
-  const [activeTab, setActiveTab] = useState<"overview" | "users" | "videos" | "brands" | "pipeline" | "money">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "users" | "videos" | "brands" | "pipeline" | "money" | "vouchers">("overview");
 
   const { data: pipeline = [], isLoading, refetch } = useQuery<PipelineEntry[]>({
     queryKey: ["/api/admin/pipeline"],
@@ -1312,7 +1313,7 @@ export default function AdminPipeline() {
 
         {/* Tab Navigation */}
         <div className="flex gap-1 mb-6 border-b overflow-x-auto">
-          {(["overview", "users", "videos", "brands", "pipeline", "money"] as const).map(tab => (
+          {(["overview", "users", "videos", "brands", "pipeline", "money", "vouchers"] as const).map(tab => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -1333,6 +1334,7 @@ export default function AdminPipeline() {
         {activeTab === "videos" && <AdminVideos />}
         {activeTab === "brands" && <AdminBrands />}
         {activeTab === "money" && <AdminMoneyOps />}
+        {activeTab === "vouchers" && <VoucherManager />}
         {activeTab === "pipeline" && (
         <div>
         {/* Header */}
