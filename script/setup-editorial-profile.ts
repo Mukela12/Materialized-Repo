@@ -31,6 +31,20 @@ import { sql } from "drizzle-orm";
 /** The account to make permanently free. Narrow by design — one email. */
 const EMAIL = process.env.EDITORIAL_EMAIL || "missbethanieashton@gmail.com";
 
+/**
+ * The name shoppable editorials are published under.
+ *
+ * It was "Admin", which is what the bootstrap seeder names the account it
+ * creates. That is fine for a login and wrong for a byline — every editorial
+ * this account publishes carries it, and it appears on library cards next to
+ * real creator names.
+ *
+ * Safe to change permanently: the seeder only sets displayName on the CREATE
+ * path (server/authRoutes.ts). Its update path touches password, isAdmin and
+ * emailVerified only, so re-enabling seeding would not rename this back.
+ */
+const DISPLAY_NAME = process.env.EDITORIAL_NAME || "MTRLZD Editorial";
+
 (async () => {
   const apply = process.env.APPLY === "1";
   console.log(apply ? "MODE: APPLY\n" : "MODE: DRY RUN — set APPLY=1 to write\n");
@@ -47,7 +61,7 @@ const EMAIL = process.env.EDITORIAL_EMAIL || "missbethanieashton@gmail.com";
   }
 
   console.log(`account          ${user.email}  (${user.id})`);
-  console.log(`display name     ${user.display_name}`);
+  console.log(`display name     ${user.display_name}${user.display_name !== DISPLAY_NAME ? `  <- will become "${DISPLAY_NAME}"` : ""}`);
   console.log(`role             ${user.role}`);
   console.log(`is admin         ${user.is_admin}`);
   console.log(`free access      ${user.free_access}  ${user.free_access ? "" : "<- will be set"}`);
@@ -58,20 +72,30 @@ const EMAIL = process.env.EDITORIAL_EMAIL || "missbethanieashton@gmail.com";
     console.log(`decision about what this account IS, not about whether it pays.`);
   }
 
-  if (user.free_access) {
-    console.log("\nAlready on permanent free access. Nothing to do.");
+  const needsFree = !user.free_access;
+  const needsRename = user.display_name !== DISPLAY_NAME;
+
+  if (!needsFree && !needsRename) {
+    console.log("\nAlready set up. Nothing to do.");
   } else if (apply) {
-    await db.execute(sql`update users set free_access = true where id = ${user.id}`);
-    console.log("\n✓ free_access set — now explicit rather than inherited from isAdmin");
+    if (needsFree) {
+      await db.execute(sql`update users set free_access = true where id = ${user.id}`);
+      console.log("\n✓ free_access set — now explicit rather than inherited from isAdmin");
+    }
+    if (needsRename) {
+      await db.execute(sql`update users set display_name = ${DISPLAY_NAME} where id = ${user.id}`);
+      console.log(`✓ display name "${user.display_name}" -> "${DISPLAY_NAME}"`);
+    }
   } else {
-    console.log("\nWould set free_access = true.");
+    if (needsFree) console.log("\nWould set free_access = true.");
+    if (needsRename) console.log(`Would rename "${user.display_name}" -> "${DISPLAY_NAME}".`);
   }
 
   if (apply) {
     const { rows: after } = await db.execute(sql`
-      select free_access, is_admin from users where id = ${user.id}`);
+      select display_name, free_access, is_admin from users where id = ${user.id}`);
     const a = after[0] as any;
-    console.log(`\nverified: free_access=${a.free_access} is_admin=${a.is_admin}`);
+    console.log(`\nverified: name="${a.display_name}" free_access=${a.free_access} is_admin=${a.is_admin}`);
   }
 
   console.log(`
