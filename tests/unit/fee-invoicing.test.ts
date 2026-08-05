@@ -22,6 +22,7 @@
 import { describe, it, expect, vi } from "vitest";
 import {
   generateFeeInvoice,
+  finalizeFeeInvoice,
   describeInvoiceLine,
   type FeeInvoiceStore,
   type FeeInvoiceStripe,
@@ -133,27 +134,10 @@ describe("raising an invoice", () => {
     expect(order).toEqual(["invoice", "item"]);
   });
 
-  it("finalises when asked, and reports the hosted url", async () => {
+  it("never finalises — creating and sending are separate steps now", async () => {
     const store = fakeStore();
-    const r = await generateFeeInvoice(store, fakeStripe(), { ...ARGS, finalize: true });
-
-    expect(r.finalized).toBe(true);
-    expect(r.hostedInvoiceUrl).toContain("https://pay.stripe/");
-  });
-
-  it("treats a finalised zero-total invoice as a FAILURE, not a success", async () => {
-    // A $0 invoice is auto-marked paid, so this would otherwise read as success
-    // while nobody was billed.
-    const store = fakeStore();
-    const stripe = fakeStripe({
-      async finalizeInvoice(id) { return { id, total: 0, hosted_invoice_url: null }; },
-    });
-
-    const r = await generateFeeInvoice(store, stripe, { ...ARGS, finalize: true });
-
-    expect(r.status).toBe("failed");
-    expect(r.error).toMatch(/zero total/i);
-    expect(store.unbilledCount()).toBe(2); // released, so it can be billed again
+    const r = await generateFeeInvoice(store, fakeStripe(), ARGS);
+    expect(r.finalized).toBe(false);
   });
 });
 
@@ -274,5 +258,72 @@ describe("the invoice line", () => {
   it("says 'order' when there is exactly one", () => {
     expect(describeInvoiceLine(1, new Date("2026-07-01"), new Date("2026-08-01")))
       .toContain("1 attributed order,");
+  });
+});
+
+
+/**
+ * Finalising — the step that actually issues the bill.
+ *
+ * This used to live inside generateFeeInvoice's try/catch, and that was a way to
+ * bill a brand TWICE. finalizeInvoice() sends a real, collectible invoice; any
+ * throw after it returned — the zero-total guard, a dropped response, a failed
+ * markInvoiceFinalized — fell into the catch and released the accruals back to
+ * `accrued`. A sent invoice then existed while its rows looked unbilled, and the
+ * next run billed them again.
+ *
+ * The rule these tests pin: once money has been demanded, NOTHING releases a
+ * claim. The same rule the payout engine follows once a transfer has left.
+ */
+describe("finalising an invoice", () => {
+  it("reports success and the hosted url", async () => {
+    const store = fakeStore();
+    const r = await finalizeFeeInvoice(store, fakeStripe(), "fi_1", "in_1");
+    expect(r.ok).toBe(true);
+    expect(r.finalized).toBe(true);
+    expect(r.hostedInvoiceUrl).toContain("https://pay.stripe/");
+  });
+
+  it("does NOT release the claim when a zero-total invoice was issued", async () => {
+    // The invoice is real and sent even at $0. Releasing would re-bill next run.
+    const store = fakeStore();
+    await generateFeeInvoice(store, fakeStripe(), ARGS);
+    const before = store.released.length;
+
+    const r = await finalizeFeeInvoice(store, fakeStripe({
+      async finalizeInvoice(id) { return { id, total: 0, hosted_invoice_url: null }; },
+    }), "fi_1", "in_1");
+
+    expect(r.ok).toBe(false);
+    expect(r.finalized).toBe(true);       // it WAS issued
+    expect(r.needsAttention).toBe(true);  // a human must void it
+    expect(store.released.length).toBe(before); // nothing released
+  });
+
+  it("does NOT release when the invoice was sent but recording it failed", async () => {
+    const store = fakeStore();
+    await generateFeeInvoice(store, fakeStripe(), ARGS);
+    const before = store.released.length;
+    store.markInvoiceFinalized = async () => { throw new Error("db down"); };
+
+    const r = await finalizeFeeInvoice(store, fakeStripe(), "fi_1", "in_1");
+
+    expect(r.ok).toBe(false);
+    expect(r.finalized).toBe(true);
+    expect(r.needsAttention).toBe(true);
+    expect(r.error).toMatch(/SENT but recording that failed/);
+    expect(r.error).toMatch(/Do not re-run/);
+    expect(store.released.length).toBe(before);
+  });
+
+  it("reports a finalise that never happened as not-finalised, leaving the draft to retry", async () => {
+    const store = fakeStore();
+    const r = await finalizeFeeInvoice(store, fakeStripe({
+      async finalizeInvoice() { throw new Error("stripe down"); },
+    }), "fi_1", "in_1");
+
+    expect(r.ok).toBe(false);
+    expect(r.finalized).toBe(false);       // nothing was sent
+    expect(r.needsAttention).toBeUndefined();
   });
 });

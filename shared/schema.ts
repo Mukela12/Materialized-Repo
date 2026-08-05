@@ -1183,6 +1183,14 @@ export const storeConnections = pgTable("store_connections", {
   lastSyncAt: timestamp("last_sync_at"),
   productCount: integer("product_count").default(0),
   isActive: boolean("is_active").default(true),
+  /**
+   * Set when a store is reconnected, superseding this row. Partial-unique index
+   * (user, platform, domain) WHERE deactivated_at IS NULL allows at most one
+   * live connection — reconnecting used to mint a second one with its own live
+   * webhook, and both fired on every order, billing the brand twice. Superseded
+   * rows are kept, not deleted: they still own their historic accruals.
+   */
+  deactivatedAt: timestamp("deactivated_at"),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
 });
 

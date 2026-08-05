@@ -18,6 +18,7 @@ import { Scheduler, type SchedulerStore, type ScheduledJob, type JobResult } fro
 import {
   summarisePayoutRun, previousMonthWindow,
   DEFAULT_PAYOUT_CRON, DEFAULT_FEE_INVOICE_CRON,
+  billingWindow, LOOKBACK_MONTHS,
 } from "../../server/scheduledJobs";
 import type { PayoutRunSummary } from "../../server/payouts";
 
@@ -253,5 +254,41 @@ describe("the invoicing window", () => {
     const { from, to } = previousMonthWindow(utc("2026-09-01T09:00:00"));
     expect(from.toISOString().slice(0, 7)).toBe("2026-08");
     expect(to.toISOString().slice(0, 7)).toBe("2026-09");
+  });
+});
+
+
+/**
+ * How far back a billing run looks.
+ *
+ * The month window alone meant anything a run skipped — a brand with no payment
+ * method, a Stripe outage, a released claim — fell outside every later window
+ * and was never billed at all. Silent, and it accumulates.
+ */
+describe("the billing look-back", () => {
+  it("ends at the month being billed, as before", () => {
+    const { to } = billingWindow(utc("2026-09-01T09:00:00"));
+    expect(to.toISOString()).toBe("2026-09-01T00:00:00.000Z");
+  });
+
+  it("starts months earlier, so a skipped brand is picked up later", () => {
+    const { from } = billingWindow(utc("2026-09-01T09:00:00"));
+    // August is the month being billed; the sweep reaches back before it.
+    expect(from.toISOString()).toBe("2026-02-01T00:00:00.000Z");
+    expect(LOOKBACK_MONTHS).toBe(6);
+  });
+
+  it("crosses a year boundary correctly", () => {
+    const { from, to } = billingWindow(utc("2027-01-01T09:00:00"));
+    expect(to.toISOString()).toBe("2027-01-01T00:00:00.000Z");
+    expect(from.toISOString()).toBe("2026-06-01T00:00:00.000Z");
+  });
+
+  it("is strictly wider than the single month, never narrower", () => {
+    const occ = utc("2026-09-01T09:00:00");
+    expect(billingWindow(occ).from.getTime())
+      .toBeLessThan(previousMonthWindow(occ).from.getTime());
+    expect(billingWindow(occ).to.getTime())
+      .toBe(previousMonthWindow(occ).to.getTime());
   });
 });

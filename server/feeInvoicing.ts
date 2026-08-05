@@ -155,8 +155,11 @@ export async function generateFeeInvoice(
     currency: string;
     periodStart: Date;
     periodEnd: Date;
-    /** Finalise immediately. Off by default — a draft bills nobody. */
-    finalize?: boolean;
+    /**
+     * REMOVED. Finalising is now finalizeFeeInvoice(), deliberately outside this
+     * function's try/catch — a throw after the invoice was sent used to release
+     * the claim, so the same orders were billed again next run.
+     */
     daysUntilDue?: number;
   },
 ): Promise<GenerateResult> {
@@ -219,24 +222,7 @@ export async function generateFeeInvoice(
 
     await store.markInvoiceCreated(feeInvoiceId, stripeInvoice.id, stripeInvoice.hosted_invoice_url ?? null);
 
-    let finalized = false;
     let hostedUrl = stripeInvoice.hosted_invoice_url ?? null;
-
-    if (args.finalize) {
-      const final = await stripe.finalizeInvoice(stripeInvoice.id);
-      // A finalised invoice with a zero total means the line item did not
-      // attach — the exact failure createSurplusInvoice was rewritten to catch.
-      // Fail loudly rather than reporting a $0 invoice as success.
-      if (!final.total) {
-        throw new Error(
-          `Fee invoice ${final.id} finalised with a zero total — the line item did not attach.`,
-        );
-      }
-      hostedUrl = final.hosted_invoice_url ?? hostedUrl;
-      await store.markInvoiceFinalized(feeInvoiceId, hostedUrl);
-      finalized = true;
-    }
-
     return {
       status: "invoiced",
       feeInvoiceId,
@@ -244,16 +230,71 @@ export async function generateFeeInvoice(
       hostedInvoiceUrl: hostedUrl,
       subtotalCents: claim.invoice.subtotalCents,
       lineCount: claim.accruals.length,
-      finalized,
+      finalized: false,
     };
   } catch (err) {
     // Release, so the accruals are billable again next run rather than stranded
     // behind an invoice that does not exist. Under-billing once is recoverable;
     // silently losing a receivable is not.
+    //
+    // Reachable ONLY before the invoice is finalised — see finalizeFeeInvoice
+    // below for why finalising must never be able to land here.
     const message = (err as Error)?.message ?? String(err);
     await store.releaseInvoiceClaim(feeInvoiceId, message, "failed");
     return { status: "failed", feeInvoiceId, error: message };
   }
+}
+
+/**
+ * Finalise a draft — the step that actually issues the bill.
+ *
+ * DELIBERATELY NOT INSIDE generateFeeInvoice's try/catch. It used to be, and
+ * that was a way to bill a brand twice: finalizeInvoice() sends a real,
+ * collectible invoice, and ANY throw after it returned — the zero-total guard,
+ * a dropped response, a failed markInvoiceFinalized — fell into the catch and
+ * released the accruals back to `accrued`. A sent invoice would then exist while
+ * its rows looked unbilled, and the next run would bill them again.
+ *
+ * So once money has been demanded, nothing here releases a claim. A bookkeeping
+ * failure after finalising is reported for a human instead — the same rule the
+ * payout engine follows once a transfer has left.
+ */
+export async function finalizeFeeInvoice(
+  store: FeeInvoiceStore,
+  stripe: FeeInvoiceStripe,
+  feeInvoiceId: string,
+  stripeInvoiceId: string,
+): Promise<{ ok: boolean; finalized: boolean; hostedInvoiceUrl?: string | null; error?: string; needsAttention?: boolean }> {
+  let final: { id: string; total: number; hosted_invoice_url?: string | null };
+  try {
+    final = await stripe.finalizeInvoice(stripeInvoiceId);
+  } catch (err) {
+    // Nothing was sent, so the claim may safely stay put — the draft is still
+    // there to retry. We do NOT release: the draft still references these rows.
+    return { ok: false, finalized: false, error: (err as Error)?.message ?? String(err) };
+  }
+
+  // From here the invoice IS issued. No failure below may release the claim.
+  if (!final.total) {
+    return {
+      ok: false, finalized: true, needsAttention: true,
+      error: `Invoice ${final.id} finalised with a zero total — the line item did not attach. ` +
+        `It has been issued; void it in Stripe.`,
+    };
+  }
+
+  try {
+    await store.markInvoiceFinalized(feeInvoiceId, final.hosted_invoice_url ?? null);
+  } catch (err) {
+    return {
+      ok: false, finalized: true, needsAttention: true,
+      hostedInvoiceUrl: final.hosted_invoice_url ?? null,
+      error: `Invoice ${final.id} was SENT but recording that failed: ${(err as Error)?.message}. ` +
+        `Do not re-run; mark fee invoice ${feeInvoiceId} finalised by hand.`,
+    };
+  }
+
+  return { ok: true, finalized: true, hostedInvoiceUrl: final.hosted_invoice_url ?? null };
 }
 
 /** Human-readable one-liner for a run, for logs and the admin response. */

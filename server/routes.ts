@@ -9,7 +9,7 @@ import { encryptSecret, decryptSecret } from "./crypto";
 import { hashPassword } from "./auth";
 import { recordSaleCommissions, clawbackSaleCommissions } from "./commissions";
 import { recordFeeAccrual, voidFeeAccrual } from "./feeAccruals";
-import { generateFeeInvoice } from "./feeInvoicing";
+import { generateFeeInvoice, finalizeFeeInvoice } from "./feeInvoicing";
 import { quoteCheckout, checkoutIdempotencyKey, parsePriceToCents } from "./inVideoCheckout";
 import { feeInvoiceStripeAdapter } from "./feeInvoiceStripe";
 
@@ -1644,6 +1644,22 @@ export async function registerRoutes(
 
       const { db } = await import("./db");
       const { storeConnections } = await import("@shared/schema");
+      const { eq, and, isNull } = await import("drizzle-orm");
+      // Retire any existing live connection for this store BEFORE inserting.
+      // Without this, reconnecting minted a second connection with its own live
+      // webhook receiver — the old subscription is never removed at the store —
+      // so both fired on every order and, because every dedup is scoped per
+      // connection, the brand was billed the 15% twice. The partial unique index
+      // added in 0018 is the backstop if this is ever bypassed.
+      await db.update(storeConnections)
+        .set({ isActive: false, deactivatedAt: new Date() })
+        .where(and(
+          eq(storeConnections.userId, sessionUserId),
+          eq(storeConnections.platform, "shopify"),
+          eq(storeConnections.storeDomain, storeDomain),
+          isNull(storeConnections.deactivatedAt),
+        ));
+
       const [connection] = await db.insert(storeConnections).values({
         userId: sessionUserId,
         platform: "shopify",
@@ -1686,7 +1702,23 @@ export async function registerRoutes(
 
       const { db } = await import("./db");
       const { storeConnections } = await import("@shared/schema");
+      const { eq, and, isNull } = await import("drizzle-orm");
       // Store combined key:secret as accessToken
+      // Retire any existing live connection for this store BEFORE inserting.
+      // Without this, reconnecting minted a second connection with its own live
+      // webhook receiver — the old subscription is never removed at the store —
+      // so both fired on every order and, because every dedup is scoped per
+      // connection, the brand was billed the 15% twice. The partial unique index
+      // added in 0018 is the backstop if this is ever bypassed.
+      await db.update(storeConnections)
+        .set({ isActive: false, deactivatedAt: new Date() })
+        .where(and(
+          eq(storeConnections.userId, sessionUserId),
+          eq(storeConnections.platform, "woocommerce"),
+          eq(storeConnections.storeDomain, storeUrl),
+          isNull(storeConnections.deactivatedAt),
+        ));
+
       const [connection] = await db.insert(storeConnections).values({
         userId: sessionUserId,
         platform: "woocommerce",
@@ -4938,9 +4970,22 @@ Identify which products from the catalog are most likely to appear or be feature
         currency: typeof currency === "string" && currency ? currency : getPlatformCurrency(),
         periodStart,
         periodEnd,
-        finalize: finalize === true,
         daysUntilDue: Number(daysUntilDue) || 14,
       });
+
+      // Finalising is a SEPARATE call on purpose. It used to sit inside
+      // generateFeeInvoice's try/catch, where any failure after the invoice was
+      // sent released the accruals and let the next run bill them again.
+      if (result.status === "invoiced" && finalize === true && result.stripeInvoiceId) {
+        const fin = await finalizeFeeInvoice(storage, feeInvoiceStripeAdapter, result.feeInvoiceId!, result.stripeInvoiceId);
+        if (!fin.ok) {
+          // 207: the draft exists and may well have been SENT. Never reported as
+          // a clean success, and never as a plain failure that invites a re-run.
+          return res.status(207).json({ ...result, finalized: fin.finalized, needsAttention: fin.needsAttention, error: fin.error });
+        }
+        result.finalized = true;
+        result.hostedInvoiceUrl = fin.hostedInvoiceUrl ?? result.hostedInvoiceUrl;
+      }
 
       // A failed Stripe call is reported as 502, not 200 — the claim has been
       // released and the accruals are billable again, but the caller must not
