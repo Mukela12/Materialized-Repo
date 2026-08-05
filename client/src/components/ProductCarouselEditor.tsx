@@ -1,4 +1,5 @@
 import { useState, useRef } from "react";
+import { videoDeliveryUrl } from "@shared/videoDelivery";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
@@ -178,7 +179,7 @@ export function ProductCarouselEditor({
                 </div>
               )}
               <video
-                src={videoUrl}
+                src={videoDeliveryUrl(videoUrl, "preview")}
                 className="absolute inset-0 w-full h-full object-cover"
                 autoPlay
                 muted

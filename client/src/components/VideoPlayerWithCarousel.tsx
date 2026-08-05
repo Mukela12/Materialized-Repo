@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { videoDeliveryUrl, videoPosterUrl } from "@shared/videoDelivery";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -331,7 +332,7 @@ export function VideoPlayerWithCarousel({
         >
           <video
             ref={videoRef}
-            src={video.videoUrl}
+            src={videoDeliveryUrl(video.videoUrl, "player")}
             poster={video.thumbnailUrl || undefined}
             className="w-full h-full object-contain"
             autoPlay={autoPlay}

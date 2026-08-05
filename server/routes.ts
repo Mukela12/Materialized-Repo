@@ -12,6 +12,7 @@ import { recordFeeAccrual, voidFeeAccrual } from "./feeAccruals";
 import { generateFeeInvoice, finalizeFeeInvoice } from "./feeInvoicing";
 import { quoteCheckout, checkoutIdempotencyKey, parsePriceToCents } from "./inVideoCheckout";
 import { checkRedeemable, grantsOf, normaliseCode, generateVoucherCode, mintCodes, MAX_BATCH } from "./vouchers";
+import { videoDeliveryUrl } from "@shared/videoDelivery";
 import { feeInvoiceStripeAdapter } from "./feeInvoiceStripe";
 
 
@@ -6357,11 +6358,10 @@ Identify which products from the catalog are most likely to appear or be feature
   <script>
     var utm="${utm.replace(/[<>"'\\]/g, "")}",videoId="${video.id}",apiBase="${apiBase}",CURRENCY_SYMBOL="${embedCurrencySymbol()}",PK="${process.env.STRIPE_PUBLISHABLE_KEY || ""}";
     var vid=document.getElementById("vid");
-    var rawUrl="${(video.videoUrl || "").replace(/[<>"'\\]/g, "")}";
-    // Optimize Cloudinary URL for streaming
-    if(rawUrl.includes("cloudinary.com")){
-      rawUrl=rawUrl.replace("/upload/","/upload/q_auto,f_auto,w_720/");
-    }
+    // Transformed server-side by videoDeliveryUrl — the raw original is never
+    // sent to the browser, and the embed and the widget can no longer drift to
+    // different widths the way two hand-rolled string replaces did.
+    var rawUrl="${videoDeliveryUrl(video.videoUrl, "embed").replace(/[<>"'\\]/g, "")}";
     vid.src=rawUrl;
     vid.addEventListener("playing",function(){
       document.getElementById("loader").style.display="none";
@@ -6490,8 +6490,7 @@ Identify which products from the catalog are most likely to appear or be feature
   el.style.aspectRatio="16/9";el.style.background="#000";el.style.borderRadius="12px";
   el.style.overflow="hidden";
   var v=document.createElement("video");
-  var vsrc="${safeVideoUrl}";
-  if(vsrc.indexOf("cloudinary.com")>-1){vsrc=vsrc.replace("/upload/","/upload/q_auto,f_auto,w_640/");}
+  var vsrc="${videoDeliveryUrl(safeVideoUrl, "embed")}";
   v.src=vsrc;v.muted=true;v.loop=true;v.playsInline=true;v.preload="auto";
   v.style.cssText="width:100%;height:100%;object-fit:cover;";
   v.addEventListener("canplay",function(){v.play().catch(function(){});});

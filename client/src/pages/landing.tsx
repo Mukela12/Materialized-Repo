@@ -1,4 +1,5 @@
 import { CURRENCY_SYMBOL, PLATFORM_CURRENCY_CODE } from "@/lib/currency";
+import { videoDeliveryUrl } from "@shared/videoDelivery";
 import { planPriceMajor, setupFeeMajor, PLAN_ALLOWANCES, OVERAGE_RATES, type PlanKey } from "@shared/plans";
 import { PricingEstimator } from "@/components/PricingEstimator";
 import { useState, useEffect, useRef } from "react";
@@ -28,14 +29,14 @@ import { Play, ChevronDown, Users, DollarSign, TrendingUp, ShoppingBag, ArrowRig
 import { DemoPopup } from "@/components/DemoPopup";
 import { SiInstagram, SiLinkedin } from "react-icons/si";
 // Landing page videos hosted on Cloudinary
-const heroVideo = "https://res.cloudinary.com/dvj7ayoot/video/upload/v1775609692/materialized/landing/hero-video.mp4";
-const discoveryPacksVideo = "https://res.cloudinary.com/dvj7ayoot/video/upload/v1775609709/materialized/landing/discovery-packs.mp4";
-const verticalDemoVideo = "https://res.cloudinary.com/dvj7ayoot/video/upload/v1775609713/materialized/landing/vertical-demo.mp4";
+const heroVideo = videoDeliveryUrl("https://res.cloudinary.com/dvj7ayoot/video/upload/v1775609692/materialized/landing/hero-video.mp4", "player");
+const discoveryPacksVideo = videoDeliveryUrl("https://res.cloudinary.com/dvj7ayoot/video/upload/v1775609709/materialized/landing/discovery-packs.mp4", "player");
+const verticalDemoVideo = videoDeliveryUrl("https://res.cloudinary.com/dvj7ayoot/video/upload/v1775609713/materialized/landing/vertical-demo.mp4", "player");
 import materializedLogo from "@assets/MTRLZD_Logo_white_transparent.png";
 
-const streetStyleVideo = "https://res.cloudinary.com/dvj7ayoot/video/upload/v1775609784/materialized/public/street-style-ss26.mp4";
-const mtrlzdVideoBanner = "https://res.cloudinary.com/dvj7ayoot/video/upload/v1784819097/materialized/landing/mtrlzd-video-banner.mp4";
-const miroMisljenDressVideo = "https://res.cloudinary.com/dvj7ayoot/video/upload/v1775609824/materialized/public/miro-misljen-dress.mp4";
+const streetStyleVideo = videoDeliveryUrl("https://res.cloudinary.com/dvj7ayoot/video/upload/v1775609784/materialized/public/street-style-ss26.mp4", "player");
+const mtrlzdVideoBanner = videoDeliveryUrl("https://res.cloudinary.com/dvj7ayoot/video/upload/v1784819097/materialized/landing/mtrlzd-video-banner.mp4", "player");
+const miroMisljenDressVideo = videoDeliveryUrl("https://res.cloudinary.com/dvj7ayoot/video/upload/v1775609824/materialized/public/miro-misljen-dress.mp4", "player");
 
 const formSchema = z.object({
   role: z.enum(["creator", "brand", "publisher"]),
@@ -506,7 +507,7 @@ function VideoOrientationSection() {
                     style={{ objectPosition: "center 60%" }}
                     aria-label="Jetski vessels video"
                   >
-                    <source src="https://res.cloudinary.com/dvj7ayoot/video/upload/v1775609801/materialized/public/vessels-jetski.mp4" type="video/mp4" />
+                    <source src={videoDeliveryUrl("https://res.cloudinary.com/dvj7ayoot/video/upload/v1775609801/materialized/public/vessels-jetski.mp4", "player")} type="video/mp4" />
                   </video>
                   {/* Subtle screen glare */}
                   <div className="absolute inset-0 bg-gradient-to-br from-white/5 via-transparent to-transparent pointer-events-none" />
@@ -1337,7 +1338,7 @@ export default function Landing() {
           className="absolute inset-0 w-full h-full object-cover"
           aria-label="Miro Misljen black dress fashion video"
         >
-          <source src="https://res.cloudinary.com/dvj7ayoot/video/upload/v1784819059/materialized/landing/miro-misljen-black-dress.mp4" type="video/mp4" />
+          <source src={videoDeliveryUrl("https://res.cloudinary.com/dvj7ayoot/video/upload/v1784819059/materialized/landing/miro-misljen-black-dress.mp4", "player")} type="video/mp4" />
         </video>
         <div className="absolute inset-0 bg-gradient-to-b from-black/65 via-black/25 to-black/70" />
 

@@ -1,4 +1,5 @@
 import { CURRENCY_SYMBOL } from "@/lib/currency";
+import { videoDeliveryUrl } from "@shared/videoDelivery";
 import { useRef, useState, useEffect } from "react";
 import { X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -259,7 +260,7 @@ export function DemoPopup({ open, onClose }: Props) {
             <div className="relative" style={{ aspectRatio: "16/9" }}>
               <video
                 ref={videoRef}
-                src="https://res.cloudinary.com/dvj7ayoot/video/upload/v1775609780/materialized/public/croissant-demo.mp4"
+                src={videoDeliveryUrl("https://res.cloudinary.com/dvj7ayoot/video/upload/v1775609780/materialized/public/croissant-demo.mp4", "player")}
                 loop
                 playsInline
                 className="w-full h-full object-cover"
