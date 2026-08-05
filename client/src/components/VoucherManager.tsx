@@ -221,7 +221,13 @@ export function VoucherManager() {
             disabled={create.isPending}
             data-testid="button-create-voucher"
           >
-            {create.isPending ? "Creating…" : "Create voucher"}
+            {/* Says the count, because minting eighty codes should not look
+                identical to minting one right up until it happens. */}
+            {create.isPending
+              ? "Creating…"
+              : Number(form.quantity) > 1
+                ? `Create ${Number(form.quantity)} vouchers`
+                : "Create voucher"}
           </Button>
         </CardContent>
       </Card>

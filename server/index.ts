@@ -413,7 +413,9 @@ app.use((req, res, next) => {
     {
       port,
       host: "0.0.0.0",
-      reusePort: true,
+      // Linux only. On macOS this is ENOTSUP and the server refuses to start,
+      // so `npm run dev` has never worked on a Mac.
+      reusePort: process.platform === "linux",
     },
     () => {
       log(`serving on port ${port}`);

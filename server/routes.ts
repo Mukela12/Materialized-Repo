@@ -5216,7 +5216,7 @@ Identify which products from the catalog are most likely to appear or be feature
           createdBy: (req.session as any)?.userId ?? null,
           batchId,
           assignedTo,
-        } as any));
+        }));
       }
 
       res.status(201).json({ count: created.length, batchId, vouchers: created });

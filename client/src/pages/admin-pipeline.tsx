@@ -1231,7 +1231,25 @@ export default function AdminPipeline() {
   const [selectedFollowUp, setSelectedFollowUp] = useState<string>("");
   const [notesValues, setNotesValues] = useState<Record<string, string>>({});
   const [filterStage, setFilterStage] = useState<string>("all");
-  const [activeTab, setActiveTab] = useState<"overview" | "users" | "videos" | "brands" | "pipeline" | "money" | "vouchers">("overview");
+  /**
+   * The tab lives in the URL so a screen can be LINKED TO. Before this, telling
+   * someone where the vouchers are meant "go to /admin, then find the seventh
+   * tab" — and a reload dropped them back on Overview mid-task.
+   */
+  const TABS = ["overview", "users", "videos", "brands", "pipeline", "money", "vouchers"] as const;
+  type AdminTab = (typeof TABS)[number];
+  const tabFromUrl = () => {
+    const t = new URLSearchParams(window.location.search).get("tab") as AdminTab | null;
+    return t && (TABS as readonly string[]).includes(t) ? t : "overview";
+  };
+  const [activeTab, setActiveTabState] = useState<AdminTab>(tabFromUrl);
+  const setActiveTab = (tab: AdminTab) => {
+    setActiveTabState(tab);
+    const url = new URL(window.location.href);
+    url.searchParams.set("tab", tab);
+    // replace, not push: flipping through tabs should not fill the back button.
+    window.history.replaceState(null, "", url);
+  };
 
   const { data: pipeline = [], isLoading, refetch } = useQuery<PipelineEntry[]>({
     queryKey: ["/api/admin/pipeline"],
@@ -1313,7 +1331,7 @@ export default function AdminPipeline() {
 
         {/* Tab Navigation */}
         <div className="flex gap-1 mb-6 border-b overflow-x-auto">
-          {(["overview", "users", "videos", "brands", "pipeline", "money", "vouchers"] as const).map(tab => (
+          {TABS.map(tab => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}

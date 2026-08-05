@@ -259,6 +259,10 @@ export interface IStorage {
     code: string; label: string | null; grantType: "free_access" | "waive_setup_fee";
     brandUserId: string | null; roleRestriction: string | null;
     maxRedemptions: number | null; expiresAt: Date | null; createdBy: string | null;
+    /** Groups one mint, so "the 80 I gave Vogue" is one query. */
+    batchId: string | null;
+    /** Who they were handed to. Free text — most recipients have no account yet. */
+    assignedTo: string | null;
   }): Promise<Voucher>;
   getVoucherByCode(code: string): Promise<VoucherRecord | null>;
   listVouchers(): Promise<Array<Voucher & { redemptionCount: number; redeemedBy: string | null }>>;
@@ -3778,6 +3782,8 @@ export class DatabaseStorage implements IStorage {
       maxRedemptions: v.maxRedemptions,
       expiresAt: v.expiresAt,
       createdBy: v.createdBy,
+      batchId: v.batchId ?? null,
+      assignedTo: v.assignedTo ?? null,
     }).returning();
     return row;
   }
@@ -3795,17 +3801,28 @@ export class DatabaseStorage implements IStorage {
   }
 
   async listVouchers(): Promise<Array<Voucher & { redemptionCount: number; redeemedBy: string | null }>> {
+    // NOTE ON `${vouchers}.id` RATHER THAN `${vouchers.id}`
+    // Drizzle renders an interpolated column inside a sql`` template UNQUALIFIED
+    // — `${vouchers.id}` becomes bare "id". In a subquery whose own FROM has no
+    // other `id` in scope that happens to resolve to the outer table, which is
+    // why the count below worked. Add a join and it stops: `users u` and the
+    // redemptions row each bring an `id`, and Postgres refuses the whole query
+    // with `column reference "id" is ambiguous`. Interpolating the TABLE and
+    // writing `.id` by hand yields "vouchers".id, which is unambiguous
+    // everywhere. Both subqueries do it, so the next join added here is safe.
     const rows = await db.select({
       v: vouchers,
-      redemptionCount: sql<number>`(select count(*) from ${voucherRedemptions} r where r.voucher_id = ${vouchers.id})::int`,
+      redemptionCount: sql<number>`(
+        select count(*) from ${voucherRedemptions} vr
+        where vr.voucher_id = ${vouchers}.id)::int`,
       // Who actually used it. For a single-use code this is THE answer to
       // "which of the eighty has been taken, and by whom" — the question a
       // partner distributing them will ask first.
       redeemedBy: sql<string | null>`(
-        select u.email from ${voucherRedemptions} r
-        join ${users} u on u.id = r.user_id
-        where r.voucher_id = ${vouchers.id}
-        order by r.redeemed_at limit 1)`,
+        select u.email from ${voucherRedemptions} vr
+        join ${users} u on u.id = vr.user_id
+        where vr.voucher_id = ${vouchers}.id
+        order by vr.redeemed_at limit 1)`,
     }).from(vouchers).orderBy(desc(vouchers.createdAt)).limit(1000);
     return rows.map(r => ({ ...r.v, redemptionCount: r.redemptionCount, redeemedBy: r.redeemedBy }));
   }
