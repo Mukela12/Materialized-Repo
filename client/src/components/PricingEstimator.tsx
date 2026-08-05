@@ -21,8 +21,17 @@ import {
   PLAN_CONFIG, type PlanKey,
 } from "@shared/plans";
 
+/** Totals and line items — always two decimals, because it is money owed. */
 const money = (n: number) =>
   `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+/**
+ * A UNIT RATE, which may be sub-cent. Two decimals renders $0.005 as "$0.01" —
+ * double the real price, on the line that tells someone what they are charged.
+ * Shows up to 3 decimals and trims what it does not need, so $0.15 stays $0.15.
+ */
+const rate = (n: number) =>
+  `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 3 })}`;
 
 export function PricingEstimator({
   plan,
@@ -110,7 +119,7 @@ export function PricingEstimator({
             data-testid="slider-views"
           />
           <p className="text-xs text-muted-foreground mt-1">
-            {money(OVERAGE_RATES.perView)} per view beyond {allowance.views.toLocaleString()}
+            {rate(OVERAGE_RATES.perView)} per view beyond {allowance.views.toLocaleString()}
           </p>
         </div>
 
@@ -130,7 +139,7 @@ export function PricingEstimator({
             data-testid="slider-minutes"
           />
           <p className="text-xs text-muted-foreground mt-1">
-            {money(OVERAGE_RATES.perMinute)} per minute beyond {allowance.minutes} — uploaded, not watched
+            {rate(OVERAGE_RATES.perMinute)} per minute beyond {allowance.minutes} — uploaded, not watched
           </p>
         </div>
 
