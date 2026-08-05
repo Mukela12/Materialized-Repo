@@ -148,6 +148,59 @@ export class StripeService {
     });
   }
 
+  /**
+   * Vault a card WITHOUT selling anything — Checkout in `setup` mode.
+   *
+   * Needed because a card could previously only be captured as a side effect of
+   * subscribing. An account on permanent free access never subscribes, so it
+   * never had a payment method, so overage could never be charged to it. The
+   * client asked to "link my personal credit card to this Creator profile for
+   * overage" and there was no way to do it.
+   *
+   * Same gap as a brand with no Stripe customer accruing fees nobody can
+   * invoice. A free account is not a no-payment-method account.
+   */
+  async createCardSetupCheckout(customerId: string, successUrl: string, cancelUrl: string, metadata?: Record<string, string>) {
+    const stripe = await getUncachableStripeClient();
+    return await stripe.checkout.sessions.create({
+      mode: 'setup',
+      customer: customerId,
+      // Vault it as the customer's default, so a later invoice or overage charge
+      // finds it without anyone choosing.
+      setup_intent_data: { metadata: { ...(metadata ?? {}), purpose: 'card_on_file' } },
+      success_url: successUrl,
+      cancel_url: cancelUrl,
+      ...(metadata ? { metadata } : {}),
+    });
+  }
+
+  /** What card, if any, this customer has on file. */
+  async getDefaultPaymentMethod(customerId: string) {
+    const stripe = await getUncachableStripeClient();
+    const customer = await stripe.customers.retrieve(customerId);
+    if ((customer as any).deleted) return null;
+    const defaultPm = (customer as any).invoice_settings?.default_payment_method;
+    if (!defaultPm) {
+      // Fall back to any attached card — a SetupIntent may have attached one
+      // without it becoming the invoice default yet.
+      const list = await stripe.paymentMethods.list({ customer: customerId, limit: 1 });
+      const pm = list.data[0];
+      return pm ? { id: pm.id, brand: pm.card?.brand ?? null, last4: pm.card?.last4 ?? null, isDefault: false } : null;
+    }
+    const pm = await stripe.paymentMethods.retrieve(
+      typeof defaultPm === 'string' ? defaultPm : defaultPm.id,
+    );
+    return { id: pm.id, brand: pm.card?.brand ?? null, last4: pm.card?.last4 ?? null, isDefault: true };
+  }
+
+  /** Make a vaulted card the invoice default, so later charges find it. */
+  async setDefaultPaymentMethod(customerId: string, paymentMethodId: string) {
+    const stripe = await getUncachableStripeClient();
+    await stripe.customers.update(customerId, {
+      invoice_settings: { default_payment_method: paymentMethodId },
+    });
+  }
+
   async createBillingPortal(customerId: string, returnUrl: string) {
     const stripe = await getUncachableStripeClient();
     return await stripe.billingPortal.sessions.create({

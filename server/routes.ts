@@ -5079,6 +5079,62 @@ Identify which products from the catalog are most likely to appear or be feature
   });
 
 
+
+  // ==================== CARD ON FILE (no subscription needed) ================
+  //
+  // A card could previously only be captured as a side effect of subscribing,
+  // so an account on permanent free access had no payment method and overage
+  // could never be charged to it. A free account is not a no-payment-method
+  // account — the two got conflated because subscribing was the only path.
+
+  /** Start Stripe Checkout in setup mode to vault a card. */
+  app.post("/api/billing/payment-method/setup", async (req, res) => {
+    try {
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ error: "Authentication required" });
+      const user = await storage.getUser(sessionUserId);
+      if (!user) return res.status(401).json({ error: "User not found" });
+
+      // Reuse the customer if there is one; a second customer for the same
+      // person splits their cards and invoices across two records.
+      let customerId = user.stripeCustomerId;
+      if (!customerId) {
+        const customer = await stripeService.createCustomer(user.email, user.id, user.displayName);
+        customerId = customer.id;
+        await storage.updateUser(user.id, { stripeCustomerId: customerId } as any);
+      }
+
+      const baseUrl = process.env.APP_URL || req.headers.origin || `${req.protocol}://${req.get("host")}`;
+      const session = await stripeService.createCardSetupCheckout(
+        customerId,
+        `${baseUrl}/creator/more?card=saved`,
+        `${baseUrl}/creator/more?card=cancelled`,
+        { userId: user.id },
+      );
+      res.json({ url: session.url });
+    } catch (error) {
+      console.error("Card setup error:", error);
+      res.status(500).json({ error: "Could not start card setup" });
+    }
+  });
+
+  /** What card is on file, if any. */
+  app.get("/api/billing/payment-method", async (req, res) => {
+    try {
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ error: "Authentication required" });
+      const user = await storage.getUser(sessionUserId);
+      if (!user) return res.status(401).json({ error: "User not found" });
+      if (!user.stripeCustomerId) return res.json({ card: null });
+
+      const card = await stripeService.getDefaultPaymentMethod(user.stripeCustomerId);
+      res.json({ card });
+    } catch (error) {
+      console.error("Payment method read error:", error);
+      res.status(500).json({ error: "Could not read payment method" });
+    }
+  });
+
   // ==================== VOUCHERS ====================
   //
   // Replaces one shared string in an env var that was the same for everyone,

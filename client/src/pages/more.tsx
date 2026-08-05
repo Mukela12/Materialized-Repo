@@ -6,6 +6,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import type { User } from "@shared/schema";
 import { useLogout } from "@/hooks/useCurrentUser";
+import { PaymentMethodCard } from "@/components/PaymentMethodCard";
 import {
   UserPen,
   CalendarDays,
@@ -116,6 +117,10 @@ export default function More() {
         </h1>
         <p className="text-muted-foreground mt-1">Manage your account, billing, and developer access</p>
       </div>
+
+      {/* Card on file — separate from subscribing, because a free account still
+          needs something to bill if usage exceeds the allowance. */}
+      <PaymentMethodCard />
 
       {/* ── Profile card ── */}
       <Card>

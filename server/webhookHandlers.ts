@@ -1,6 +1,7 @@
 import Stripe from 'stripe';
 import { getUncachableStripeClient } from './stripeClient';
 import { storage } from './storage';
+import { stripeService } from './stripeService';
 import { recordSaleCommissions } from './commissions';
 import { recordFeeAccrual } from './feeAccruals';
 import { computeSaleSplit } from './feeConfig';
@@ -205,6 +206,27 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session): Promis
   // mode 'payment' and carries our marker; subscriptions are everything else.
   if (session.mode === 'payment' && session.metadata?.kind === 'in_video_order') {
     return handleInVideoOrderCompleted(session);
+  }
+
+  // A card vaulted without a subscription. Stripe attaches it to the customer
+  // but does NOT make it the invoice default, so a later overage charge would
+  // find no default and fail — the card would be on file and unusable.
+  if (session.mode === 'setup') {
+    const customerId = extractCustomerId(session.customer);
+    const si = session.setup_intent;
+    const setupIntentId = typeof si === 'string' ? si : si?.id ?? null;
+    if (!customerId || !setupIntentId) return;
+
+    const stripe = await getUncachableStripeClient();
+    const intent = await stripe.setupIntents.retrieve(setupIntentId);
+    const pm = typeof intent.payment_method === 'string'
+      ? intent.payment_method
+      : intent.payment_method?.id ?? null;
+    if (!pm) return;
+
+    await stripeService.setDefaultPaymentMethod(customerId, pm);
+    console.log(`[Webhook] card on file set as default for customer ${customerId}`);
+    return;
   }
   if (session.mode !== 'subscription') return;
 
