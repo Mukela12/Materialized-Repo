@@ -53,11 +53,32 @@ const GTM_DEFAULTS = {
   assignedTo: "",
 };
 
+/**
+ * "affiliate" is the database word; "Publisher" is the word the client and her
+ * partners use, and the word on the signup form. Showing the internal one on a
+ * screen used to hand out codes invites handing a publisher a brand code.
+ */
+function roleLabel(role: string | null): string {
+  if (role === "affiliate") return "Publisher";
+  if (role === "brand") return "Brand";
+  if (role === "creator") return "Creator";
+  return "Any";
+}
+
 export function VoucherManager() {
   const { toast } = useToast();
   const qc = useQueryClient();
   const [form, setForm] = useState({ ...GTM_DEFAULTS, code: "", expiresAt: "" });
   const [editing, setEditing] = useState<Record<string, string>>({});
+  /**
+   * Which recipient's codes to show.
+   *
+   * One partner's allocation is 80 codes, and there is more than one partner.
+   * An unfiltered list is several hundred rows in which "have Liverpool's
+   * brands started signing up" is unanswerable by eye, and the CSV handed to a
+   * partner would contain every other partner's codes.
+   */
+  const [recipient, setRecipient] = useState<string>("all");
   const [copied, setCopied] = useState<string | null>(null);
 
   const { data: vouchers = [], isLoading } = useQuery<VoucherRow[]>({
@@ -97,6 +118,23 @@ export function VoucherManager() {
     setCopied(code);
     setTimeout(() => setCopied(null), 1500);
   };
+
+  /** Recipients that actually have codes, for the filter. */
+  const recipients = Array.from(
+    new Set(vouchers.map(v => v.assignedTo?.trim()).filter((x): x is string => !!x)),
+  ).sort((a, b) => a.localeCompare(b));
+
+  const shown = recipient === "all"
+    ? vouchers
+    : vouchers.filter(v => (v.assignedTo?.trim() ?? "") === recipient);
+
+  /** What this allocation is made of — she orders them 50 brand / 30 publisher. */
+  const tally = shown.reduce((acc, v) => {
+    const k = roleLabel(v.roleRestriction);
+    acc[k] = (acc[k] ?? 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
+  const redeemed = shown.filter(v => v.redemptionCount > 0).length;
 
   const status = (v: VoucherRow) => {
     if (v.revokedAt) return <Badge variant="destructive">Revoked</Badge>;
@@ -234,12 +272,44 @@ export function VoucherManager() {
 
       <Card>
         <CardHeader>
-          <div className="flex items-start justify-between gap-4">
-            <CardTitle className="text-base">Vouchers</CardTitle>
+          <div className="flex items-start justify-between gap-4 flex-wrap">
+            <div>
+              <CardTitle className="text-base">Vouchers</CardTitle>
+              {shown.length > 0 && (
+                <p className="text-xs text-muted-foreground mt-1" data-testid="text-voucher-tally">
+                  {shown.length} code{shown.length === 1 ? "" : "s"}
+                  {" — "}
+                  {Object.entries(tally).map(([k, n]) => `${n} ${k.toLowerCase()}`).join(", ")}
+                  {redeemed > 0 && ` · ${redeemed} redeemed`}
+                </p>
+              )}
+            </div>
+            <div className="flex items-center gap-2">
+              {recipients.length > 0 && (
+                <Select value={recipient} onValueChange={setRecipient}>
+                  <SelectTrigger className="h-9 w-[200px]" data-testid="select-voucher-recipient">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Everyone ({vouchers.length})</SelectItem>
+                    {recipients.map(r => (
+                      <SelectItem key={r} value={r}>
+                        {r} ({vouchers.filter(v => (v.assignedTo?.trim() ?? "") === r).length})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
             <Button
               variant="outline" size="sm" className="gap-1.5"
-              disabled={vouchers.length === 0}
-              onClick={() => exportToCsv("mtrlzd-vouchers", vouchers, [
+              disabled={shown.length === 0}
+              onClick={() => exportToCsv(
+                // Name the file after whose codes are in it, so two partners'
+                // spreadsheets cannot be confused for one another on a desktop.
+                recipient === "all"
+                  ? "mtrlzd-vouchers"
+                  : `mtrlzd-vouchers-${recipient.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
+                shown, [
                 { header: "Code", value: (v) => v.code },
                 { header: "Given to", value: (v) => v.assignedTo ?? "" },
                 { header: "For", value: (v) => v.label ?? "" },
@@ -255,6 +325,7 @@ export function VoucherManager() {
               <Download className="h-3.5 w-3.5" />
               Export CSV
             </Button>
+            </div>
           </div>
           <p className="text-sm text-muted-foreground">
             Revoking stops new redemptions. Accounts already created with a voucher keep
@@ -264,14 +335,17 @@ export function VoucherManager() {
         <CardContent>
           {isLoading ? (
             <p className="text-sm text-muted-foreground">Loading…</p>
-          ) : vouchers.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No vouchers yet.</p>
+          ) : shown.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              {vouchers.length === 0 ? "No vouchers yet." : `No codes for ${recipient}.`}
+            </p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm" data-testid="table-vouchers">
                 <thead>
                   <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground border-b">
                     <th className="py-2 pr-4">Code</th>
+                    <th className="py-2 pr-4">Type</th>
                     <th className="py-2 pr-4">Given to</th>
                     <th className="py-2 pr-4">Seats left</th>
                     <th className="py-2 pr-4">Status</th>
@@ -279,7 +353,7 @@ export function VoucherManager() {
                   </tr>
                 </thead>
                 <tbody>
-                  {vouchers.map((v) => (
+                  {shown.map((v) => (
                     <tr key={v.id} className="border-b last:border-0" data-testid={`voucher-${v.id}`}>
                       <td className="py-2 pr-4 font-mono text-xs">
                         <button
@@ -292,6 +366,20 @@ export function VoucherManager() {
                             ? <Check className="h-3 w-3 text-primary" />
                             : <Copy className="h-3 w-3 opacity-50" />}
                         </button>
+                      </td>
+                      {/* WHAT THE CODE IS FOR. An allocation is mixed — 50 brand
+                          codes and 30 publisher codes go to the same partner —
+                          so without this on screen the only way to tell a brand
+                          code from a publisher one is to export the CSV. Handing
+                          a publisher a brand code fails at signup, in front of
+                          them, days after the code was given out. */}
+                      <td className="py-2 pr-4 whitespace-nowrap">
+                        <Badge variant={v.roleRestriction ? "outline" : "secondary"}>
+                          {roleLabel(v.roleRestriction)}
+                        </Badge>
+                        <div className="text-xs text-muted-foreground mt-1">
+                          {v.grantType === "free_access" ? "Free access" : "Setup fee waived"}
+                        </div>
                       </td>
                       <td className="py-2 pr-4">
                         {/* Free text: most recipients have no account yet, which
