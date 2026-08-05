@@ -328,8 +328,27 @@ export function registerAuthRoutes(app: Express) {
   });
 }
 
+/**
+ * Seed or re-sync the admin account.
+ *
+ * ⚠ THIS OVERWRITES THE ADMIN'S PASSWORD ON EVERY BOOT, which means every
+ * deploy. The client reported "the admin logins were failing" and this was why:
+ * she had set her own password, a deploy re-applied ADMIN_PASSWORD, and her
+ * login stopped working with no explanation. Leave it off in production once the
+ * account exists; it is a bootstrap tool, not a maintenance one.
+ *
+ * The flag is parsed EXPLICITLY rather than for truthiness. It used to be
+ * `!process.env.SEED_ADMIN_ACCOUNT`, so setting SEED_ADMIN_ACCOUNT=false — the
+ * obvious way to turn it off — left it switched ON, because "false" is a
+ * non-empty string.
+ */
+function seedingEnabled(): boolean {
+  const raw = (process.env.SEED_ADMIN_ACCOUNT ?? "").trim().toLowerCase();
+  return raw === "1" || raw === "true" || raw === "yes";
+}
+
 export async function seedAdminAccount() {
-  if (process.env.NODE_ENV === "production" && !process.env.SEED_ADMIN_ACCOUNT) {
+  if (process.env.NODE_ENV === "production" && !seedingEnabled()) {
     return;
   }
 
