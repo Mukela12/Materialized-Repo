@@ -16,7 +16,7 @@
  *      for money we already hold.
  */
 import { describe, it, expect } from "vitest";
-import { quoteCheckout, checkoutIdempotencyKey } from "../../server/inVideoCheckout";
+import { quoteCheckout, checkoutIdempotencyKey, parsePriceToCents } from "../../server/inVideoCheckout";
 import { buildAccrualRow } from "../../server/feeAccruals";
 import { computeSaleSplit } from "../../server/feeConfig";
 
@@ -131,5 +131,61 @@ describe("the checkout idempotency key", () => {
 
   it("identifies the video and product it belongs to", () => {
     expect(checkoutIdempotencyKey("v1", 7, "n")).toBe("ivc_v1_7_n");
+  });
+});
+
+/**
+ * Turning a typed price into a chargeable amount.
+ *
+ * The overlay price field is free text and existing rows are full of it. A
+ * permissive parser is the dangerous option here: reading "from £20" as 2000
+ * sells a £200 coat for £20, and the resulting order looks entirely legitimate
+ * — nobody finds out until the brand reconciles. Refusing costs nothing, because
+ * a refused product simply is not buyable in-video and still links out.
+ */
+describe("parsing a typed price", () => {
+  it("accepts a plain number", () => {
+    expect(parsePriceToCents("49")).toBe(4900);
+    expect(parsePriceToCents("49.00")).toBe(4900);
+    expect(parsePriceToCents("49.99")).toBe(4999);
+    expect(parsePriceToCents("0.50")).toBe(50);
+  });
+
+  it("accepts one leading currency symbol and thousands separators", () => {
+    expect(parsePriceToCents("$49.00")).toBe(4900);
+    expect(parsePriceToCents("£20")).toBe(2000);
+    expect(parsePriceToCents("€ 15.50")).toBe(1550);
+    expect(parsePriceToCents("1,299.00")).toBe(129900);
+  });
+
+  it("REFUSES a price with trailing words — the expensive failure", () => {
+    // Each of these would undercharge dramatically if the number were simply
+    // extracted from the string.
+    expect(parsePriceToCents("from £20")).toBeNull();
+    expect(parsePriceToCents("20 or best offer")).toBeNull();
+    expect(parsePriceToCents("49 - 99")).toBeNull();
+    expect(parsePriceToCents("was 200 now 49")).toBeNull();
+  });
+
+  it("refuses anything that is not a price at all", () => {
+    expect(parsePriceToCents("POA")).toBeNull();
+    expect(parsePriceToCents("")).toBeNull();
+    expect(parsePriceToCents("   ")).toBeNull();
+    expect(parsePriceToCents(null)).toBeNull();
+    expect(parsePriceToCents(undefined)).toBeNull();
+    expect(parsePriceToCents(49 as any)).toBeNull();
+  });
+
+  it("refuses zero, negatives and sub-cent precision", () => {
+    expect(parsePriceToCents("0")).toBeNull();
+    expect(parsePriceToCents("0.00")).toBeNull();
+    expect(parsePriceToCents("-49")).toBeNull();
+    expect(parsePriceToCents("49.999")).toBeNull();
+  });
+
+  it("does not drift on values that float arithmetic rounds badly", () => {
+    expect(parsePriceToCents("1.10")).toBe(110);
+    expect(parsePriceToCents("19.99")).toBe(1999);
+    expect(parsePriceToCents("0.07")).toBe(7);
   });
 });

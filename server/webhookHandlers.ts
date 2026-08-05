@@ -629,18 +629,32 @@ async function handleAccountUpdated(account: Stripe.Account): Promise<void> {
     return;
   }
 
-  // Must match the /api/stripe/connect/status gate exactly — see the comment there
-  // for why charges_enabled is NOT part of this. Short version: connected accounts
-  // are created with the `transfers` capability only, so charges_enabled never
-  // becomes true and requiring it left every affiliate permanently un-onboarded.
+  // PAYOUT readiness. charges_enabled is deliberately NOT part of this: publisher
+  // accounts are created with the `transfers` capability only, so charges_enabled
+  // never becomes true for them, and requiring it here once left every affiliate
+  // permanently un-onboarded. Must match the /api/stripe/connect/status gate.
   const onboarded = !!account.payouts_enabled && !!account.details_submitted;
 
-  if (!!user.stripeConnectOnboarded === onboarded) {
+  // SELLING readiness, tracked separately since in-video checkout was added.
+  // A brand's account requests `card_payments` as well, which Stripe verifies on
+  // its own schedule — an account can be perfectly fine for payouts and still
+  // unable to accept a card. Conflating the two would let a brand look ready to
+  // sell while Stripe rejected the charge, with the shopper mid-purchase.
+  const chargesEnabled = !!account.charges_enabled;
+
+  const onboardedChanged = !!user.stripeConnectOnboarded !== onboarded;
+  const chargesChanged = !!user.stripeConnectChargesEnabled !== chargesEnabled;
+  if (!onboardedChanged && !chargesChanged) {
     return; // no change — avoid a needless write
   }
 
-  await storage.updateUser(user.id, { stripeConnectOnboarded: onboarded });
-  console.log(`[Webhook] account.updated: user ${user.id} stripeConnectOnboarded -> ${onboarded} (account ${account.id})`);
+  await storage.updateUser(user.id, {
+    ...(onboardedChanged ? { stripeConnectOnboarded: onboarded } : {}),
+    ...(chargesChanged ? { stripeConnectChargesEnabled: chargesEnabled } : {}),
+  } as any);
+  console.log(
+    `[Webhook] account.updated: user ${user.id} payouts=${onboarded} charges=${chargesEnabled} (account ${account.id})`,
+  );
 }
 
 // --- Subscription-side refund / dispute ------------------------------------

@@ -634,8 +634,15 @@ describe('dispatchStripeEvent — account.updated', () => {
     } as unknown as Stripe.Account;
   }
 
-  it('sets stripeConnectOnboarded=true when all capabilities are enabled', async () => {
-    mockStorage.getUserByStripeConnectAccountId.mockResolvedValue({ id: 'u1', stripeConnectOnboarded: false });
+  // Two INDEPENDENT flags since in-video checkout was added. Payout readiness is
+  // payouts_enabled + details_submitted; selling readiness is charges_enabled,
+  // which needs the separate `card_payments` capability. A brand can be fine for
+  // one and not the other, and conflating them would let a brand look ready to
+  // sell while Stripe rejected the charge.
+  it('sets stripeConnectOnboarded=true when payouts are enabled', async () => {
+    mockStorage.getUserByStripeConnectAccountId.mockResolvedValue({
+      id: 'u1', stripeConnectOnboarded: false, stripeConnectChargesEnabled: true,
+    });
 
     await dispatchStripeEvent(makeStripeEvent('account.updated', makeAccount({})));
 
@@ -643,15 +650,41 @@ describe('dispatchStripeEvent — account.updated', () => {
   });
 
   it('sets stripeConnectOnboarded=false when payouts are not enabled', async () => {
-    mockStorage.getUserByStripeConnectAccountId.mockResolvedValue({ id: 'u2', stripeConnectOnboarded: true });
+    mockStorage.getUserByStripeConnectAccountId.mockResolvedValue({
+      id: 'u2', stripeConnectOnboarded: true, stripeConnectChargesEnabled: true,
+    });
 
     await dispatchStripeEvent(makeStripeEvent('account.updated', makeAccount({ payouts: false })));
 
     expect(mockStorage.updateUser).toHaveBeenCalledWith('u2', { stripeConnectOnboarded: false });
   });
 
-  it('is idempotent — does not write when the flag is unchanged', async () => {
-    mockStorage.getUserByStripeConnectAccountId.mockResolvedValue({ id: 'u3', stripeConnectOnboarded: true });
+  it('sets stripeConnectChargesEnabled independently of payout readiness', async () => {
+    // Payouts already fine; Stripe has just approved card_payments. Only the
+    // selling flag should move.
+    mockStorage.getUserByStripeConnectAccountId.mockResolvedValue({
+      id: 'u4', stripeConnectOnboarded: true, stripeConnectChargesEnabled: false,
+    });
+
+    await dispatchStripeEvent(makeStripeEvent('account.updated', makeAccount({})));
+
+    expect(mockStorage.updateUser).toHaveBeenCalledWith('u4', { stripeConnectChargesEnabled: true });
+  });
+
+  it('revokes selling when Stripe withdraws charges, without touching payouts', async () => {
+    mockStorage.getUserByStripeConnectAccountId.mockResolvedValue({
+      id: 'u5', stripeConnectOnboarded: true, stripeConnectChargesEnabled: true,
+    });
+
+    await dispatchStripeEvent(makeStripeEvent('account.updated', makeAccount({ charges: false })));
+
+    expect(mockStorage.updateUser).toHaveBeenCalledWith('u5', { stripeConnectChargesEnabled: false });
+  });
+
+  it('is idempotent — does not write when NEITHER flag changed', async () => {
+    mockStorage.getUserByStripeConnectAccountId.mockResolvedValue({
+      id: 'u3', stripeConnectOnboarded: true, stripeConnectChargesEnabled: true,
+    });
 
     await dispatchStripeEvent(makeStripeEvent('account.updated', makeAccount({})));
 

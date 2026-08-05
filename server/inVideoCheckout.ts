@@ -137,6 +137,38 @@ export function quoteCheckout(
 }
 
 /**
+ * Turn the price a creator typed into a chargeable amount, or refuse.
+ *
+ * The overlay price field is free text and always has been — "49", "$49.00",
+ * "£20", "from £20", "POA". Existing rows are full of it, and asking every
+ * creator to re-enter prices in a new field would leave the feature unusable
+ * until they did. So the text is parsed, STRICTLY.
+ *
+ * Strict is the whole point. A permissive parser that reads "from £20" as 2000
+ * would sell a £200 coat for £20, and the order would look entirely legitimate
+ * afterwards — nobody finds out until the brand reconciles. Anything that is not
+ * unambiguously one number is refused, and refusing only means the product is
+ * not buyable in-video; the card still renders and still links out.
+ *
+ * Returns null for anything it will not vouch for.
+ */
+export function parsePriceToCents(raw: string | null | undefined): number | null {
+  if (typeof raw !== "string") return null;
+
+  // Strip one leading currency symbol and surrounding space. Deliberately not
+  // stripping trailing text: "20 or best offer" must NOT become 2000.
+  const cleaned = raw.trim().replace(/^[$£€]\s?/, "").replace(/,/g, "");
+  if (cleaned === "") return null;
+
+  // The whole remaining string must be a plain number with at most 2 decimals.
+  if (!/^\d+(\.\d{1,2})?$/.test(cleaned)) return null;
+
+  const cents = Math.round(parseFloat(cleaned) * 100);
+  if (!Number.isFinite(cents) || cents <= 0) return null;
+  return cents;
+}
+
+/**
  * Idempotency key for a checkout attempt.
  *
  * Keyed on the shopper's session attempt rather than the product, because a

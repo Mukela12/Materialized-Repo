@@ -10,7 +10,7 @@ import { hashPassword } from "./auth";
 import { recordSaleCommissions, clawbackSaleCommissions } from "./commissions";
 import { recordFeeAccrual, voidFeeAccrual } from "./feeAccruals";
 import { generateFeeInvoice } from "./feeInvoicing";
-import { quoteCheckout, checkoutIdempotencyKey } from "./inVideoCheckout";
+import { quoteCheckout, checkoutIdempotencyKey, parsePriceToCents } from "./inVideoCheckout";
 import { feeInvoiceStripeAdapter } from "./feeInvoiceStripe";
 
 
@@ -2969,6 +2969,11 @@ Identify which products from the catalog are most likely to appear or be feature
         productUrl: productUrl ?? null,
         imageUrl: imageUrl ?? null,
         price: price ?? null,
+        // Derived, not asked for. The typed price stays the display label; this
+        // is the chargeable amount, and parsePriceToCents refuses anything that
+        // is not unambiguously one number — see server/inVideoCheckout.ts.
+        priceCents: parsePriceToCents(price),
+        currency: getPlatformCurrency(),
         brandName: brandName ?? null,
         position: position ?? "bottom",
         startTime: String(startTime ?? "0"),
@@ -3045,6 +3050,10 @@ Identify which products from the catalog are most likely to appear or be feature
           productUrl: product?.productUrl ?? null,
           imageUrl: product?.imageUrl ?? null,
           price: product?.price ?? null,
+          // Same derivation as the manual path, so an AI-detected product is
+          // buyable on the same terms — and refused on the same terms.
+          priceCents: parsePriceToCents(product?.price ?? null),
+          currency: getPlatformCurrency(),
           brandName: brand?.name ?? null,
           position: (req.body.position ?? "bottom") as any,
           startTime: r.startTime ?? "0",
@@ -4056,10 +4065,16 @@ Identify which products from the catalog are most likely to appear or be feature
         return res.json({ accountId: user.stripeConnectAccountId });
       }
 
-      const account = await stripeService.createConnectAccount(user.email, user.id);
+      // A brand connects in order to SELL through in-video checkout, which needs
+      // the `card_payments` capability as well as `transfers`. Publishers only
+      // ever receive money, so they stay transfers-only and are asked for less
+      // verification. Requested at creation because adding a capability later
+      // means a second round of onboarding for the brand.
+      const forSelling = user.role === "brand" || req.body?.forSelling === true;
+      const account = await stripeService.createConnectAccount(user.email, user.id, forSelling);
       await storage.updateUser(user.id, { stripeConnectAccountId: account.id } as any);
 
-      res.json({ accountId: account.id });
+      res.json({ accountId: account.id, forSelling });
     } catch (error) {
       res.status(500).json({ error: "Failed to create connect account" });
     }
@@ -4127,13 +4142,24 @@ Identify which products from the catalog are most likely to appear or be feature
       // the creator can be paid out to their bank.
       const isOnboarded = account.payouts_enabled && account.details_submitted;
 
+      // Selling readiness is separate: accepting a card needs `card_payments`,
+      // which Stripe verifies on its own schedule. Read here as well as in the
+      // webhook so a brand that never received the webhook can still see the
+      // truth by opening the page.
+      const canSell = !!account.charges_enabled;
+
       if (isOnboarded && !user.stripeConnectOnboarded) {
         await storage.updateUser(user.id, { stripeConnectOnboarded: true } as any);
+      }
+      if (canSell !== !!user.stripeConnectChargesEnabled) {
+        await storage.updateUser(user.id, { stripeConnectChargesEnabled: canSell } as any);
       }
 
       res.json({
         connected: true,
         onboarded: isOnboarded,
+        /** Can this account ACCEPT payments — required for in-video checkout. */
+        canSell,
         accountId: user.stripeConnectAccountId,
       });
     } catch (error) {
