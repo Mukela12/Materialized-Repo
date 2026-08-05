@@ -212,19 +212,28 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
 // Like AuthGuard, but additionally requires the user to be an admin. Unauthenticated
 // visitors go to /login; signed-in non-admins are sent to their own dashboard. The
 // admin UI is never rendered for either, so /admin can't be viewed without admin rights.
+/**
+ * Admin-only routes.
+ *
+ * ── Why this SAYS something instead of redirecting ───────────────────────────
+ * It used to bounce a non-admin straight to their own dashboard, silently. The
+ * client hit /admin while signed in to a demo Creator account, landed on the
+ * creator dashboard, and reported that "the URL doesn't exist" — because from
+ * where she sat that is exactly what it looked like. She then offered to share
+ * admin credentials to work around a problem that was only ever "signed in as
+ * the wrong account".
+ *
+ * A guard that redirects without explaining teaches people the page is broken.
+ * This one names the account they are actually using and offers the way out.
+ */
 function AdminGuard({ children }: { children: React.ReactNode }) {
   const { data: user, isLoading } = useCurrentUser();
   const [, navigate] = useLocation();
+  const logoutMutation = useLogout();
 
   useEffect(() => {
-    if (isLoading) return;
-    if (user === null) {
-      navigate("/login");
-    } else if (!user.isAdmin) {
-      const home =
-        user.role === "brand" ? "/brand" : user.role === "affiliate" ? "/affiliate" : "/creator";
-      navigate(home);
-    }
+    // Not signed in at all is genuinely a login problem, so send them there.
+    if (!isLoading && user === null) navigate("/login");
   }, [isLoading, user, navigate]);
 
   if (isLoading) {
@@ -235,7 +244,36 @@ function AdminGuard({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (!user || !user.isAdmin) return null;
+  if (!user) return null;
+
+  if (!user.isAdmin) {
+    const home =
+      user.role === "brand" ? "/brand" : user.role === "affiliate" ? "/affiliate" : "/creator";
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-background p-6">
+        <div className="max-w-md w-full rounded-xl border border-border p-6 space-y-4">
+          <h1 className="text-lg font-semibold">This page needs an admin account</h1>
+          <p className="text-sm text-muted-foreground">
+            You are signed in as <strong>{user.email}</strong>, which is a{" "}
+            {user.role === "affiliate" ? "publisher" : user.role} account. The admin
+            area — vouchers, payouts, the pipeline — is only visible to an admin
+            account. Sign out and sign back in with yours.
+          </p>
+          <div className="flex gap-2 flex-wrap">
+            <Button
+              onClick={() => logoutMutation.mutate(undefined, { onSuccess: () => navigate("/login") })}
+              data-testid="button-admin-switch-account"
+            >
+              Sign out and switch account
+            </Button>
+            <Button variant="outline" onClick={() => navigate(home)} data-testid="button-admin-go-home">
+              Back to my dashboard
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return <>{children}</>;
 }

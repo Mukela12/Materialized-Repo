@@ -1,5 +1,4 @@
 {
-  "client/src/App.tsx :: TS18048": 3,
   "client/src/pages/brand-creators.tsx :: TS2322": 2,
   "client/src/pages/my-videos.tsx :: TS2322": 2,
   "server/replit_integrations/batch/utils.ts :: TS2339": 2,
