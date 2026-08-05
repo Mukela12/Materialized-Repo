@@ -115,41 +115,114 @@ export function setupFeeMajor(): number {
 }
 
 /**
- * Overage rates, in MAJOR units (dollars), per unit of usage.
+ * WHAT EACH PLAN INCLUDES, and what usage beyond it costs.
  *
- * Confirmed by the client on 29 Jul 2026: $0.05 per view and $0.15 per minute,
- * each multiplied by the number of publishers distributing the video.
+ * Confirmed by the client on 5 Aug 2026.
  *
- * WHY THIS LIVES HERE
- *   These numbers were previously copied into two separate client files, and a
- *   THIRD, contradictory model ($0.008/min, with minutes derived as
- *   views × publishers) was hardcoded into the brand dashboard. The product
- *   therefore quoted two different prices on two different screens — on 10,000
- *   views across 10 publishers, $5,000 on one and $800 on the other. A single
- *   exported constant is what stops that recurring.
+ * ── The rate changed, deliberately ───────────────────────────────────────────
+ * `perView` was $0.05. At that rate a creator on the $149 plan whose video did
+ * 100,000 views — the outcome the whole product exists to produce — received a
+ * bill of $4,649, thirty-one times their subscription. Delivering those views
+ * costs on the order of $230, so it was priced like a per-conversion fee rather
+ * than a per-view one, on the metric we encourage people to chase.
  *
- * NOT YET AUTHORITATIVE
- *   Nothing bills from these. They drive an on-screen ESTIMATE only. The
- *   endpoints that once charged a browser-computed total have been removed,
- *   because they let the customer decide their own bill. When usage billing is
- *   built these move into platform_settings so an admin can change them without
- *   a deploy, and the amount is computed server-side from recorded usage — at
- *   which point this constant becomes the seed value, not the source of truth.
+ * $0.005 still recovers roughly twice cost and turns that same month into $599.
+ * The point is not generosity; it is that a bill nobody can anticipate is a bill
+ * that gets disputed rather than paid.
+ *
+ * ── Minutes are UPLOADED, not watched ────────────────────────────────────────
+ * The client's call, and the simpler one: uploaded minutes are a number we
+ * already hold on the video row. Watch-minutes are not recorded anywhere, and
+ * an allowance in uploaded minutes charged against watched minutes is a unit
+ * mismatch that produces a plausible, wrong bill.
+ *
+ * ── No publisher multiplier ──────────────────────────────────────────────────
+ * The previous model multiplied both rates by the number of publishers
+ * distributing a video, so one creator's allowance was consumed ten times over
+ * by ten reposts. The client settled it: "Publisher is responsible for their own
+ * overage, just like the other user types." Each account has its own allowance
+ * and pays for its own usage. That is why `estimateBill` takes no publisher
+ * count — it was removed rather than defaulted, so nobody can pass one and
+ * quietly get the old behaviour.
+ *
+ * ── Still not authoritative ──────────────────────────────────────────────────
+ * Nothing BILLS from these. They drive an on-screen estimate. Views are recorded
+ * and deduplicated (analytics_events.viewer_hash) but never counted for money;
+ * uploaded minutes are never summed. When usage billing is built these move to
+ * platform_settings and the amount is computed server-side from recorded usage,
+ * at which point this constant is the seed value, not the source of truth.
  */
 export const OVERAGE_RATES = {
-  perView: 0.05,
+  /** Per view beyond the plan's allowance, in MAJOR units. */
+  perView: 0.005,
+  /** Per uploaded minute beyond the plan's allowance, in MAJOR units. */
   perMinute: 0.15,
 } as const;
 
+export interface PlanAllowance {
+  /** Views included per month before per-view charges begin. */
+  views: number;
+  /** Videos included per month. Advisory — the bill is driven by minutes. */
+  videos: number;
+  /** Uploaded minutes included per month. */
+  minutes: number;
+}
+
 /**
- * Estimated monthly overage, in MAJOR units.
+ * Keyed by the SAME plan keys as PLAN_CONFIG, so a tier cannot exist without an
+ * allowance or vice versa.
  *
- * `publishers` multiplies BOTH rates: the same view is charged once per
- * publisher distributing it. That is the model as specified; it is called out
- * here because it is the part people misread as a per-publisher seat fee.
+ * The client gave videos and minutes for creators (8 videos over 2 minutes, or
+ * 16 minutes) and videos for the others; the minute figures for brand and
+ * publisher follow their own arithmetic — 30 × 2 and 20 × 2.
  */
-export function estimateOverage(views: number, minutes: number, publishers: number): number {
-  return (views * OVERAGE_RATES.perView + minutes * OVERAGE_RATES.perMinute) * publishers;
+export const PLAN_ALLOWANCES: Record<PlanKey, PlanAllowance> = {
+  creator: { views: 10_000, videos: 8, minutes: 16 },
+  starter: { views: 10_000, videos: 30, minutes: 60 },
+  pro:     { views: 10_000, videos: 20, minutes: 40 },
+};
+
+export interface BillEstimate {
+  /** The monthly subscription, in MAJOR units. */
+  planPrice: number;
+  /** Views beyond the allowance, and what they cost. */
+  overageViews: number;
+  viewCost: number;
+  /** Uploaded minutes beyond the allowance, and what they cost. */
+  overageMinutes: number;
+  minuteCost: number;
+  /** planPrice + viewCost + minuteCost. */
+  total: number;
+}
+
+/**
+ * What a month costs at this usage.
+ *
+ * Usage AT the allowance costs nothing extra — the subtraction floors at zero,
+ * so a creator using exactly their 10,000 views pays exactly their $149. Getting
+ * that wrong in the other direction would charge from view one and make the
+ * subscription price decorative.
+ */
+export function estimateBill(plan: PlanKey, views: number, minutes: number): BillEstimate {
+  const allowance = PLAN_ALLOWANCES[plan];
+  const planPrice = planPriceMajor(plan);
+
+  const overageViews = Math.max(0, Math.round(views) - allowance.views);
+  const overageMinutes = Math.max(0, Math.round(minutes) - allowance.minutes);
+
+  const viewCost = overageViews * OVERAGE_RATES.perView;
+  const minuteCost = overageMinutes * OVERAGE_RATES.perMinute;
+
+  return {
+    planPrice,
+    overageViews,
+    viewCost,
+    overageMinutes,
+    minuteCost,
+    // Rounded to the cent: a bill is money, and floating point will otherwise
+    // show $648.9999999999999 on a perfectly ordinary input.
+    total: Math.round((planPrice + viewCost + minuteCost) * 100) / 100,
+  };
 }
 
 /**

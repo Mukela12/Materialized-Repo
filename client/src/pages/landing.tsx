@@ -1,5 +1,6 @@
 import { CURRENCY_SYMBOL, PLATFORM_CURRENCY_CODE } from "@/lib/currency";
-import { planPriceMajor, setupFeeMajor, type PlanKey } from "@shared/plans";
+import { planPriceMajor, setupFeeMajor, PLAN_ALLOWANCES, OVERAGE_RATES, type PlanKey } from "@shared/plans";
+import { PricingEstimator } from "@/components/PricingEstimator";
 import { useState, useEffect, useRef } from "react";
 import { motion, useScroll, useTransform, AnimatePresence } from "framer-motion";
 import { useForm } from "react-hook-form";
@@ -1577,7 +1578,8 @@ export default function Landing() {
             </h2>
             <p className="text-white/60 mt-3 text-sm sm:text-base">
               All plans include a one-time {CURRENCY_SYMBOL}{setupFeeMajor()} admin setup fee
-              {" · "}Overage charges apply
+              {" · "}{PLAN_ALLOWANCES.creator.views.toLocaleString()} views included
+              {" · "}{CURRENCY_SYMBOL}{OVERAGE_RATES.perView.toFixed(3)}/view after that
             </p>
             <p className="text-white/40 mt-2 text-xs">
               All prices in {PLATFORM_CURRENCY_CODE}. Billed monthly, cancel any time.
@@ -1630,6 +1632,22 @@ export default function Landing() {
                 </div>
               </button>
             ))}
+          </div>
+
+          {/*
+            The estimator, in front of prospects rather than behind a login.
+            It previously existed only inside the two subscription settings
+            pages — and the creator one was gated on !isOnTrial, so the people
+            deciding whether to sign up were precisely the ones who could not
+            see what it would cost them.
+          */}
+          <div className="mt-10 max-w-xl mx-auto">
+            <PricingEstimator
+              plan="creator"
+              selectablePlans={["creator", "starter", "pro"]}
+              title="What would a month cost?"
+              className="bg-white/[0.04] border-white/10 text-white [&_p]:text-white/60 [&_label]:text-white"
+            />
           </div>
         </div>
       </section>

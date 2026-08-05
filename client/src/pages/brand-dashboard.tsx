@@ -265,8 +265,15 @@ export default function BrandDashboard() {
           </CardHeader>
           <CardContent className="space-y-4">
             <p className="text-sm text-muted-foreground">
-              Estimate what views and watch time would cost across your publishers,
-              at {CURRENCY_SYMBOL}{OVERAGE_RATES.perView.toFixed(2)} per view and{" "}
+              {/*
+                toFixed(3) on the view rate, not (2). At $0.005 a two-decimal
+                render says "$0.01" — double the real price, on a screen whose
+                whole job is telling someone what they will be charged.
+                "across your publishers" is also gone: each account now carries
+                its own allowance and its own overage.
+              */}
+              Estimate what your views and uploaded minutes would cost,
+              at {CURRENCY_SYMBOL}{OVERAGE_RATES.perView.toFixed(3)} per view and{" "}
               {CURRENCY_SYMBOL}{OVERAGE_RATES.perMinute.toFixed(2)} per minute.
             </p>
             <Link href="/brand/settings/subscription">

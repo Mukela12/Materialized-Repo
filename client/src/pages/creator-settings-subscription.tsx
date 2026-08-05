@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link, useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { PricingEstimator } from "@/components/PricingEstimator";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -12,7 +13,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { BrandSubscription } from "@shared/schema";
 import { CURRENCY_SYMBOL, PLATFORM_CURRENCY_CODE } from "@/lib/currency";
-import { planPriceMajor, OVERAGE_RATES, type PlanKey } from "@shared/plans";
+import { planPriceMajor, type PlanKey } from "@shared/plans";
 import { TokenBalancePill, NotCashableNote } from "@/components/TokenPayOption";
 import {
   useTokenBalance, walletPost, useInvalidateWallet, tokenLabel, usdWhole, TOKEN_USD,
@@ -91,8 +92,6 @@ const OFFERED_PLANS = PLANS.filter((p) => !p.legacy);
 // Rates come from shared/plans.ts so this page and every other surface quote
 // the same price. They were duplicated here and in the brand settings page,
 // and a third contradictory model lived on the brand dashboard.
-const RATE_PER_VIEW   = OVERAGE_RATES.perView;
-const RATE_PER_MINUTE = OVERAGE_RATES.perMinute;
 
 /** Mirrors the server cap on POST /api/wallet/subsidise-subscription (`.max(50)`). */
 const MAX_TOKENS_PER_APPLY = 50;
@@ -146,9 +145,6 @@ export default function CreatorSettingsSubscription() {
   const [location] = useLocation();
   const { toast } = useToast();
   const [planDialogOpen, setPlanDialogOpen] = useState(false);
-  const [views,      setViews]      = useState(5000);
-  const [minutes,    setMinutes]    = useState(60);
-  const [publishers, setPublishers] = useState(3);
 
   // ── Token subsidy state ──
   const [tokensToApply, setTokensToApply] = useState(1);
@@ -253,9 +249,6 @@ export default function CreatorSettingsSubscription() {
       toast({ title: "Couldn't apply tokens", description: err?.message, variant: "destructive" }),
   });
 
-  const viewsCost    = views   * RATE_PER_VIEW   * publishers;
-  const minutesCost  = minutes * RATE_PER_MINUTE * publishers;
-  const totalSurplus = viewsCost + minutesCost;
 
   // Falls back to the offered tier only when the stored plan is unknown.
   const currentPlan = PLANS.find(p => p.id === sub?.plan) ?? OFFERED_PLANS[0];
@@ -434,66 +427,16 @@ export default function CreatorSettingsSubscription() {
             </div>
 
             {/* Surplus fee calculator */}
-            {!isOnTrial && (
-              <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-5">
-                <div className="flex items-center gap-2">
-                  <TrendingUp className="h-4 w-4 text-muted-foreground" />
-                  <p className="text-sm font-medium">Estimate overage charges</p>
-                </div>
-                <p className="text-xs text-muted-foreground -mt-3">
-                  Usage beyond plan limits is billed at <strong>{CURRENCY_SYMBOL}{RATE_PER_VIEW.toFixed(2)} / view</strong> and <strong>{CURRENCY_SYMBOL}{RATE_PER_MINUTE.toFixed(2)} / minute</strong>, multiplied by active publishers.
-                </p>
+            {/*
+              One shared estimator. This was an inline copy of the same sliders
+              and arithmetic that lived on the brand page too, and a third,
+              contradictory model on the brand dashboard quoted $800 where these
+              quoted $5,000 for identical usage.
 
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center">
-                    <label className="text-xs font-medium text-muted-foreground">Views</label>
-                    <span className="text-xs tabular-nums font-semibold">{views.toLocaleString()} views</span>
-                  </div>
-                  <Slider min={0} max={100000} step={500} value={[views]} onValueChange={([v]) => setViews(v)} data-testid="slider-views" />
-                  <p className="text-xs text-muted-foreground text-right">
-                    {views.toLocaleString()} × {CURRENCY_SYMBOL}{RATE_PER_VIEW.toFixed(2)} × {publishers} pub = <span className="font-semibold text-foreground">{CURRENCY_SYMBOL}{fmt(viewsCost)}</span>
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center">
-                    <label className="text-xs font-medium text-muted-foreground">Minutes consumed</label>
-                    <span className="text-xs tabular-nums font-semibold">{minutes.toLocaleString()} min</span>
-                  </div>
-                  <Slider min={0} max={5000} step={10} value={[minutes]} onValueChange={([v]) => setMinutes(v)} data-testid="slider-minutes" />
-                  <p className="text-xs text-muted-foreground text-right">
-                    {minutes.toLocaleString()} × {CURRENCY_SYMBOL}{RATE_PER_MINUTE.toFixed(2)} × {publishers} pub = <span className="font-semibold text-foreground">{CURRENCY_SYMBOL}{fmt(minutesCost)}</span>
-                  </p>
-                </div>
-
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center">
-                    <label className="text-xs font-medium text-muted-foreground">Active publishers</label>
-                    <span className="text-xs tabular-nums font-semibold">{publishers} publisher{publishers !== 1 ? "s" : ""}</span>
-                  </div>
-                  <Slider min={1} max={50} step={1} value={[publishers]} onValueChange={([v]) => setPublishers(v)} data-testid="slider-publishers" />
-                </div>
-
-                <div className="flex items-center justify-between pt-2 border-t border-border">
-                  <div>
-                    <p className="text-sm font-medium">Estimated overage</p>
-                    <p className="text-xl font-bold tabular-nums" data-testid="text-total-surplus">
-                      {CURRENCY_SYMBOL}{fmt(totalSurplus)}
-                      <span className="text-xs font-normal text-muted-foreground ml-1">/ mo</span>
-                    </p>
-                  </div>
-                  {/*
-                    Estimate only — this deliberately does not charge anything.
-                    It used to POST the browser-computed total to an endpoint that
-                    billed the card for exactly that number, which meant the
-                    customer decided their own bill. Overage will be billed from
-                    recorded usage, priced server-side, on the subscription
-                    invoice. Until then this is a quote, and says so.
-                  */}
-                  <span className="text-xs text-muted-foreground">Estimate only</span>
-                </div>
-              </div>
-            )}
+              Also no longer gated on !isOnTrial. Someone on a trial is exactly
+              who needs to know what the plan will cost them.
+            */}
+            <PricingEstimator plan="creator" className="border-0 shadow-none bg-muted/30" />
 
             <div className="flex gap-2">
               <Button
