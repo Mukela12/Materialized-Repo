@@ -20,7 +20,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Ticket, Copy, Ban, Check } from "lucide-react";
+import { Ticket, Copy, Ban, Check, Download } from "lucide-react";
+import { exportToCsv } from "@/lib/exportCsv";
 
 interface VoucherRow {
   id: string;
@@ -34,20 +35,29 @@ interface VoucherRow {
   expiresAt: string | null;
   revokedAt: string | null;
   createdAt: string;
+  /** Groups one mint — "the 80 I gave Vogue". */
+  batchId: string | null;
+  /** Who it was handed to. Free text: most recipients have no account yet. */
+  assignedTo: string | null;
+  /** Who actually redeemed it, once someone has. */
+  redeemedBy: string | null;
 }
 
 /** The GTM offer, prefilled — it is the reason this screen exists. */
 const GTM_DEFAULTS = {
-  label: "GTM — 20 creator seats",
+  label: "GTM — creator seats",
   grantType: "free_access" as const,
   roleRestriction: "creator",
-  maxRedemptions: "20",
+  maxRedemptions: "1",
+  quantity: "20",
+  assignedTo: "",
 };
 
 export function VoucherManager() {
   const { toast } = useToast();
   const qc = useQueryClient();
   const [form, setForm] = useState({ ...GTM_DEFAULTS, code: "", expiresAt: "" });
+  const [editing, setEditing] = useState<Record<string, string>>({});
   const [copied, setCopied] = useState<string | null>(null);
 
   const { data: vouchers = [], isLoading } = useQuery<VoucherRow[]>({
@@ -56,12 +66,22 @@ export function VoucherManager() {
 
   const create = useMutation({
     mutationFn: (body: any) => apiRequest("POST", "/api/admin/vouchers", body),
-    onSuccess: () => {
+    onSuccess: async (res: any) => {
       qc.invalidateQueries({ queryKey: ["/api/admin/vouchers"] });
+      const body = typeof res?.json === "function" ? await res.json() : res;
       setForm({ ...GTM_DEFAULTS, code: "", expiresAt: "" });
-      toast({ title: "Voucher created" });
+      toast({
+        title: body?.count > 1 ? `${body.count} vouchers created` : "Voucher created",
+        description: body?.count > 1 ? "Export them as CSV to hand to a partner." : undefined,
+      });
     },
     onError: (e: any) => toast({ title: e?.message ?? "Could not create voucher", variant: "destructive" }),
+  });
+
+  const assign = useMutation({
+    mutationFn: ({ id, assignedTo }: { id: string; assignedTo: string }) =>
+      apiRequest("PATCH", `/api/admin/vouchers/${id}/assignee`, { assignedTo }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/admin/vouchers"] }),
   });
 
   const revoke = useMutation({
@@ -110,6 +130,18 @@ export function VoucherManager() {
               />
             </div>
             <div>
+              <Label>Who you are giving them to</Label>
+              <Input
+                value={form.assignedTo}
+                onChange={(e) => setForm({ ...form, assignedTo: e.target.value })}
+                placeholder="Vogue, Selfridges, a partner's name…"
+                data-testid="input-voucher-assignee"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Applies to every code in this batch. You can change it per code later.
+              </p>
+            </div>
+            <div>
               <Label>Code (optional)</Label>
               <Input
                 value={form.code}
@@ -144,7 +176,20 @@ export function VoucherManager() {
               </Select>
             </div>
             <div>
-              <Label>How many times it can be used</Label>
+              <Label>How many codes to create</Label>
+              <Input
+                type="number" min={1} max={200}
+                value={form.quantity}
+                onChange={(e) => setForm({ ...form, quantity: e.target.value })}
+                data-testid="input-voucher-quantity"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Separate codes, one per recipient — so you can see who used which and
+                revoke just one.
+              </p>
+            </div>
+            <div>
+              <Label>How many times EACH can be used</Label>
               <Input
                 type="number" min={1}
                 value={form.maxRedemptions}
@@ -167,6 +212,7 @@ export function VoucherManager() {
           <Button
             onClick={() => create.mutate({
               ...form,
+              quantity: Number(form.quantity) || 1,
               code: form.code || undefined,
               roleRestriction: form.roleRestriction || undefined,
               maxRedemptions: form.maxRedemptions || null,
@@ -182,7 +228,28 @@ export function VoucherManager() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Vouchers</CardTitle>
+          <div className="flex items-start justify-between gap-4">
+            <CardTitle className="text-base">Vouchers</CardTitle>
+            <Button
+              variant="outline" size="sm" className="gap-1.5"
+              disabled={vouchers.length === 0}
+              onClick={() => exportToCsv("mtrlzd-vouchers", vouchers, [
+                { header: "Code", value: (v) => v.code },
+                { header: "Given to", value: (v) => v.assignedTo ?? "" },
+                { header: "For", value: (v) => v.label ?? "" },
+                { header: "Grants", value: (v) => v.grantType === "free_access" ? "Free access" : "Setup fee waived" },
+                { header: "Who can use", value: (v) => v.roleRestriction ?? "any" },
+                { header: "Uses left", value: (v) => v.seatsRemaining == null ? "unlimited" : String(v.seatsRemaining) },
+                { header: "Redeemed by", value: (v) => v.redeemedBy ?? "" },
+                { header: "Expires", value: (v) => v.expiresAt ? v.expiresAt.slice(0, 10) : "" },
+                { header: "Status", value: (v) => v.revokedAt ? "Revoked" : v.seatsRemaining === 0 ? "Used" : "Active" },
+              ])}
+              data-testid="button-export-vouchers"
+            >
+              <Download className="h-3.5 w-3.5" />
+              Export CSV
+            </Button>
+          </div>
           <p className="text-sm text-muted-foreground">
             Revoking stops new redemptions. Accounts already created with a voucher keep
             what they were given.
@@ -199,7 +266,7 @@ export function VoucherManager() {
                 <thead>
                   <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground border-b">
                     <th className="py-2 pr-4">Code</th>
-                    <th className="py-2 pr-4">For</th>
+                    <th className="py-2 pr-4">Given to</th>
                     <th className="py-2 pr-4">Seats left</th>
                     <th className="py-2 pr-4">Status</th>
                     <th className="py-2"></th>
@@ -221,10 +288,22 @@ export function VoucherManager() {
                         </button>
                       </td>
                       <td className="py-2 pr-4">
-                        <div>{v.label ?? "—"}</div>
-                        <div className="text-xs text-muted-foreground">
-                          {v.grantType === "free_access" ? "Free access" : "Setup fee waived"}
-                          {v.roleRestriction ? ` · ${v.roleRestriction}s only` : ""}
+                        {/* Free text: most recipients have no account yet, which
+                            is the point of a voucher. */}
+                        <Input
+                          className="h-7 text-xs"
+                          placeholder="brand or partner name"
+                          defaultValue={v.assignedTo ?? ""}
+                          onChange={(e) => setEditing({ ...editing, [v.id]: e.target.value })}
+                          onBlur={(e) => {
+                            const val = e.target.value.trim();
+                            if (val !== (v.assignedTo ?? "")) assign.mutate({ id: v.id, assignedTo: val });
+                          }}
+                          data-testid={`input-assignee-${v.id}`}
+                        />
+                        <div className="text-xs text-muted-foreground mt-1">
+                          {v.label ?? "—"}
+                          {v.redeemedBy ? ` · used by ${v.redeemedBy}` : ""}
                         </div>
                       </td>
                       <td className="py-2 pr-4 tabular-nums">

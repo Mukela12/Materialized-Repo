@@ -120,3 +120,49 @@ export function seatsRemaining(voucher: VoucherRecord, redemptionCount: number):
   if (voucher.maxRedemptions == null) return null; // uncapped
   return Math.max(0, voucher.maxRedemptions - redemptionCount);
 }
+
+/** The most codes one mint may create. A batch of 80 is the real case. */
+export const MAX_BATCH = 200;
+
+/** How many times a generated code may collide before we give up on it. */
+const COLLISION_RETRIES = 5;
+
+/**
+ * Mint N distinct codes.
+ *
+ * Why distinct codes rather than one code with 80 redemptions: a shared code
+ * cannot be traced to a recipient, cannot be revoked for one of them, and once
+ * forwarded is forwarded everywhere. The client's case is handing a partner
+ * codes to distribute across their network — "who used which" is the whole
+ * question they will ask afterwards. The shared-code shape still exists; it is
+ * quantity 1 with a redemption cap.
+ *
+ * Collisions are regenerated rather than thrown, so a batch of 80 does not fail
+ * because the 61st code clashed with something issued last month.
+ */
+export async function mintCodes(
+  quantity: number,
+  exists: (code: string) => Promise<boolean>,
+  generate: () => string = generateVoucherCode,
+): Promise<string[]> {
+  const n = Math.max(1, Math.min(Math.floor(quantity) || 1, MAX_BATCH));
+  const codes: string[] = [];
+  // Codes minted in THIS batch are not in the database yet, so `exists` cannot
+  // see them. Without this a repeating generator would return duplicates that
+  // only fail later, at insert, halfway through the batch.
+  const taken = new Set<string>();
+
+  for (let i = 0; i < n; i++) {
+    let code = normaliseCode(generate());
+    let attempts = 0;
+    while (taken.has(code) || (await exists(code))) {
+      if (++attempts > COLLISION_RETRIES) {
+        throw new Error("Could not generate a unique voucher code");
+      }
+      code = normaliseCode(generate());
+    }
+    taken.add(code);
+    codes.push(code);
+  }
+  return codes;
+}

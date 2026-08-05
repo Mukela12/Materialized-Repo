@@ -21,7 +21,7 @@
 import { describe, it, expect } from "vitest";
 import {
   checkRedeemable, generateVoucherCode, normaliseCode, grantsOf, seatsRemaining,
-  type VoucherRecord,
+  mintCodes, MAX_BATCH, type VoucherRecord,
 } from "../../server/vouchers";
 
 const voucher = (over: Partial<VoucherRecord> = {}): VoucherRecord => ({
@@ -153,5 +153,67 @@ describe("matching what a human types", () => {
 
   it("is stable, so the same typing always resolves the same way", () => {
     expect(normaliseCode("mtz-abcd")).toBe(normaliseCode("MTZ-ABCD"));
+  });
+});
+
+/**
+ * Minting a batch.
+ *
+ * The client's real case, in her words: hand a partner 80 codes to give to
+ * their brands and media contacts. The first version of this system could only
+ * express that as ONE code redeemable 80 times — which cannot say who used it,
+ * cannot be revoked for one recipient, and once forwarded is forwarded to
+ * everybody. These tests pin the properties that make 80 codes different from
+ * one code used 80 times.
+ */
+describe("minting a batch", () => {
+  const never = async () => false;
+
+  it("mints exactly as many codes as asked for", async () => {
+    const codes = await mintCodes(80, never);
+    expect(codes).toHaveLength(80);
+  });
+
+  it("mints codes that are all different — the point of a batch", async () => {
+    const codes = await mintCodes(80, never);
+    expect(new Set(codes).size).toBe(80);
+  });
+
+  it("does not reuse a code that is already in the database", async () => {
+    const existing = "MTZ-AAAA-BBBB-CCCC";
+    let first = true;
+    // A generator that would hand back the existing code once.
+    const generate = () => (first ? ((first = false), existing) : generateVoucherCode());
+    const codes = await mintCodes(1, async (c) => c === existing, generate);
+    expect(codes[0]).not.toBe(existing);
+  });
+
+  it("does not hand back the same code twice within one batch", async () => {
+    // `exists` queries the DATABASE, which cannot see codes minted moments ago
+    // in this same loop. Without in-batch tracking a repeating generator gets
+    // through here and fails later, at insert, part-way through the batch.
+    const canned = ["MTZ-1111-1111-1111", "MTZ-1111-1111-1111", "MTZ-2222-2222-2222"];
+    let i = 0;
+    const codes = await mintCodes(2, never, () => canned[i++] ?? generateVoucherCode());
+    expect(new Set(codes).size).toBe(2);
+  });
+
+  it("gives up rather than looping forever when every code collides", async () => {
+    await expect(mintCodes(1, async () => true)).rejects.toThrow(/unique/i);
+  });
+
+  it("caps a batch, so a typo cannot mint a hundred thousand codes", async () => {
+    expect(await mintCodes(999_999, never)).toHaveLength(MAX_BATCH);
+  });
+
+  it("treats junk quantities as one, never as zero", async () => {
+    for (const q of [0, -5, NaN, 0.4]) {
+      expect(await mintCodes(q as number, never)).toHaveLength(1);
+    }
+  });
+
+  it("normalises what it returns, so stored codes match what a human types", async () => {
+    const codes = await mintCodes(3, never);
+    for (const c of codes) expect(c).toBe(normaliseCode(c));
   });
 });

@@ -261,7 +261,8 @@ export interface IStorage {
     maxRedemptions: number | null; expiresAt: Date | null; createdBy: string | null;
   }): Promise<Voucher>;
   getVoucherByCode(code: string): Promise<VoucherRecord | null>;
-  listVouchers(): Promise<Array<Voucher & { redemptionCount: number }>>;
+  listVouchers(): Promise<Array<Voucher & { redemptionCount: number; redeemedBy: string | null }>>;
+  setVoucherAssignee(id: string, assignedTo: string | null): Promise<boolean>;
   revokeVoucher(id: string): Promise<boolean>;
   /**
    * Redeem atomically. Returns null when the cap was reached or the user has
@@ -2018,11 +2019,22 @@ export class MemStorage implements IStorage {
     return row ?? null;
   }
 
-  async listVouchers(): Promise<Array<Voucher & { redemptionCount: number }>> {
-    return Array.from(this.vouchersMap.values()).map(v => ({
-      ...v,
-      redemptionCount: this.voucherRedemptionsList.filter(r => r.voucherId === v.id).length,
-    }));
+  async listVouchers(): Promise<Array<Voucher & { redemptionCount: number; redeemedBy: string | null }>> {
+    return Array.from(this.vouchersMap.values()).map(v => {
+      const first = this.voucherRedemptionsList.find(r => r.voucherId === v.id);
+      return {
+        ...v,
+        redemptionCount: this.voucherRedemptionsList.filter(r => r.voucherId === v.id).length,
+        redeemedBy: first ? (this.users.get(first.userId)?.email ?? null) : null,
+      };
+    });
+  }
+
+  async setVoucherAssignee(id: string, assignedTo: string | null): Promise<boolean> {
+    const v = this.vouchersMap.get(id);
+    if (!v) return false;
+    v.assignedTo = assignedTo;
+    return true;
   }
 
   async revokeVoucher(id: string): Promise<boolean> {
@@ -3782,12 +3794,27 @@ export class DatabaseStorage implements IStorage {
     } : null;
   }
 
-  async listVouchers(): Promise<Array<Voucher & { redemptionCount: number }>> {
+  async listVouchers(): Promise<Array<Voucher & { redemptionCount: number; redeemedBy: string | null }>> {
     const rows = await db.select({
       v: vouchers,
       redemptionCount: sql<number>`(select count(*) from ${voucherRedemptions} r where r.voucher_id = ${vouchers.id})::int`,
-    }).from(vouchers).orderBy(desc(vouchers.createdAt)).limit(500);
-    return rows.map(r => ({ ...r.v, redemptionCount: r.redemptionCount }));
+      // Who actually used it. For a single-use code this is THE answer to
+      // "which of the eighty has been taken, and by whom" — the question a
+      // partner distributing them will ask first.
+      redeemedBy: sql<string | null>`(
+        select u.email from ${voucherRedemptions} r
+        join ${users} u on u.id = r.user_id
+        where r.voucher_id = ${vouchers.id}
+        order by r.redeemed_at limit 1)`,
+    }).from(vouchers).orderBy(desc(vouchers.createdAt)).limit(1000);
+    return rows.map(r => ({ ...r.v, redemptionCount: r.redemptionCount, redeemedBy: r.redeemedBy }));
+  }
+
+  /** Note who a code was handed to. Free text — see the note in 0020. */
+  async setVoucherAssignee(id: string, assignedTo: string | null): Promise<boolean> {
+    const [row] = await db.update(vouchers)
+      .set({ assignedTo }).where(eq(vouchers.id, id)).returning({ id: vouchers.id });
+    return !!row;
   }
 
   async revokeVoucher(id: string): Promise<boolean> {

@@ -1444,6 +1444,18 @@ export const vouchers = pgTable("vouchers", {
   roleRestriction: text("role_restriction"),
   /** Null means uncapped — which is what the old env-var code effectively was. */
   maxRedemptions: integer("max_redemptions"),
+  /**
+   * Groups one mint, so "the 80 I gave Vogue" is one query, one CSV export and
+   * one thing to revoke — rather than 80 rows to pick out of a list by eye.
+   */
+  batchId: varchar("batch_id"),
+  /**
+   * Who this code was handed to. A NOTE, not a foreign key: the recipient is
+   * typically a brand that has no account yet — which is the whole point of a
+   * voucher — and the client plans to have partners fill these in on a
+   * spreadsheet. An FK would make the common case unrepresentable.
+   */
+  assignedTo: text("assigned_to"),
   expiresAt: timestamp("expires_at"),
   /** Revocation is a timestamp, not a delete: redemptions already made stay valid. */
   revokedAt: timestamp("revoked_at"),

@@ -11,7 +11,7 @@ import { recordSaleCommissions, clawbackSaleCommissions } from "./commissions";
 import { recordFeeAccrual, voidFeeAccrual } from "./feeAccruals";
 import { generateFeeInvoice, finalizeFeeInvoice } from "./feeInvoicing";
 import { quoteCheckout, checkoutIdempotencyKey, parsePriceToCents } from "./inVideoCheckout";
-import { checkRedeemable, grantsOf, normaliseCode, generateVoucherCode } from "./vouchers";
+import { checkRedeemable, grantsOf, normaliseCode, generateVoucherCode, mintCodes, MAX_BATCH } from "./vouchers";
 import { feeInvoiceStripeAdapter } from "./feeInvoiceStripe";
 
 
@@ -5147,6 +5147,13 @@ Identify which products from the catalog are most likely to appear or be feature
         code, label, grantType, brandUserId, roleRestriction, maxRedemptions, expiresAt,
       } = req.body ?? {};
 
+      // Who the whole batch is being handed to. Set once at mint time so 80
+      // codes do not have to be labelled one at a time afterwards.
+      const assignedTo =
+        typeof req.body?.assignedTo === "string" && req.body.assignedTo.trim()
+          ? req.body.assignedTo.trim().slice(0, 200)
+          : null;
+
       if (grantType && !["free_access", "waive_setup_fee"].includes(grantType)) {
         return res.status(400).json({ error: "grantType must be free_access or waive_setup_fee" });
       }
@@ -5162,22 +5169,57 @@ Identify which products from the catalog are most likely to appear or be feature
         return res.status(400).json({ error: "expiresAt must be a valid date" });
       }
 
-      const finalCode = normaliseCode(typeof code === "string" && code.trim() ? code : generateVoucherCode());
-      if (await storage.getVoucherByCode(finalCode)) {
-        return res.status(409).json({ error: "That code already exists" });
+      /**
+       * `quantity` mints N DISTINCT codes in one batch.
+       *
+       * The client's actual case: hand a partner 80 codes to distribute to their
+       * network. That is not one code redeemable 80 times — a shared code cannot
+       * be traced to a recipient or revoked for one of them, and once forwarded
+       * it is forwarded everywhere. Both shapes are supported; maxRedemptions
+       * still covers the shared-code case.
+       */
+      const quantity = Math.max(1, Math.min(Number(req.body?.quantity) || 1, MAX_BATCH));
+      const custom = typeof code === "string" && code.trim() ? normaliseCode(code) : null;
+
+      if (quantity > 1 && custom) {
+        return res.status(400).json({
+          error: "A custom code can only be used when minting one voucher.",
+        });
       }
 
-      const voucher = await storage.createVoucher({
-        code: finalCode,
-        label: typeof label === "string" && label.trim() ? label.trim() : null,
-        grantType: grantType ?? "free_access",
-        brandUserId: typeof brandUserId === "string" && brandUserId ? brandUserId : null,
-        roleRestriction: roleRestriction ?? null,
-        maxRedemptions: cap,
-        expiresAt: expiry,
-        createdBy: (req.session as any)?.userId ?? null,
-      });
-      res.status(201).json(voucher);
+      let codes: string[];
+      if (custom) {
+        if (await storage.getVoucherByCode(custom)) {
+          return res.status(409).json({ error: "That code already exists" });
+        }
+        codes = [custom];
+      } else {
+        try {
+          codes = await mintCodes(quantity, async (c) => !!(await storage.getVoucherByCode(c)));
+        } catch {
+          return res.status(500).json({ error: "Could not generate a unique code" });
+        }
+      }
+
+      const batchId = quantity > 1 ? crypto.randomUUID() : null;
+      const created = [];
+
+      for (const finalCode of codes) {
+        created.push(await storage.createVoucher({
+          code: finalCode,
+          label: typeof label === "string" && label.trim() ? label.trim() : null,
+          grantType: grantType ?? "free_access",
+          brandUserId: typeof brandUserId === "string" && brandUserId ? brandUserId : null,
+          roleRestriction: roleRestriction ?? null,
+          maxRedemptions: cap,
+          expiresAt: expiry,
+          createdBy: (req.session as any)?.userId ?? null,
+          batchId,
+          assignedTo,
+        } as any));
+      }
+
+      res.status(201).json({ count: created.length, batchId, vouchers: created });
     } catch (error) {
       console.error("Voucher create error:", error);
       res.status(500).json({ error: "Failed to create voucher" });
@@ -5195,6 +5237,20 @@ Identify which products from the catalog are most likely to appear or be feature
     } catch (error) {
       console.error("Voucher list error:", error);
       res.status(500).json({ error: "Failed to load vouchers" });
+    }
+  });
+
+  /** Admin: note who a code was handed to. Free text — most recipients have no account yet. */
+  app.patch("/api/admin/vouchers/:id/assignee", requireAdmin, async (req, res) => {
+    try {
+      const raw = req.body?.assignedTo;
+      const value = typeof raw === "string" && raw.trim() ? raw.trim().slice(0, 200) : null;
+      const ok = await storage.setVoucherAssignee(req.params.id, value);
+      if (!ok) return res.status(404).json({ error: "Voucher not found" });
+      res.json({ ok: true, assignedTo: value });
+    } catch (error) {
+      console.error("Voucher assignee error:", error);
+      res.status(500).json({ error: "Failed to save" });
     }
   });
 
