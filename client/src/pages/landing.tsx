@@ -203,7 +203,7 @@ const TYPEWRITER_PHRASES = [
   "Turn videos into revenue",
   "Connect with brands",
   "Build your affiliate empire",
-  "Monetize your content",
+  "Monetise your content",
 ];
 
 function TypewriterText() {
@@ -726,7 +726,7 @@ function DataAnalyticsSection() {
               <TypewriterText />
             </h2>
             <p className="text-lg md:text-xl text-white/70 max-w-xl mb-10">
-              The all-in-one platform for creators, brands, and publishers to monetize video content with AI-powered product detection and seamless affiliate tracking.
+              The all-in-one platform for creators, brands, and publishers to monetise video content with AI-powered product detection and seamless affiliate tracking.
             </p>
             <motion.div
               whileHover={{ scale: 1.08 }}

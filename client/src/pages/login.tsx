@@ -41,7 +41,11 @@ export default function Login() {
     onSuccess: async (res: any) => {
       const user: CurrentUser = await res.json();
       queryClient.setQueryData(["/api/auth/me"], user);
-      const destination = ROLE_ROUTES[user.role] ?? "/creator";
+      // Back to whatever they were doing, if the guard sent them here.
+      const next = new URLSearchParams(window.location.search).get("next");
+      const destination = next && next.startsWith("/") && !next.startsWith("//")
+        ? next
+        : ROLE_ROUTES[user.role] ?? "/creator";
       navigate(destination);
     },
     onError: async (err: any) => {
@@ -68,8 +72,21 @@ export default function Login() {
         </div>
 
         <div className="bg-card border border-border rounded-2xl p-8 shadow-xl">
-          <h1 className="text-xl font-semibold text-foreground mb-1">Welcome back</h1>
-          <p className="text-sm text-muted-foreground mb-6">Sign in to your Materialized account</p>
+          {/* Say why they are here. Arriving at a bare login screen mid-task
+              reads as the previous page having broken. */}
+          {new URLSearchParams(window.location.search).get("reason") === "expired" ? (
+            <>
+              <h1 className="text-xl font-semibold text-foreground mb-1">Your session expired</h1>
+              <p className="text-sm text-muted-foreground mb-6" data-testid="text-login-expired">
+                Sign in again and we'll take you back to what you were doing.
+              </p>
+            </>
+          ) : (
+            <>
+              <h1 className="text-xl font-semibold text-foreground mb-1">Welcome back</h1>
+              <p className="text-sm text-muted-foreground mb-6">Sign in to your Materialized account</p>
+            </>
+          )}
 
           <Form {...form}>
             <form onSubmit={form.handleSubmit((d) => loginMutation.mutate(d))} className="space-y-4">

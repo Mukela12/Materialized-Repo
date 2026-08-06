@@ -95,15 +95,41 @@ export function generateSignedUploadParams(options?: {
     folder,
   };
 
-  const signature = cloudinary.utils.api_sign_request(params, process.env.CLOUDINARY_API_SECRET!);
+  /**
+   * FAIL HERE, LOUDLY, RATHER THAN IN THE BROWSER.
+   *
+   * These were read with `!` and interpolated straight into the upload URL. With
+   * the variables unset the function happily returned an upload URL reading
+   *   https://api.cloudinary.com/v1_1/undefined/image/upload
+   * and a signature computed from a missing secret. The browser then posted a
+   * file to a host that does not exist and reported the only thing it knew:
+   * "Load failed" in Safari, "Failed to fetch" in Chrome — with nothing in the
+   * server log, because as far as the server was concerned it had succeeded.
+   *
+   * A misconfigured deploy is now a 500 naming the missing variable.
+   */
+  const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
+  const apiKey = process.env.CLOUDINARY_API_KEY;
+  const apiSecret = process.env.CLOUDINARY_API_SECRET;
+
+  const missing = [
+    !cloudName && "CLOUDINARY_CLOUD_NAME",
+    !apiKey && "CLOUDINARY_API_KEY",
+    !apiSecret && "CLOUDINARY_API_SECRET",
+  ].filter(Boolean);
+  if (missing.length) {
+    throw new Error(`Cloudinary is not configured — missing ${missing.join(", ")}`);
+  }
+
+  const signature = cloudinary.utils.api_sign_request(params, apiSecret!);
 
   return {
     signature,
     timestamp,
     folder,
-    cloudName: process.env.CLOUDINARY_CLOUD_NAME!,
-    apiKey: process.env.CLOUDINARY_API_KEY!,
-    uploadUrl: `https://api.cloudinary.com/v1_1/${process.env.CLOUDINARY_CLOUD_NAME}/${options?.resourceType || "auto"}/upload`,
+    cloudName: cloudName!,
+    apiKey: apiKey!,
+    uploadUrl: `https://api.cloudinary.com/v1_1/${cloudName}/${options?.resourceType || "auto"}/upload`,
   };
 }
 

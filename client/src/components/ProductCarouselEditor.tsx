@@ -1,4 +1,6 @@
 import { useState, useRef } from "react";
+import { CarouselPreviewFrame } from "@/components/CarouselPreviewFrame";
+import { carouselPositionStyles } from "@/lib/carouselPosition";
 import { videoDeliveryUrl } from "@shared/videoDelivery";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
@@ -102,36 +104,6 @@ export function ProductCarouselEditor({
     }
   };
 
-  const getPositionStyles = () => {
-    const base: React.CSSProperties = {
-      position: 'absolute',
-      zIndex: 10,
-    };
-    
-    const offsetX = settings.positionOffsetX;
-    const offsetY = settings.positionOffsetY;
-    
-    switch (settings.position) {
-      case 'top':
-        return { ...base, top: `${8 + offsetY}px`, left: '50%', transform: 'translateX(-50%)' };
-      case 'bottom':
-        return { ...base, bottom: `${8 - offsetY}px`, left: '50%', transform: 'translateX(-50%)' };
-      case 'left':
-        return { ...base, left: `${8 + offsetX}px`, top: '50%', transform: 'translateY(-50%)' };
-      case 'right':
-        return { ...base, right: `${8 - offsetX}px`, top: '50%', transform: 'translateY(-50%)' };
-      case 'top-left':
-        return { ...base, top: `${8 + offsetY}px`, left: `${8 + offsetX}px` };
-      case 'top-right':
-        return { ...base, top: `${8 + offsetY}px`, right: `${8 - offsetX}px` };
-      case 'bottom-left':
-        return { ...base, bottom: `${8 - offsetY}px`, left: `${8 + offsetX}px` };
-      case 'bottom-right':
-        return { ...base, bottom: `${8 - offsetY}px`, right: `${8 - offsetX}px` };
-      default:
-        return { ...base, bottom: '8px', left: '50%', transform: 'translateX(-50%)' };
-    }
-  };
 
   return (
     <div className="space-y-3">
@@ -170,35 +142,11 @@ export function ProductCarouselEditor({
       </div>
 
       {showPreview && (
-        <div className="relative bg-muted rounded-lg overflow-hidden aspect-video">
-          {videoUrl ? (
-            <>
-              {videoLoading && (
-                <div className="absolute inset-0 flex items-center justify-center z-10">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
-                </div>
-              )}
-              <video
-                src={videoDeliveryUrl(videoUrl, "preview")}
-                className="absolute inset-0 w-full h-full object-cover"
-                autoPlay
-                muted
-                loop
-                playsInline
-                onPlaying={() => setVideoLoading(false)}
-                onLoadedData={() => setVideoLoading(false)}
-              />
-            </>
-          ) : (
-            <div className="absolute inset-0 flex items-center justify-center text-muted-foreground text-xs">
-              Video Preview
-            </div>
-          )}
-          
-          <div 
+        <CarouselPreviewFrame videoUrl={videoUrl} testId="carousel-preview-frame">
+          <div
             className="p-2 flex items-center gap-2 max-w-[200px]"
             style={{
-              ...getPositionStyles(),
+              ...carouselPositionStyles(settings.position, settings.positionOffsetX, settings.positionOffsetY),
               backgroundColor: `rgba(0,0,0,${settings.backgroundOpacity / 100})`,
               borderRadius: `${settings.cornerRadius}px`,
             }}
@@ -245,7 +193,7 @@ export function ProductCarouselEditor({
               </button>
             )}
           </div>
-        </div>
+        </CarouselPreviewFrame>
       )}
 
       <Tabs defaultValue="layout" className="w-full">

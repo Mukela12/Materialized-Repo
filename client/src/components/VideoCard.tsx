@@ -1,4 +1,5 @@
 import { Card, CardContent } from "@/components/ui/card";
+import { CATEGORY_ON_SURFACE, CATEGORY_FALLBACK_ON_SURFACE } from "@/lib/categoryColors";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Play, Eye, MousePointer, DollarSign, MoreVertical, Code, Pencil } from "lucide-react";
@@ -17,15 +18,6 @@ const STATUS_COLORS: Record<string, string> = {
   archived:   "bg-gray-500/15 text-gray-500 border-gray-500/20",
 };
 
-const CATEGORY_COLORS: Record<string, string> = {
-  fashion:     "bg-pink-500/15 text-pink-600",
-  travel:      "bg-blue-500/15 text-blue-600",
-  skincare:    "bg-violet-500/15 text-violet-600",
-  cuisine_bev: "bg-orange-500/15 text-orange-600",
-  health:      "bg-green-500/15 text-green-600",
-  eco:         "bg-emerald-500/15 text-emerald-600",
-  interiors:   "bg-stone-500/15 text-stone-600",
-};
 
 const CATEGORY_LABELS: Record<string, string> = {
   fashion:     "Fashion",
@@ -80,13 +72,18 @@ export function VideoCard({ video, onOpen, onEdit, onViewEmbed, onDelete }: Vide
           </div>
         </div>
 
-        {/* ⋮ menu — stopPropagation so it doesn't open the detail sheet */}
+        {/* ⋮ menu — stopPropagation so it doesn't open the detail sheet.
+            ALWAYS VISIBLE. It used to be opacity-0 until the card was hovered,
+            which meant it did not exist at all on a touch screen and was easy
+            to miss on a trackpad — the client asked for it "fully visible". The
+            opaque chip is what makes it readable over an unknown frame; a
+            translucent one disappeared against pale thumbnails. */}
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
               variant="ghost"
               size="icon"
-              className="absolute top-2 right-2 h-8 w-8 rounded-full bg-black/50 hover:bg-black/70 text-white opacity-0 group-hover:opacity-100 transition-opacity"
+              className="absolute top-2 right-2 z-20 h-8 w-8 rounded-full bg-black/70 hover:bg-black/85 ring-1 ring-white/20 text-white backdrop-blur-sm"
               data-testid={`button-video-menu-${video.id}`}
               onClick={(e) => e.stopPropagation()}
             >
@@ -129,7 +126,7 @@ export function VideoCard({ video, onOpen, onEdit, onViewEmbed, onDelete }: Vide
             <Badge
               key={cat}
               variant="secondary"
-              className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${CATEGORY_COLORS[cat] ?? "bg-muted text-muted-foreground"}`}
+              className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${CATEGORY_ON_SURFACE[cat] ?? CATEGORY_FALLBACK_ON_SURFACE}`}
               data-testid={`badge-category-${video.id}-${cat}`}
             >
               {CATEGORY_LABELS[cat] ?? cat}

@@ -1,4 +1,5 @@
 import { CURRENCY_SYMBOL } from "@/lib/currency";
+import { categoryBadgeOnThumbnail, SELECTION_CHIP } from "@/lib/categoryColors";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -32,15 +33,6 @@ const CATEGORIES = [
   { value: "interiors",   label: "Interiors" },
 ];
 
-const CATEGORY_COLORS: Record<string, string> = {
-  fashion:     "bg-pink-500/15 text-pink-600",
-  travel:      "bg-blue-500/15 text-blue-600",
-  skincare:    "bg-violet-500/15 text-violet-600",
-  cuisine_bev: "bg-orange-500/15 text-orange-600",
-  health:      "bg-green-500/15 text-green-600",
-  eco:         "bg-emerald-500/15 text-emerald-600",
-  interiors:   "bg-stone-500/15 text-stone-600",
-};
 
 export default function BrandLibrary() {
   const [searchQuery, setSearchQuery]             = useState("");
@@ -142,7 +134,7 @@ export default function BrandLibrary() {
           {filtered.map((listing) => {
             const isSelected = selectedIds.has(listing.id);
             const cat = (listing.category ?? "").toLowerCase();
-            const badgeClass = CATEGORY_COLORS[cat] ?? "bg-muted/50 text-muted-foreground";
+            const badgeClass = categoryBadgeOnThumbnail(cat);
             const title = listing.listingTitle || listing.video?.title || "Untitled Video";
             return (
               <div key={listing.id} className="relative">
@@ -161,10 +153,10 @@ export default function BrandLibrary() {
                         <Play className="w-10 h-10 text-muted-foreground" />
                       </div>
                     )}
-                    <div className="absolute top-2 left-2">
+                    <div className={`absolute top-2 left-2 ${SELECTION_CHIP}`}>
                       {isSelected
-                        ? <CheckSquare className="h-5 w-5 text-primary drop-shadow-md" />
-                        : <Square className="h-5 w-5 text-white/80 drop-shadow-md" />}
+                        ? <CheckSquare className="h-4 w-4 text-primary" />
+                        : <Square className="h-4 w-4 text-white" />}
                     </div>
                     {listing.category && (
                       <span className={`absolute top-2 right-2 px-2 py-0.5 rounded-full text-[10px] font-medium ${badgeClass}`}>

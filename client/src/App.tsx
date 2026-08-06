@@ -186,15 +186,30 @@ function AdminPortalSwitcher() {
   );
 }
 
+/**
+ * Requires a signed-in user.
+ *
+ * ── Why it carries the path and a reason ─────────────────────────────────────
+ * It used to navigate to /login with nothing else. Someone whose session
+ * expired mid-task was moved to a bare login screen with no explanation and no
+ * way back: the client was part-way through replacing a video cover, dropped
+ * her PNG, and found herself on the login page. The upload was gone, the page
+ * she was on was gone, and nothing said why. She reported it as an error in the
+ * uploader, which is exactly what it looked like.
+ *
+ * The session still expires — that part is not fixed here — but expiring now
+ * says so and returns her to the page she was on.
+ */
 function AuthGuard({ children }: { children: React.ReactNode }) {
   const { data: user, isLoading } = useCurrentUser();
-  const [, navigate] = useLocation();
+  const [location, navigate] = useLocation();
 
   useEffect(() => {
     if (!isLoading && user === null) {
-      navigate("/login");
+      const next = encodeURIComponent(location);
+      navigate(`/login?reason=expired&next=${next}`);
     }
-  }, [isLoading, user, navigate]);
+  }, [isLoading, user, navigate, location]);
 
   if (isLoading) {
     return (

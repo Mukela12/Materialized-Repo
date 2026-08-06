@@ -1523,6 +1523,12 @@ export async function registerRoutes(
   // Server-side upload to Cloudinary (for smaller files / API uploads)
   app.post("/api/upload/complete", async (req, res) => {
     try {
+      // This echoes a caller-supplied URL back as the canonical objectUrl, which
+      // is then stored against a video. It had no auth check at all, so anyone
+      // could call it. It does not mint credentials, but it should not be open.
+      if (!(req.session as any)?.userId) {
+        return res.status(401).json({ error: "Authentication required" });
+      }
       const { cloudinaryUrl, publicId, resourceType } = req.body;
 
       res.json({

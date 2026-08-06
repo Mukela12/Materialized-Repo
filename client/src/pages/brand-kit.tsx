@@ -1,4 +1,6 @@
 import { useState, useEffect } from "react";
+import { CarouselPreviewFrame } from "@/components/CarouselPreviewFrame";
+import { carouselPositionStyles, isStackedPosition } from "@/lib/carouselPosition";
 import { ensureGoogleFont, fontStack } from "@/lib/fonts";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -67,34 +69,49 @@ interface CarouselSettings {
  * `position` moves the strip to the top or bottom of the frame, matching where
  * it will sit over the real video.
  */
+/**
+ * The Brand Kit carousel preview.
+ *
+ * It used to honour exactly two positions — `items-start` for "top" and
+ * `items-end` for everything else — so picking "bottom-right" drew the carousel
+ * bottom-centre and picking "left" drew it bottom-centre too. The setting saved
+ * correctly; only the picture was wrong. The client concluded from it that the
+ * positioning options did not exist, which is a fair reading when the only way
+ * to check reports no change.
+ *
+ * It now uses the same positioning function as the editor and the player.
+ */
 function CarouselPreview({
   settings,
   testId,
+  videoUrl,
 }: {
   settings: CarouselSettings;
   testId: string;
+  /** A real video when there is one — placement against grey is guesswork. */
+  videoUrl?: string | null;
 }) {
   return (
-    <div
-      className={`relative bg-muted rounded-lg overflow-hidden aspect-video flex justify-center ${
-        settings.position === "top" ? "items-start" : "items-end"
-      }`}
+    <CarouselPreviewFrame
+      videoUrl={videoUrl}
+      emptyLabel="Upload a video to preview against it"
+      testId={`${testId}-frame`}
     >
-      <div className="absolute inset-0 flex items-center justify-center text-muted-foreground text-sm">
-        Video Preview Area
-      </div>
-
       <div
-        className="relative z-10 m-4 p-3 flex items-center gap-3"
+        className="p-3 flex items-center gap-3"
         style={{
+          ...carouselPositionStyles(settings.position),
           backgroundColor: `rgba(0,0,0,${settings.backgroundOpacity / 100})`,
           borderRadius: `${settings.cornerRadius}px`,
+          // Side positions stack; top and bottom run side by side. Constraining
+          // the width here is what makes a stacked column look stacked.
+          maxWidth: isStackedPosition(settings.position) ? 150 : 260,
         }}
         data-testid={testId}
       >
         {settings.showThumbnail && (
-          <div className="w-16 h-16 bg-background/50 rounded-lg flex items-center justify-center shrink-0">
-            <div className="w-10 h-10 bg-primary/20 rounded" />
+          <div className="w-12 h-12 bg-background/50 rounded-lg flex items-center justify-center shrink-0">
+            <div className="w-8 h-8 bg-primary/20 rounded" />
           </div>
         )}
         <div className="flex-1 text-white min-w-0">
@@ -116,7 +133,7 @@ function CarouselPreview({
           </Button>
         )}
       </div>
-    </div>
+    </CarouselPreviewFrame>
   );
 }
 
