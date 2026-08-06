@@ -26,3 +26,6 @@ client/public/*.mp4
 # One-off operational scripts (contain no secrets, but not part of the app)
 _enable_demo_brand.cjs
 branch_structure.json
+
+# Local scratch scripts — never committed.
+.scratch/
