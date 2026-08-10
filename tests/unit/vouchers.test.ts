@@ -269,3 +269,37 @@ describe("matching a code as typed", () => {
     expect(normaliseCode(MINTED)).toContain("-");
   });
 });
+
+
+/**
+ * The words the refusal uses.
+ *
+ * This message is read by a stranger being registered on a demo call. It said
+ * "That voucher can only be used for a affiliate account." — the database's
+ * internal word for a Publisher, which nobody outside the schema has seen, and
+ * the wrong article in front of it.
+ */
+describe("what a refusal says out loud", () => {
+  const refuse = (restriction: string, as: string) =>
+    (checkRedeemable(
+      voucher({ roleRestriction: restriction }),
+      { role: as, redemptionCount: 0, now: NOW },
+    ) as any).message as string;
+
+  it("calls an affiliate voucher a Publisher one, the word on the signup form", () => {
+    const msg = refuse("affiliate", "creator");
+    expect(msg).toContain("Publisher");
+    expect(msg).not.toContain("affiliate");
+  });
+
+  it("uses the plain words for the other two", () => {
+    expect(refuse("brand", "creator")).toContain("Brand");
+    expect(refuse("creator", "brand")).toContain("Creator");
+  });
+
+  it("never reads \"a affiliate\" — no article followed by a vowel sound", () => {
+    for (const [restriction, as] of [["affiliate", "creator"], ["brand", "creator"], ["creator", "brand"]]) {
+      expect(refuse(restriction, as)).not.toMatch(/\ba [aeiou]/i);
+    }
+  });
+});

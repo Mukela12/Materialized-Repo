@@ -101,6 +101,23 @@ export function canonicalCode(raw: string): string {
  * `redemptionCount` MUST come from inside the redeeming transaction — see the
  * module note. Passing a count read earlier makes the cap advisory.
  */
+/**
+ * The word to show someone, for a role.
+ *
+ * "affiliate" is the database's word; "Publisher" is the word on the signup
+ * dropdown, in the client's contracts and in her partners' vocabulary. The
+ * refusal message read "That voucher can only be used for a affiliate
+ * account." — an internal term the reader has never seen, and the wrong
+ * article in front of it. It appears on screen while someone is being
+ * registered on a demo call.
+ */
+function roleWord(role: string | null): string {
+  if (role === "affiliate") return "Publisher";
+  if (role === "brand") return "Brand";
+  if (role === "creator") return "Creator";
+  return "different";
+}
+
 export function checkRedeemable(
   voucher: VoucherRecord | null,
   opts: { role: string; redemptionCount: number; now?: Date },
@@ -120,7 +137,7 @@ export function checkRedeemable(
   if (voucher.roleRestriction && voucher.roleRestriction !== opts.role) {
     return {
       ok: false, reason: "wrong_role",
-      message: `That voucher can only be used for a ${voucher.roleRestriction} account.`,
+      message: `That voucher can only be used for a ${roleWord(voucher.roleRestriction)} account.`,
     };
   }
   if (voucher.maxRedemptions != null && opts.redemptionCount >= voucher.maxRedemptions) {
