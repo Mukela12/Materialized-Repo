@@ -152,7 +152,25 @@ export function registerAuthRoutes(app: Express) {
       displayName,
       role,
       freeAccess: voucherGrants.freeAccess,
-      emailVerified: false,
+      /**
+       * A VOUCHER IS ALREADY AN INVITATION.
+       *
+       * Login is hard-blocked until an address is verified, so a voucher
+       * signup depended on a verification email arriving and being acted on.
+       * That mail currently leaves from a domain belonging to an unrelated
+       * project, so it reads as phishing and lands in spam — and the person
+       * who has just been handed a code, in the room, cannot get in.
+       *
+       * The code itself is the proof of invitation: single-use, role-locked,
+       * issued deliberately to a named recipient. Requiring a second proof
+       * gains nothing and costs the whole flow. Someone signing up WITHOUT a
+       * voucher is a stranger and still has to verify.
+       *
+       * The address is still unconfirmed for delivery purposes — a typo means
+       * no invoices — so the verification mail is still sent, as a nudge
+       * rather than a gate.
+       */
+      emailVerified: !!voucherToRedeem,
       emailVerificationToken: verificationToken,
       emailVerificationExpires: verificationExpires,
     } as any);
@@ -188,12 +206,34 @@ export function registerAuthRoutes(app: Express) {
       }
     }
 
+    /**
+     * Sign a voucher holder straight in.
+     *
+     * Registration never established a session, which was invisible while every
+     * new account had to go and click an email first. Now that a voucher signup
+     * is usable immediately, without this the browser would be sent to the
+     * dashboard, find no session, and bounce back to the login screen — which
+     * looks exactly like the registration having failed.
+     *
+     * Only for voucher holders. A stranger signing up without one is still
+     * unverified, and login is blocked for them; handing them a session here
+     * would walk straight around that gate.
+     */
+    if (voucherToRedeem) {
+      (req.session as any).userId = user.id;
+      await new Promise<void>((resolve, reject) =>
+        req.session.save((err) => (err ? reject(err) : resolve())),
+      );
+    }
+
     res.status(201).json({
       id: user.id,
       email: user.email,
       displayName: user.displayName,
       role: user.role,
-      needsVerification: true,
+      // Voucher holders are already signed in; the client must not send them
+      // off to check an inbox they do not need to check.
+      needsVerification: !voucherToRedeem,
     });
   });
 
