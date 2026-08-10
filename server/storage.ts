@@ -2018,8 +2018,11 @@ export class MemStorage implements IStorage {
   }
 
   async getVoucherByCode(code: string): Promise<VoucherRecord | null> {
-    const up = code.toUpperCase();
-    const row = Array.from(this.vouchersMap.values()).find(v => v.code.toUpperCase() === up);
+    // Same canonical comparison as DatabaseStorage — a fake that matches more
+    // loosely, or more strictly, than the real thing hides exactly this bug.
+    const canon = (c: string) => c.toUpperCase().replace(/[^A-Z0-9]/g, "");
+    const want = canon(code);
+    const row = Array.from(this.vouchersMap.values()).find(v => canon(v.code) === want);
     return row ?? null;
   }
 
@@ -3789,10 +3792,20 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getVoucherByCode(code: string): Promise<VoucherRecord | null> {
-    // upper() both sides so it uses the case-insensitive unique index and so
-    // "gtm20" finds "GTM20" — nobody types a voucher exactly as printed.
+    /**
+     * Compare on letters and digits only, BOTH SIDES.
+     *
+     * Matching used to be `upper(code) = upper(input)`, which stripped case but
+     * not punctuation. Codes are minted as MTZ-CSCQ-SGPW-QYDA, so anyone who
+     * typed MTZCSCQSGPWQYDA — the obvious thing to do when copying a code off a
+     * phone — was told the code was not recognised, which is what a made-up
+     * code is told. Migration 0021 adds a unique index on this same expression,
+     * so this stays indexed and canonical duplicates stay impossible.
+     */
+    const canonical = code.toUpperCase().replace(/[^A-Z0-9]/g, "");
     const [row] = await db.select().from(vouchers)
-      .where(sql`upper(${vouchers.code}) = ${code.toUpperCase()}`).limit(1);
+      .where(sql`regexp_replace(upper(${vouchers.code}), '[^A-Z0-9]', '', 'g') = ${canonical}`)
+      .limit(1);
     return row ? {
       id: row.id, code: row.code, grantType: row.grantType as any,
       brandUserId: row.brandUserId, roleRestriction: row.roleRestriction,

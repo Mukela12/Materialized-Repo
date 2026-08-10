@@ -21,7 +21,7 @@
 import { describe, it, expect } from "vitest";
 import {
   checkRedeemable, generateVoucherCode, normaliseCode, grantsOf, seatsRemaining,
-  mintCodes, MAX_BATCH, type VoucherRecord,
+  mintCodes, MAX_BATCH, canonicalCode, type VoucherRecord,
 } from "../../server/vouchers";
 
 const voucher = (over: Partial<VoucherRecord> = {}): VoucherRecord => ({
@@ -215,5 +215,57 @@ describe("minting a batch", () => {
   it("normalises what it returns, so stored codes match what a human types", async () => {
     const codes = await mintCodes(3, never);
     for (const c of codes) expect(c).toBe(normaliseCode(c));
+  });
+});
+
+/**
+ * Matching a code the way a human actually types it.
+ *
+ * Codes are minted as MTZ-CSCQ-SGPW-QYDA and matching stripped whitespace only.
+ * "MTZCSCQSGPWQYDA" — the same code, typed without its dashes, which is what
+ * anyone copying it off a phone does — was rejected with "That voucher code was
+ * not recognised", the identical message an invented code gets.
+ *
+ * The client hit this in front of a client, on a demo call already rescheduled
+ * twice, with 160 codes in circulation. The failure was invisible from the
+ * message: nothing said the code was right and only the punctuation wrong.
+ */
+describe("matching a code as typed", () => {
+  const MINTED = "MTZ-CSCQ-SGPW-QYDA";
+
+  it("matches the code without its dashes — the case that broke the demo", () => {
+    expect(canonicalCode("MTZCSCQSGPWQYDA")).toBe(canonicalCode(MINTED));
+  });
+
+  it("still matches the code exactly as printed", () => {
+    expect(canonicalCode(MINTED)).toBe(canonicalCode(MINTED));
+  });
+
+  it("matches regardless of case, spacing or stray punctuation", () => {
+    for (const typed of [
+      "mtz-cscq-sgpw-qyda",
+      "MTZ CSCQ SGPW QYDA",
+      "  MTZ-CSCQ-SGPW-QYDA  ",
+      "MTZ.CSCQ.SGPW.QYDA",
+      "MTZ_CSCQ_SGPW_QYDA",
+      "mtzcscqsgpwqyda",
+    ]) {
+      expect(canonicalCode(typed), `"${typed}" should match`).toBe(canonicalCode(MINTED));
+    }
+  });
+
+  it("still refuses a genuinely different code", () => {
+    // The client's actual typo: one character dropped from CSCQ. A code that is
+    // wrong must stay wrong — this fix is about punctuation, not fuzziness.
+    expect(canonicalCode("MTZCSQSGPWQYDA")).not.toBe(canonicalCode(MINTED));
+    expect(canonicalCode("MTZ-XXXX-YYYY-ZZZZ")).not.toBe(canonicalCode(MINTED));
+  });
+
+  it("leaves the STORED form alone, so printed codes keep their dashes", () => {
+    // normaliseCode is what gets written to the row. If it started stripping
+    // dashes, every newly minted code would print as an unreadable run of
+    // fifteen characters.
+    expect(normaliseCode(MINTED)).toBe(MINTED);
+    expect(normaliseCode(MINTED)).toContain("-");
   });
 });

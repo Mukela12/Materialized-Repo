@@ -1,0 +1,31 @@
+-- ============================================================================
+-- 0021 — Match a voucher code the way a human types it
+--
+-- WHAT HAPPENED
+--   Codes are minted as MTZ-CSCQ-SGPW-QYDA. Matching upper-cased both sides and
+--   stripped whitespace, but NOT punctuation. So this worked:
+--       "mtz cscq sgpw qyda"
+--   and this did not:
+--       "MTZCSCQSGPWQYDA"
+--   Typing a code without its dashes is the obvious thing to do when copying it
+--   off a phone into a form, and the answer was "That voucher code was not
+--   recognised" — the same message a completely invented code gets. Nothing
+--   told the person that the code was right and only the punctuation was wrong.
+--
+--   The client hit this live, in front of a client, on a demo call that had
+--   already been rescheduled twice. 160 codes were in circulation by then.
+--
+-- WHAT THIS INDEX DOES
+--   Lookup now compares letters and digits only, on both sides. That expression
+--   needs an index or every redemption becomes a sequential scan, and it needs
+--   to be UNIQUE or two codes differing only in punctuation could both exist
+--   and the lookup would arbitrarily pick one.
+--
+--   Built the plain way rather than CONCURRENTLY: the table is small and this
+--   runs in the migration transaction, where CONCURRENTLY is not permitted.
+-- ============================================================================
+
+-- Fails loudly if two existing codes are canonically identical, which is what
+-- we want to know about before shipping the new lookup.
+CREATE UNIQUE INDEX IF NOT EXISTS voucher_code_canonical_idx
+  ON vouchers ((regexp_replace(upper(code), '[^A-Z0-9]', '', 'g')));

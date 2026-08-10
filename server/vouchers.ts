@@ -65,9 +65,34 @@ export function generateVoucherCode(prefix = "MTZ", groups = 3): string {
   return `${prefix}-${out}`;
 }
 
-/** Compare the way a human types: case-insensitive, spaces ignored. */
+/**
+ * The STORED form: upper-case, no surrounding or internal whitespace.
+ * Dashes are kept, because they are what makes a code readable when it is read
+ * aloud or printed on a card.
+ */
 export function normaliseCode(raw: string): string {
   return raw.trim().toUpperCase().replace(/\s+/g, "");
+}
+
+/**
+ * The COMPARISON form: letters and digits only.
+ *
+ * ── The bug this exists for ──────────────────────────────────────────────────
+ * Codes are minted as MTZ-CSCQ-SGPW-QYDA and matching stripped whitespace only.
+ * So "mtz cscq sgpw qyda" worked and "MTZCSCQSGPWQYDA" did not — and typing it
+ * without the dashes is the obvious thing to do when you are copying a code off
+ * a phone into a form. The client hit exactly this in front of a client on a
+ * demo call, and the message she got was "That voucher code was not
+ * recognised", which is what a fake code says. Nothing distinguished a wrong
+ * code from a right one punctuated differently.
+ *
+ * 160 codes were already distributed in that format when this was found.
+ *
+ * Dots and underscores go too, since a code wrapped by a mail client or
+ * autocorrected on a phone picks those up.
+ */
+export function canonicalCode(raw: string): string {
+  return raw.toUpperCase().replace(/[^A-Z0-9]/g, "");
 }
 
 /**
