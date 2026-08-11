@@ -1,4 +1,5 @@
 import { CURRENCY_SYMBOL } from "@/lib/currency";
+import { PlaylistStyleEditor } from "@/components/PlaylistStyleEditor";
 import { LICENSE_FEE_PER_VIDEO, tokensForFee } from "@shared/pricing";
 import { TokenPayOption } from "@/components/TokenPayOption";
 import { walletPost, useInvalidateWallet, tokenLabel } from "@/hooks/useWallet";
@@ -445,6 +446,29 @@ export default function PlaylistsPage() {
                     Confirm Payment — Pay {CURRENCY_SYMBOL}{checkoutTotal}
                   </Button>
                 )}
+              </div>
+            )}
+
+            {/* ── Styling ──────────────────────────────────────────────────
+                Shown in EVERY state, deliberately. isPlaylistLocked freezes a
+                playlist's CONTENTS once it is paid for, because it is priced per
+                video — none of which is a reason to refuse a border colour. The
+                main case for this screen is a publisher looking at the embed on
+                their own site and wanting the frame a shade darker; locking it
+                would mean re-licensing every video to change a corner radius. */}
+            {openDetail && (
+              <div className="rounded-xl border border-border p-4 space-y-3">
+                <div>
+                  <span className="font-semibold text-sm">Playlist styling</span>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    The frame your videos are viewed in. Applies wherever this
+                    playlist is embedded.
+                  </p>
+                </div>
+                <PlaylistStyleEditor
+                  playlistId={openDetail.id}
+                  initial={(detail ?? openDetail) as any}
+                />
               </div>
             )}
 

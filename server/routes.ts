@@ -17,6 +17,7 @@ import {
   resolvePlaylistStyle, playlistFrameStyles, playlistPlaybackFlags,
   playlistBootstrapScript, playlistRenderScript,
 } from "./playlistEmbed";
+import { sanitisePlaylistStyle, styleFromPlaylist } from "@shared/playlistStyle";
 import { checkRedeemable, grantsOf, normaliseCode, generateVoucherCode, mintCodes, MAX_BATCH } from "./vouchers";
 import { videoDeliveryUrl } from "@shared/videoDelivery";
 import { feeInvoiceStripeAdapter } from "./feeInvoiceStripe";
@@ -3771,6 +3772,72 @@ Identify which products from the catalog are most likely to appear or be feature
   });
 
   // ── Playlist checkout (create Stripe payment intent) ──────────────────
+
+  /**
+   * Update a playlist's APPEARANCE.
+   *
+   * ── Why this is not blocked when the playlist is published ────────────────
+   * isPlaylistLocked exists because a playlist is priced PER VIDEO and paid for
+   * once: adding items after payment would be free licences. That reasoning is
+   * about CONTENTS, and none of it applies to a border colour.
+   *
+   * Locking styling would in fact break the main case for having it — a
+   * publisher embeds the playlist, looks at it on their own site, and wants the
+   * frame a shade darker. Refusing that would mean re-licensing every video to
+   * change a corner radius.
+   *
+   * So: contents freeze on payment, appearance never does. This route accepts
+   * ONLY styling fields, so it cannot be used to reach the columns that lock.
+   */
+  app.patch("/api/playlists/:id/style", async (req, res) => {
+    try {
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ error: "Authentication required" });
+
+      const playlistId = Number.parseInt(req.params.id, 10);
+      if (!Number.isInteger(playlistId)) return res.status(400).json({ error: "Invalid playlist id" });
+
+      const playlist = await storage.getPlaylist(playlistId);
+      if (!playlist) return res.status(404).json({ error: "Playlist not found" });
+      if (playlist.userId !== sessionUserId) {
+        // Not 403 — a stranger should not learn that this id exists.
+        return res.status(404).json({ error: "Playlist not found" });
+      }
+
+      /**
+       * Sanitise BEFORE storing, not only when rendering.
+       *
+       * The embed sanitises on the way out, so a hostile value could never
+       * reach a page. Storing it anyway would leave a payload sitting in the
+       * database waiting for the next reader that forgets — and would make the
+       * row lie about what the publisher will actually see.
+       */
+      const clean = sanitisePlaylistStyle(styleFromPlaylist(req.body ?? {}));
+
+      const updated = await storage.updatePlaylist(playlistId, clean as any);
+      res.json(updated);
+    } catch (error) {
+      console.error("Playlist style update error:", error);
+      res.status(500).json({ error: "Failed to save playlist styling" });
+    }
+  });
+
+  /** The resolved styling for one playlist, for the editor's preview. */
+  app.get("/api/playlists/:id/style", async (req, res) => {
+    try {
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ error: "Authentication required" });
+      const playlistId = Number.parseInt(req.params.id, 10);
+      const playlist = await storage.getPlaylist(playlistId);
+      if (!playlist || playlist.userId !== sessionUserId) {
+        return res.status(404).json({ error: "Playlist not found" });
+      }
+      res.json(resolvePlaylistStyle(playlist as any));
+    } catch (error) {
+      res.status(500).json({ error: "Failed to load playlist styling" });
+    }
+  });
+
   app.post("/api/playlists/:id/checkout", async (req, res) => {
     try {
       const sessionUserId = (req.session as any)?.userId;
