@@ -161,6 +161,7 @@ function Router() {
 
 function AdminPortalSwitcher() {
   const [, navigate] = useLocation();
+  const { data: user } = useCurrentUser();
 
   return (
     <DropdownMenu>
@@ -181,6 +182,14 @@ function AdminPortalSwitcher() {
         <DropdownMenuItem onClick={() => navigate("/affiliate")} data-testid="menu-portal-publisher">
           Publisher Portal
         </DropdownMenuItem>
+        {/* The admin area had no entry point anywhere in the UI — the only way
+            in was to type /admin by hand, which is how the client ended up on a
+            404 having mistyped it. Admins only; nobody else sees it. */}
+        {user?.isAdmin && (
+          <DropdownMenuItem onClick={() => navigate("/admin")} data-testid="menu-portal-admin">
+            Admin
+          </DropdownMenuItem>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );
@@ -294,15 +303,42 @@ function AdminGuard({ children }: { children: React.ReactNode }) {
 }
 
 function AppContent() {
-  const [location] = useLocation();
+  const [location, navigate] = useLocation();
   const { data: user } = useCurrentUser();
   const logoutMutation = useLogout();
 
-  const isBrandRoute = location.startsWith("/brand") && !location.startsWith("/brand-authorize");
-  const isAffiliateRoute = location.startsWith("/affiliate");
+  /**
+   * Send a mixed-case address to its canonical lower-case form.
+   *
+   * The prefix checks below are case-insensitive, but the routes inside each
+   * portal are not — so without this, `/Admin` would select the admin shell and
+   * then match no route within it, rendering a blank page. Worse than the 404
+   * it replaced. Redirecting first means everything downstream only ever sees
+   * canonical paths, and the address bar ends up correct too.
+   */
+  useEffect(() => {
+    const lower = location.toLowerCase();
+    if (lower !== location) navigate(lower + window.location.search, { replace: true });
+  }, [location, navigate]);
+
+  /**
+   * Portal prefixes are matched case-insensitively.
+   *
+   * `startsWith("/admin")` is exact, so `/Admin` — which is what a phone or a
+   * Mac with autocapitalisation produces when someone types an address — fell
+   * through every portal check and rendered the not-found page inside the
+   * Creator shell. Indistinguishable, to the person looking at it, from the
+   * admin area having been deleted.
+   *
+   * The routes themselves stay lower-case and canonical; only the decision
+   * about WHICH portal a path belongs to is forgiving.
+   */
+  const path = location.toLowerCase();
+  const isBrandRoute = path.startsWith("/brand") && !path.startsWith("/brand-authorize");
+  const isAffiliateRoute = path.startsWith("/affiliate");
   const isLandingRoute = location === "/";
-  const isAuthorizeRoute = location.startsWith("/brand-authorize");
-  const isAdminRoute = location.startsWith("/admin");
+  const isAuthorizeRoute = path.startsWith("/brand-authorize");
+  const isAdminRoute = path.startsWith("/admin");
   const isAuthRoute =
     location === "/login" ||
     location === "/register" ||
