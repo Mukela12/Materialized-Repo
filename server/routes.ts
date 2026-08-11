@@ -12,6 +12,10 @@ import { recordFeeAccrual, voidFeeAccrual } from "./feeAccruals";
 import { generateFeeInvoice, finalizeFeeInvoice } from "./feeInvoicing";
 import { quoteCheckout, checkoutIdempotencyKey, parsePriceToCents } from "./inVideoCheckout";
 import { resolveEmbedSettings, embedCarouselCss, widgetInlineStyles } from "./embedCarousel";
+import {
+  resolvePlaylistStyle, playlistFrameStyles, playlistPlaybackFlags,
+  playlistBootstrapScript, playlistRenderScript,
+} from "./playlistEmbed";
 import { checkRedeemable, grantsOf, normaliseCode, generateVoucherCode, mintCodes, MAX_BATCH } from "./vouchers";
 import { videoDeliveryUrl } from "@shared/videoDelivery";
 import { feeInvoiceStripeAdapter } from "./feeInvoiceStripe";
@@ -6291,6 +6295,94 @@ Identify which products from the catalog are most likely to appear or be feature
 
   // ==================== EMBED ROUTES (public, no auth) ====================
 
+
+  /**
+   * THE PLAYLIST EMBED SCRIPT.
+   *
+   * buildPlaylistEmbedCode has been handing publishers a <script> tag pointing
+   * at this path since the Replit migration, and the path did not exist — from
+   * a placeholder domain that nobody owns. Every published playlist embed
+   * fetched a missing script from the wrong host and rendered nothing, quietly,
+   * because a failed async script only complains to a console the publisher is
+   * not watching.
+   *
+   * Served as JavaScript so it can be dropped into any page. It finds its own
+   * mount points by data-playlist attribute, so one script tag serves however
+   * many playlists appear on a page.
+   */
+  app.get("/embed/playlist.js", async (req, res) => {
+    res.set("Content-Type", "application/javascript");
+    res.set("Cache-Control", "public, max-age=300");
+
+    const idRaw = (req.query.id as string) || "";
+    const playlistId = Number.parseInt(idRaw, 10);
+
+    // Without ?id= the script still serves: it reads the id from the mount
+    // div, which is how the generated embed code is shaped.
+    const bootOnly = !Number.isInteger(playlistId) || playlistId <= 0;
+    if (bootOnly) {
+      const apiBase = `${req.protocol}://${req.get("host")}`;
+      return res.send(playlistBootstrapScript(apiBase));
+    }
+
+    try {
+      const playlist = await storage.getPlaylist(playlistId);
+      // Only a PUBLISHED playlist renders. A draft is unpaid work in progress
+      // and must not be embeddable by guessing an id.
+      if (!playlist || playlist.status !== "published") {
+        return res.send(`console.warn("[Materialized] Playlist ${playlistId} is not published");`);
+      }
+
+      const style = resolvePlaylistStyle(playlist as any);
+      const styles = playlistFrameStyles(style);
+      const flags = playlistPlaybackFlags(style);
+      const apiBase = `${req.protocol}://${req.get("host")}`;
+
+      const items = await storage.getPlaylistItems(playlistId);
+      const resolved: any[] = [];
+
+      for (const item of items) {
+        const listing = await storage.getGlobalVideoListing(item.listingId);
+        if (!listing) continue;
+        const video = await storage.getVideo(listing.videoId);
+        if (!video) continue;
+
+        // PER VIDEO, not per playlist: a playlist mixes creators, and the
+        // carousel must wear the brand of whoever made that video.
+        const kit = await storage.getBrandKit(video.creatorId).catch(() => undefined);
+        const override = await storage.getVideoCarouselOverride(video.id).catch(() => undefined);
+        const carousel = widgetInlineStyles(resolveEmbedSettings(kit ?? null, override ?? null));
+
+        // The item's own UTM — this is how the publisher's repost is
+        // attributed, so it follows the item and never the playlist.
+        const utm = item.utmCode || "";
+        const overlays = await storage.getVideoProductOverlays(video.id);
+
+        resolved.push({
+          videoId: video.id,
+          title: (video.title || "").replace(/[<>"'&]/g, ""),
+          videoUrl: videoDeliveryUrl(video.videoUrl, "embed"),
+          utm,
+          carousel,
+          products: overlays.map((o) => ({
+            name: (o.name || "").replace(/[<>"'&]/g, ""),
+            imageUrl: o.imageUrl,
+            price: o.price,
+            productUrl: appendUtm(o.productUrl, utm),
+          })),
+        });
+      }
+
+      res.send(playlistRenderScript({
+        playlistId, apiBase, styles, flags, items: resolved,
+        logoUrl: style.logoUrl,
+      }));
+    } catch (err) {
+      console.error("[Playlist embed] failed:", err);
+      res.send(`console.error("[Materialized] Playlist embed failed to load");`);
+    }
+  });
+
   // Serve embed iframe page
   app.get("/embed/:videoId", async (req, res) => {
     try {
@@ -6617,11 +6709,27 @@ ${embedCarouselCss(carousel)}
  * playlist publishing emit byte-identical markup — two copies of this string
  * would silently drift.
  */
-function buildPlaylistEmbedCode(playlistId: number, userId: string): string {
-  const baseUrl = process.env.REPLIT_DEV_DOMAIN
-    ? `https://${process.env.REPLIT_DEV_DOMAIN}`
-    : "https://your-app.replit.dev";
-  return `<div id="mat-playlist-${playlistId}" data-playlist="${playlistId}" data-user="${userId}"></div>\n<script src="${baseUrl}/embed/playlist.js" async></script>`;
+/**
+ * The embed code a publisher copies out of the app.
+ *
+ * ── What was wrong with it ───────────────────────────────────────────────────
+ * The base URL fell back to "https://your-app.replit.dev" — a placeholder from
+ * the Replit build, for a domain nobody owns. REPLIT_DEV_DOMAIN is not set in
+ * production, so that fallback was what every publisher actually received. The
+ * script it pointed at did not exist either. Both faults were invisible from
+ * inside the app, because nothing here ever loads the embed.
+ *
+ * PUBLIC_EMBED_ORIGIN allows an override; otherwise it is the canonical host,
+ * which is also the one Stripe posts to and the one the session cookie is
+ * bound to (see the note in server/index.ts).
+ *
+ * `data-user` is gone. It published a user id into markup on third-party sites
+ * and the renderer never needed it — the playlist id is enough to look up
+ * everything, from the server, where it cannot be tampered with.
+ */
+function buildPlaylistEmbedCode(playlistId: number, _userId: string): string {
+  const baseUrl = (process.env.PUBLIC_EMBED_ORIGIN || "https://www.mtrlzd.com").replace(/\/$/, "");
+  return `<!-- Materialized playlist -->\n<div id="mat-playlist-${playlistId}" data-playlist="${playlistId}"></div>\n<script src="${baseUrl}/embed/playlist.js" async></script>`;
 }
 
 // Helper function to generate embed code

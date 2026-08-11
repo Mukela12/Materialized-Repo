@@ -1169,6 +1169,32 @@ export const playlists = pgTable("playlists", {
   licenseFeeTotal: decimal("license_fee_total", { precision: 10, scale: 2 }),
   embedCode: text("embed_code"),
   publishedAt: timestamp("published_at"),
+
+  // ── The frame the videos are viewed in (0023) ─────────────────────────────
+  // The client: "Playlist Styling refers to the box in which one or several
+  // videos are viewed in." None of this existed; the embed drew a fixed black
+  // rounded rectangle. All nullable, so an already-published playlist keeps
+  // exactly the look it has until someone changes it.
+  frameShow: boolean("frame_show"),
+  frameBorderWidth: integer("frame_border_width"),   // 0-5pt, her range
+  frameBorderColor: text("frame_border_color"),
+  frameCornerRadius: integer("frame_corner_radius"),
+
+  /** Automatic playback, or wait for the viewer to press play. */
+  playAutoplay: boolean("play_autoplay"),
+  playButtonColor: text("play_button_color"),
+  playButtonSize: integer("play_button_size"),
+  playButtonOpacity: integer("play_button_opacity"),
+
+  audioShow: boolean("audio_show"),
+  audioIconColor: text("audio_icon_color"),
+  audioIconSize: integer("audio_icon_size"),
+  audioIconOpacity: integer("audio_icon_opacity"),
+
+  /** A publisher's own mark over the frame. Watermark variants are semi-opaque. */
+  logoUrl: text("logo_url"),
+  logoPosition: text("logo_position"),
+
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
 });
 
