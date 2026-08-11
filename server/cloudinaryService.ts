@@ -193,3 +193,37 @@ export function isCloudinaryConfigured(): boolean {
 }
 
 export { cloudinary };
+
+/**
+ * Store a font file.
+ *
+ * `resource_type: "raw"` because Cloudinary's image and video pipelines would
+ * try to transform it. A font must be delivered byte-for-byte or the browser
+ * rejects it, so no transformation is requested anywhere in this call.
+ *
+ * The caller has ALREADY verified the bytes are a font (sniffFontFormat) — this
+ * function does not re-check, and must never be reached with unverified input.
+ */
+export async function uploadFont(
+  file: Buffer,
+  options: { mime: string; ext: string; publicId?: string },
+): Promise<UploadResult> {
+  const result = await cloudinary.uploader.upload(
+    `data:${options.mime};base64,${file.toString("base64")}`,
+    {
+      resource_type: "raw",
+      folder: "materialized/fonts",
+      public_id: options.publicId,
+      // Part of the stored name, so the URL ends in a real font extension.
+      // Some CDNs and proxies sniff that, and a font served as .bin is refused
+      // by more of them than is worth arguing with.
+      format: options.ext.replace(/^\./, ""),
+    },
+  );
+  return {
+    publicId: result.public_id,
+    secureUrl: result.secure_url,
+    format: result.format,
+    bytes: result.bytes,
+  } as UploadResult;
+}

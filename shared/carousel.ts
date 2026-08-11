@@ -20,6 +20,7 @@
  * thirty others that use her defaults.
  */
 import { BUTTON_LABEL_OPTIONS, CAROUSEL_POSITION_OPTIONS, FONT_OPTIONS } from "./schema";
+import { isCustomFontKey } from "./brandFonts";
 
 /** The font keys that may appear in a stylesheet. See sanitiseSettings. */
 const FONT_KEYS = FONT_OPTIONS.map((f) => f.value) as readonly string[];
@@ -233,6 +234,12 @@ export function safeColor(value: unknown, fallback: string): string {
   return HEX.test(v) ? v : fallback;
 }
 
+/** A built-in font key, an uploaded font's `custom:<uuid>`, or the fallback. */
+export function safeFontKey(value: unknown, fallback: string): string {
+  if (isCustomFontKey(value)) return (value as string).trim();
+  return safeEnum(value, FONT_KEYS, fallback);
+}
+
 /** A whole number inside [min, max], or the fallback. */
 export function safeInt(value: unknown, min: number, max: number, fallback: number): number {
   // `Number("")` and `Number(null)` are both 0, and 0 is finite — so an unset
@@ -282,10 +289,22 @@ export function sanitiseSettings(raw: Partial<CarouselSettings> | null | undefin
     brandTitleColor: safeColor(r.brandTitleColor, d.brandTitleColor),
     productTitleColor: safeColor(r.productTitleColor, d.productTitleColor),
 
-    // Fonts are keys into a fixed list, never raw family names — a family name
-    // is a string that ends up inside `font-family:` and closes just as easily.
-    buttonFont: safeEnum(r.buttonFont, FONT_KEYS, d.buttonFont),
-    titleFont: safeEnum(r.titleFont, FONT_KEYS, d.titleFont),
+    /**
+     * A built-in key, or an uploaded font's generated key.
+     *
+     * Never a raw family name: that string ends up inside `font-family:` and
+     * closes on an apostrophe like any other. A built-in is checked against the
+     * fixed list; an uploaded one is checked STRUCTURALLY, because this
+     * function cannot reach the database — `custom:<uuid>` contains nothing
+     * that can escape a CSS context, so it is safe to pass through even if it
+     * names a font that has since been deleted.
+     *
+     * Without this branch an uploaded font would fail safeEnum and revert to
+     * system-ui on every render — the setting saving, and doing nothing, which
+     * is the failure this project keeps producing.
+     */
+    buttonFont: safeFontKey(r.buttonFont, d.buttonFont),
+    titleFont: safeFontKey(r.titleFont, d.titleFont),
     titleFontSize: safeInt(r.titleFontSize, 50, 200, d.titleFontSize),
     priceFontSize: safeInt(r.priceFontSize, 50, 200, d.priceFontSize),
     buttonFontSize: safeInt(r.buttonFontSize, 50, 200, d.buttonFontSize),

@@ -167,3 +167,39 @@ describe("sanitising a whole settings object", () => {
     expect(out.showPrice).toBe(false);
   });
 });
+
+/**
+ * An uploaded font must survive sanitising.
+ *
+ * Fonts are restricted to a fixed key list so that no raw family name reaches
+ * `font-family:`. An uploaded font is not on that list — so without a
+ * structural exemption it fails the check and reverts to system-ui on every
+ * render: the setting saves, the text does not change, and the feature looks
+ * broken. That is the exact shape of bug this project has produced three times.
+ */
+describe("uploaded fonts", () => {
+  const KEY = "custom:3f2a1b4c-5d6e-4f7a-8b9c-0d1e2f3a4b5c";
+
+  it("passes a well-formed custom key through untouched", () => {
+    const out = sanitiseSettings({ buttonFont: KEY, titleFont: KEY } as any);
+    expect(out.buttonFont).toBe(KEY);
+    expect(out.titleFont).toBe(KEY);
+  });
+
+  it("still accepts the built-ins", () => {
+    expect(sanitiseSettings({ buttonFont: "poppins" } as any).buttonFont).toBe("poppins");
+  });
+
+  it("refuses a raw family name, which is what the restriction is for", () => {
+    for (const junk of ["Helvetica", "x'; } body{display:none} .y{", "custom:not-a-uuid", ""]) {
+      const out = sanitiseSettings({ buttonFont: junk } as any);
+      expect(out.buttonFont, `accepted: ${junk}`).toBe(CAROUSEL_DEFAULTS.buttonFont);
+    }
+  });
+
+  it("lets nothing through that could escape a CSS string", () => {
+    for (const junk of ["custom:abc'; }", `custom:${"a".repeat(40)}`, "custom:<script>"]) {
+      expect(sanitiseSettings({ buttonFont: junk } as any).buttonFont).not.toMatch(/['"{};<>]/);
+    }
+  });
+});

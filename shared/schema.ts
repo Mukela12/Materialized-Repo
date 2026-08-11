@@ -763,6 +763,36 @@ export const creatorBonuses = pgTable("creator_bonuses", {
 export type CreatorBonus = typeof creatorBonuses.$inferSelect;
 export type InsertCreatorBonus = typeof creatorBonuses.$inferInsert;
 
+/**
+ * A typeface a brand uploaded, rather than one of the twelve built in.
+ *
+ * The client: "Font upload must allow for the .otf or .ttf". Most fashion
+ * brands licence their own face and had no way to use it — a font was either a
+ * built-in or a name typed in and looked up on Google Fonts, which silently
+ * fell back to system-ui when the name was not published there.
+ *
+ * `id` IS THE CSS FAMILY NAME, as `custom:<id>`. The label a person typed never
+ * reaches a stylesheet: `font-family:'X'` closes on an apostrophe like any
+ * other CSS string, and this rule is served inside a brand's own page.
+ */
+export const brandFonts = pgTable("brand_fonts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  /** What the person calls it. Shown in the app; never interpolated into CSS. */
+  label: text("label").notNull(),
+  /** Where the file lives. Must be https — see fontFaceRule. */
+  fileUrl: text("file_url").notNull(),
+  /** Decided by sniffing the bytes, never by the extension or Content-Type. */
+  format: text("format").notNull(),
+  sizeBytes: integer("size_bytes"),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
+}, (t) => ({
+  userIdx: index("brand_fonts_user_idx").on(t.userId),
+}));
+
+export type BrandFont = typeof brandFonts.$inferSelect;
+export type InsertBrandFont = typeof brandFonts.$inferInsert;
+
 // Admin-editable platform fee/commission defaults (single "singleton" row).
 // Null columns fall back to the env/code defaults (15 / 8 / 2).
 export const platformSettings = pgTable("platform_settings", {

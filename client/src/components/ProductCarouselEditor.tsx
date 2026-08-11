@@ -1,4 +1,5 @@
 import { useState, useRef } from "react";
+import { useBrandFontOptions } from "@/components/BrandFontUpload";
 import { CarouselMockup } from "@/components/CarouselMockup";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
@@ -90,6 +91,8 @@ export function ProductCarouselEditor({
   const [showPreview, setShowPreview] = useState(true);
   // So the hover colour can actually be judged in the preview.
   const [hovered, setHovered] = useState(false);
+  // The creator's uploaded typefaces, offered alongside the built-ins.
+  const brandFonts = useBrandFontOptions();
   const [videoLoading, setVideoLoading] = useState(true);
 
   const updateSetting = <K extends keyof CarouselSettings>(
@@ -388,6 +391,18 @@ export function ProductCarouselEditor({
                       {font.label}
                     </SelectItem>
                   ))}
+                  {/* The brand's own uploads. Listed after the built-ins and
+                      labelled, so it is obvious which are theirs. */}
+                  {brandFonts.length > 0 && (
+                    <div className="px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+                      Your fonts
+                    </div>
+                  )}
+                  {brandFonts.map((font) => (
+                    <SelectItem key={font.value} value={font.value} className="text-xs">
+                      {font.label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -409,6 +424,18 @@ export function ProductCarouselEditor({
                       className="text-xs"
                       style={{ fontFamily: getFontFamily(font.value) }}
                     >
+                      {font.label}
+                    </SelectItem>
+                  ))}
+                  {/* The brand's own uploads. Listed after the built-ins and
+                      labelled, so it is obvious which are theirs. */}
+                  {brandFonts.length > 0 && (
+                    <div className="px-2 py-1 text-[10px] uppercase tracking-wide text-muted-foreground">
+                      Your fonts
+                    </div>
+                  )}
+                  {brandFonts.map((font) => (
+                    <SelectItem key={font.value} value={font.value} className="text-xs">
                       {font.label}
                     </SelectItem>
                   ))}

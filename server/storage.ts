@@ -23,6 +23,7 @@ export interface FeeAccrualSummaryRow {
 }
 import {
   creatorBonuses, type CreatorBonus, type InsertCreatorBonus,
+  brandFonts, type BrandFont, type InsertBrandFont,
   type User, type InsertUser,
   type Brand, type InsertBrand,
   type Product, type InsertProduct,
@@ -224,6 +225,14 @@ export interface IStorage {
   getCommissionsByPayoutId(payoutId: string): Promise<CommissionTransaction[]>;
   getCommissionTransaction(id: string): Promise<CommissionTransaction | undefined>;
   markCommissionsPaid(commissionIds: string[], payoutId: string): Promise<void>;
+
+  // ── Uploaded brand fonts (0025) ──────────────────────────────────────────
+  createBrandFont(f: InsertBrandFont): Promise<BrandFont>;
+  getBrandFonts(userId: string): Promise<BrandFont[]>;
+  /** Scoped by owner, so one user cannot delete another's font. */
+  deleteBrandFont(id: string, userId: string): Promise<boolean>;
+  /** For the embed: resolve a font referenced by a carousel setting. */
+  getBrandFontById(id: string): Promise<BrandFont | undefined>;
 
   // ── Creator subscription bonuses (0024) ──────────────────────────────────
   /** Insert one. Returns null when this invoice already paid this creator. */
@@ -495,6 +504,7 @@ export interface IStorage {
 
 export class MemStorage implements IStorage {
   private creatorBonusesMap = new Map<string, any>();
+  private brandFontsMap = new Map<string, any>();
   private users: Map<string, User> = new Map();
   private brands: Map<string, Brand> = new Map();
   private products: Map<string, Product> = new Map();
@@ -2301,6 +2311,29 @@ export class MemStorage implements IStorage {
       }
     }
   }
+  // ── Uploaded brand fonts ─────────────────────────────────────────────────
+
+  async createBrandFont(f: any): Promise<any> {
+    const row = { id: randomUUID(), createdAt: new Date(), sizeBytes: null, ...f };
+    this.brandFontsMap.set(row.id, row);
+    return row;
+  }
+
+  async getBrandFonts(userId: string): Promise<any[]> {
+    return Array.from(this.brandFontsMap.values()).filter((f: any) => f.userId === userId);
+  }
+
+  async deleteBrandFont(id: string, userId: string): Promise<boolean> {
+    const f: any = this.brandFontsMap.get(id);
+    if (!f || f.userId !== userId) return false;
+    this.brandFontsMap.delete(id);
+    return true;
+  }
+
+  async getBrandFontById(id: string): Promise<any | undefined> {
+    return this.brandFontsMap.get(id);
+  }
+
   // ── Creator subscription bonuses ─────────────────────────────────────────
 
   async recordCreatorBonus(b: any): Promise<any | null> {
@@ -3993,6 +4026,33 @@ export class DatabaseStorage implements IStorage {
       .set({ status: "paid", payoutId })
       .where(and(inArray(commissionTransactions.id, commissionIds), eq(commissionTransactions.status, "approved")));
   }
+  // ── Uploaded brand fonts ─────────────────────────────────────────────────
+
+  async createBrandFont(f: InsertBrandFont): Promise<BrandFont> {
+    const [row] = await db.insert(brandFonts).values(f).returning();
+    return row;
+  }
+
+  async getBrandFonts(userId: string): Promise<BrandFont[]> {
+    return db.select().from(brandFonts)
+      .where(eq(brandFonts.userId, userId))
+      .orderBy(desc(brandFonts.createdAt));
+  }
+
+  async deleteBrandFont(id: string, userId: string): Promise<boolean> {
+    // userId in the predicate, not checked beforehand — one statement, so there
+    // is no window between the check and the delete.
+    const rows = await db.delete(brandFonts)
+      .where(and(eq(brandFonts.id, id), eq(brandFonts.userId, userId)))
+      .returning({ id: brandFonts.id });
+    return rows.length > 0;
+  }
+
+  async getBrandFontById(id: string): Promise<BrandFont | undefined> {
+    const [row] = await db.select().from(brandFonts).where(eq(brandFonts.id, id)).limit(1);
+    return row;
+  }
+
   // ── Creator subscription bonuses ─────────────────────────────────────────
 
   async recordCreatorBonus(b: InsertCreatorBonus): Promise<CreatorBonus | null> {

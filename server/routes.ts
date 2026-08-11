@@ -1,3 +1,4 @@
+import express from "express";
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
@@ -12,7 +13,11 @@ import { recordFeeAccrual, voidFeeAccrual } from "./feeAccruals";
 import { generateFeeInvoice, finalizeFeeInvoice } from "./feeInvoicing";
 import { quoteCheckout, checkoutIdempotencyKey, parsePriceToCents } from "./inVideoCheckout";
 import { publicOrigin } from "./publicOrigin";
-import { resolveEmbedSettings, embedCarouselCss, widgetInlineStyles } from "./embedCarousel";
+import {
+  sniffFontFormat, sanitiseFontLabel, customFontKey, FONT_FORMATS, MAX_FONT_BYTES,
+} from "@shared/brandFonts";
+import { uploadFont } from "./cloudinaryService";
+import { resolveEmbedSettings, embedCarouselCss, widgetInlineStyles, embedFontFaceCss } from "./embedCarousel";
 import {
   resolvePlaylistStyle, playlistFrameStyles, playlistPlaybackFlags,
   playlistBootstrapScript, playlistRenderScript,
@@ -2354,6 +2359,105 @@ export async function registerRoutes(
       res.json(updated);
     } catch (error) {
       res.status(500).json({ error: "Failed to update invitation" });
+    }
+  });
+
+
+  // ==================== BRAND FONTS ====================
+
+  /**
+   * Upload a typeface.
+   *
+   * The body is the FILE ITSELF, not JSON and not a signed-upload handshake.
+   * That is deliberate: the existing upload flow hands the browser a signature
+   * and lets it PUT straight to Cloudinary, which would mean the file is stored
+   * before anyone has looked at it. A font is served from our domain into other
+   * people's pages, so nothing is stored until the bytes have been checked.
+   */
+  app.post(
+    "/api/brand-fonts",
+    express.raw({ type: "*/*", limit: MAX_FONT_BYTES }),
+    async (req, res) => {
+      try {
+        const sessionUserId = (req.session as any)?.userId;
+        if (!sessionUserId) return res.status(401).json({ error: "Authentication required" });
+
+        const buf = req.body as Buffer;
+        if (!Buffer.isBuffer(buf) || buf.length === 0) {
+          return res.status(400).json({ error: "No file received" });
+        }
+        if (buf.length > MAX_FONT_BYTES) {
+          return res.status(413).json({ error: "That font is larger than 5 MB" });
+        }
+
+        /**
+         * THE CHECK THAT MATTERS. Decided from the bytes, never the filename or
+         * the Content-Type — both are set by whoever is uploading. A zip, a PDF
+         * or an HTML document renamed .ttf would otherwise be stored on our
+         * domain and served to a brand's visitors.
+         */
+        const format = sniffFontFormat(new Uint8Array(buf.subarray(0, 8)));
+        if (!format) {
+          return res.status(400).json({
+            error: "That file is not a font. Upload an .otf, .ttf, .woff or .woff2.",
+          });
+        }
+
+        const label = sanitiseFontLabel(req.query.label) ||
+          sanitiseFontLabel(String(req.query.filename ?? "").replace(/\.[^.]+$/, "")) ||
+          "Custom font";
+
+        const spec = FONT_FORMATS[format];
+        const uploaded = await uploadFont(buf, { mime: spec.mime, ext: spec.ext });
+
+        const row = await storage.createBrandFont({
+          userId: sessionUserId,
+          label,
+          fileUrl: uploaded.secureUrl,
+          format,
+          sizeBytes: buf.length,
+        } as any);
+
+        // The key is what the carousel stores and what reaches CSS; the label
+        // is only ever shown in the app.
+        res.status(201).json({ ...row, key: customFontKey(row.id) });
+      } catch (error) {
+        console.error("Brand font upload error:", error);
+        res.status(500).json({ error: "Could not upload that font" });
+      }
+    },
+  );
+
+  /** This user's uploaded fonts, for the picker. */
+  app.get("/api/brand-fonts", async (req, res) => {
+    try {
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ error: "Authentication required" });
+      const rows = await storage.getBrandFonts(sessionUserId);
+      res.json(rows.map((f) => ({ ...f, key: customFontKey(f.id) })));
+    } catch (error) {
+      res.status(500).json({ error: "Could not load fonts" });
+    }
+  });
+
+  app.delete("/api/brand-fonts/:id", async (req, res) => {
+    try {
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ error: "Authentication required" });
+      const ok = await storage.deleteBrandFont(req.params.id, sessionUserId);
+      // 404 rather than 403 — a stranger should not learn the id exists.
+      if (!ok) return res.status(404).json({ error: "Font not found" });
+      /**
+       * The file is deliberately NOT deleted from storage.
+       *
+       * A published embed may still reference it. Removing the file would break
+       * type on a brand's live page the moment someone tidies up their font
+       * list — a change made in our app silently damaging somebody else's site.
+       * The row goes; the bytes stay.
+       */
+      res.json({ ok: true });
+    } catch (error) {
+      res.status(500).json({ error: "Could not remove that font" });
     }
   });
 
@@ -6521,6 +6625,9 @@ Identify which products from the catalog are most likely to appear or be feature
       const brandKit = await storage.getBrandKit(video.creatorId).catch(() => undefined);
       const carouselOverride = await storage.getVideoCarouselOverride(video.id).catch(() => undefined);
       const carousel = resolveEmbedSettings(brandKit ?? null, carouselOverride ?? null);
+      // Declare any uploaded typeface this carousel names, or the browser has
+      // never heard of the family and silently renders system-ui.
+      const fontFaces = await embedFontFaceCss(carousel, (id) => storage.getBrandFontById(id));
 
       res.set("Content-Type", "text/html");
       res.send(`<!DOCTYPE html>
@@ -6556,6 +6663,7 @@ Identify which products from the catalog are most likely to appear or be feature
     /* ── This video's carousel styling, generated from the brand kit and any
           per-video override. Everything below has been through
           sanitiseSettings; see server/embedCarousel.ts. ─────────────────── */
+${fontFaces}
 ${embedCarouselCss(carousel)}
   </style>
 </head>

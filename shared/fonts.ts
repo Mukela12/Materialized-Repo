@@ -12,6 +12,8 @@
  * exactly like a setting that does not work.
  */
 
+import { isCustomFontKey } from "./brandFonts";
+
 /** Fonts guaranteed to render: in index.html's Google Fonts link, or a local @font-face. */
 export const BUILT_IN_FONTS = [
   { value: "system", label: "System default", stack: "system-ui, -apple-system, sans-serif" },
@@ -46,5 +48,17 @@ export function fontStack(value: string | undefined | null): string {
   if (!value) return BY_VALUE.get("system")!.stack;
   const builtIn = BY_VALUE.get(value);
   if (builtIn) return builtIn.stack;
+
+  /**
+   * An uploaded font's key — `custom:<uuid>` — is the family name declared by
+   * the @font-face rule the embed emits. It is quoted here and contains nothing
+   * that can escape those quotes, which is precisely why the key is generated
+   * rather than taken from what the user typed.
+   *
+   * The fallback stays, so a deleted font degrades to a readable page rather
+   * than nothing.
+   */
+  if (isCustomFontKey(value)) return `'${value}', sans-serif`;
+
   return `'${String(value).replace(/['"\;{}<>()]/g, "")}', sans-serif`;
 }

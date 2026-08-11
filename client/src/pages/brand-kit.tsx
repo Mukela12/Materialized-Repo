@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { BrandFontUpload } from "@/components/BrandFontUpload";
 import { CarouselMockup } from "@/components/CarouselMockup";
 import { ProductCarouselEditor } from "@/components/ProductCarouselEditor";
 import {
@@ -723,6 +724,16 @@ export default function BrandKitPage() {
         </TabsContent>
 
         <TabsContent value="fonts" className="mt-6 space-y-6">
+          {/* The client's request: "Font upload must allow for the .otf or
+              .ttf". Placed first, above the Google-Fonts-by-name control that
+              was previously the only option — a brand's own licensed face is
+              the answer they actually want. */}
+          <Card>
+            <CardContent className="pt-6">
+              <BrandFontUpload />
+            </CardContent>
+          </Card>
+
           {extractedFonts.length > 0 && (
             <Card>
               <CardHeader>

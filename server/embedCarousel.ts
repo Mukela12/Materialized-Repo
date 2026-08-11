@@ -22,6 +22,9 @@ import {
   settingsFromBrandKit, applyOverride, type CarouselSettings,
 } from "../shared/carousel";
 import { fontStack } from "../shared/fonts";
+import {
+  isCustomFontKey, customFontId, fontFaceRule, type FontFormat,
+} from "../shared/brandFonts";
 
 /**
  * Resolve the settings for one video: base defaults, then the creator's brand
@@ -162,4 +165,41 @@ export function widgetInlineStyles(raw: CarouselSettings) {
       `font-size:calc(9px * ${s.priceFontSize / 100});color:${s.brandTitleColor};font-weight:700;` +
       `${s.showPrice ? "" : "display:none;"}`,
   };
+}
+
+
+/**
+ * The @font-face rules a video's carousel needs.
+ *
+ * Without these the stylesheet references `font-family:'custom:<uuid>'`, the
+ * browser has never heard of it, and the text falls back to system-ui — the
+ * setting saving and doing nothing, which is the failure mode this project has
+ * produced three times over. So the embed must declare the face, not just name
+ * it.
+ *
+ * Only fonts actually referenced by these settings are emitted. A creator with
+ * nine uploaded faces should not have all nine downloaded by every visitor to
+ * a brand's page.
+ */
+export async function embedFontFaceCss(
+  settings: CarouselSettings,
+  lookup: (id: string) => Promise<{ fileUrl: string; format: string } | undefined>,
+): Promise<string> {
+  const keys = Array.from(new Set(
+    [settings.buttonFont, settings.titleFont].filter(isCustomFontKey),
+  ));
+  if (keys.length === 0) return "";
+
+  const rules: string[] = [];
+  for (const key of keys) {
+    const id = customFontId(key);
+    if (!id) continue;
+    const font = await lookup(id).catch(() => undefined);
+    // A deleted font leaves the setting pointing at nothing. Emitting no rule
+    // is correct: the text falls back rather than the page 404ing on a file.
+    if (!font) continue;
+    const rule = fontFaceRule(key, font.fileUrl, font.format as FontFormat);
+    if (rule) rules.push(rule);
+  }
+  return rules.join("\n");
 }
