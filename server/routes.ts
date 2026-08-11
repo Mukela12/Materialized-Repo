@@ -11,6 +11,7 @@ import { recordSaleCommissions, clawbackSaleCommissions } from "./commissions";
 import { recordFeeAccrual, voidFeeAccrual } from "./feeAccruals";
 import { generateFeeInvoice, finalizeFeeInvoice } from "./feeInvoicing";
 import { quoteCheckout, checkoutIdempotencyKey, parsePriceToCents } from "./inVideoCheckout";
+import { resolveEmbedSettings, embedCarouselCss, widgetInlineStyles } from "./embedCarousel";
 import { checkRedeemable, grantsOf, normaliseCode, generateVoucherCode, mintCodes, MAX_BATCH } from "./vouchers";
 import { videoDeliveryUrl } from "@shared/videoDelivery";
 import { feeInvoiceStripeAdapter } from "./feeInvoiceStripe";
@@ -6314,6 +6315,23 @@ Identify which products from the catalog are most likely to appear or be feature
 
       const apiBase = `${req.protocol}://${req.get("host")}`;
 
+      /**
+       * THE CAROUSEL'S APPEARANCE.
+       *
+       * Until now this page ignored every styling setting: the strip was pinned
+       * bottom in hard-coded CSS, the button was a hard-coded #1351aa, and the
+       * label read "Buy" whatever the creator chose. The embed is the ONLY
+       * place a viewer sees a carousel, so a brand could style theirs, watch
+       * the preview change, publish, and find the platform's default blue on
+       * their own site.
+       *
+       * resolveEmbedSettings sanitises as it merges — these values are
+       * creator-controlled text and this markup is served inside a brand's page.
+       */
+      const brandKit = await storage.getBrandKit(video.creatorId).catch(() => undefined);
+      const carouselOverride = await storage.getVideoCarouselOverride(video.id).catch(() => undefined);
+      const carousel = resolveEmbedSettings(brandKit ?? null, carouselOverride ?? null);
+
       res.set("Content-Type", "text/html");
       res.send(`<!DOCTYPE html>
 <html lang="en">
@@ -6345,6 +6363,10 @@ Identify which products from the catalog are most likely to appear or be feature
     #pay-close{position:absolute;top:8px;right:10px;z-index:21;border:0;background:rgba(255,255,255,.9);border-radius:999px;width:26px;height:26px;font-size:15px;line-height:1;cursor:pointer}
     #pay-inner{background:#fff;border-radius:10px;max-width:460px;margin:26px auto;overflow:hidden}
     #pay-err{color:#fff;text-align:center;font-size:12px;padding:18px;font-family:-apple-system,sans-serif}
+    /* ── This video's carousel styling, generated from the brand kit and any
+          per-video override. Everything below has been through
+          sanitiseSettings; see server/embedCarousel.ts. ─────────────────── */
+${embedCarouselCss(carousel)}
   </style>
 </head>
 <body>
@@ -6353,7 +6375,9 @@ Identify which products from the catalog are most likely to appear or be feature
     <div id="playbtn" style="display:none;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:11;cursor:pointer;width:72px;height:72px;background:rgba(255,255,255,.9);border-radius:50%;align-items:center;justify-content:center" onclick="document.getElementById('vid').play();this.style.display='none'">
       <svg width="28" height="28" viewBox="0 0 24 24" fill="#333" style="margin-left:4px"><polygon points="5,3 19,12 5,21"/></svg>
     </div>
-    <video id="vid" muted loop playsinline preload="auto"></video>
+    <!-- No loop when commerce is off: the end-of-video product list is
+         triggered by "ended", which a looping video never emits. -->
+    <video id="vid" muted ${carousel.commerceEnabled ? "loop" : ""} playsinline preload="auto"></video>
     <div id="carousel"></div>
     <div id="pay">
       <button id="pay-close" onclick="closePay()" aria-label="Close">&times;</button>
@@ -6362,7 +6386,7 @@ Identify which products from the catalog are most likely to appear or be feature
     </div>
   </div>
   <script>
-    var utm="${utm.replace(/[<>"'\\]/g, "")}",videoId="${video.id}",apiBase="${apiBase}",CURRENCY_SYMBOL="${embedCurrencySymbol()}",PK="${process.env.STRIPE_PUBLISHABLE_KEY || ""}";
+    var utm="${utm.replace(/[<>"'\\]/g, "")}",videoId="${video.id}",apiBase="${apiBase}",CURRENCY_SYMBOL="${embedCurrencySymbol()}",PK="${process.env.STRIPE_PUBLISHABLE_KEY || ""}",BUY_LABEL=${JSON.stringify(carousel.buttonLabel)},COMMERCE_ON=${carousel.commerceEnabled};
     var vid=document.getElementById("vid");
     // Transformed server-side by videoDeliveryUrl — the raw original is never
     // sent to the browser, and the embed and the widget can no longer drift to
@@ -6394,7 +6418,9 @@ Identify which products from the catalog are most likely to appear or be feature
       // price; the amount itself is never sent from here.
       if(p.buyable){
         var b=document.createElement("button");
-        b.className="buy-btn";b.type="button";b.textContent="Buy";
+        // The creator's chosen label, not the word "Buy" — this was hard-coded
+        // here, so the Button Label setting changed the preview and nothing else.
+        b.className="buy-btn";b.type="button";b.textContent=BUY_LABEL;
         b.addEventListener("click",function(ev){ev.preventDefault();ev.stopPropagation();openPay(p.overlayId);});
         a.appendChild(b);
       }
@@ -6448,6 +6474,44 @@ Identify which products from the catalog are most likely to appear or be feature
       })
       .catch(function(e){payError(e.message||"Checkout is unavailable right now.");});
     }
+    /**
+     * COMMERCE OFF — the client's rule: nothing over the video while it plays,
+     * and "a final summary of products List format at the end of the video
+     * playback with button-text to click".
+     *
+     * Built from the same product data the carousel uses, and styled by the
+     * same sanitised settings, so turning commerce off changes WHEN products
+     * appear rather than whether they can be styled.
+     */
+    if(!COMMERCE_ON){
+      var endList=document.createElement("div");
+      endList.id="end-list";
+      endList.style.cssText="position:absolute;inset:0;z-index:6;display:none;flex-direction:column;justify-content:center;gap:6px;padding:clamp(10px,4vw,28px);background:rgba(0,0,0,.72);overflow-y:auto";
+      products.forEach(function(p){
+        var row=document.createElement("a");
+        row.href=p.productUrl||"#";row.target="_blank";row.rel="noopener";
+        row.style.cssText="display:flex;align-items:center;justify-content:space-between;gap:10px;text-decoration:none;padding:6px 8px;border-radius:8px";
+        var left=document.createElement("div");left.style.cssText="min-width:0";
+        var n=document.createElement("div");n.className="product-name";n.textContent=p.name;left.appendChild(n);
+        if(p.price){var pr=document.createElement("div");pr.className="product-price";pr.textContent=CURRENCY_SYMBOL+p.price;left.appendChild(pr);}
+        row.appendChild(left);
+        var cta=document.createElement("span");
+        cta.className="buy-btn";
+        cta.style.cssText="width:auto;padding:4px 12px;display:inline-block";
+        cta.textContent=BUY_LABEL;
+        row.appendChild(cta);
+        row.addEventListener("click",function(){track("click")});
+        endList.appendChild(row);
+      });
+      document.getElementById("player").appendChild(endList);
+      vid.addEventListener("ended",function(){
+        // display is set here rather than in CSS because the stylesheet hides
+        // #carousel wholesale when commerce is off; this element is separate.
+        endList.style.display="flex";
+      });
+      vid.addEventListener("play",function(){ endList.style.display="none"; });
+    }
+
     function track(type,extra){
       fetch(apiBase+"/api/analytics/events",{
         method:"POST",headers:{"Content-Type":"application/json"},
@@ -6485,6 +6549,14 @@ Identify which products from the catalog are most likely to appear or be feature
       const apiBase = `${req.protocol}://${req.get("host")}`;
       const safeVideoUrl = (video.videoUrl || "").replace(/"/g, '\\"');
 
+      // Same resolution and sanitising as the iframe embed, so the two surfaces
+      // cannot disagree about what a carousel looks like.
+      const widgetKit = await storage.getBrandKit(video.creatorId).catch(() => undefined);
+      const widgetOverride = await storage.getVideoCarouselOverride(video.id).catch(() => undefined);
+      const widgetStyles = widgetInlineStyles(
+        resolveEmbedSettings(widgetKit ?? null, widgetOverride ?? null),
+      );
+
       res.set("Content-Type", "application/javascript");
       res.set("Cache-Control", "public, max-age=300");
       res.set("Access-Control-Allow-Origin", "*");
@@ -6502,17 +6574,22 @@ Identify which products from the catalog are most likely to appear or be feature
   v.addEventListener("canplay",function(){v.play().catch(function(){});});
   el.appendChild(v);
   var products=${JSON.stringify(products)};
+  var WSTYLE=${JSON.stringify(widgetStyles)};
   if(products.length){
     var c=document.createElement("div");
-    c.style.cssText="position:absolute;bottom:clamp(4px,2%,12px);left:clamp(4px,2%,12px);right:clamp(4px,2%,12px);display:flex;gap:clamp(3px,1%,6px);overflow-x:auto;z-index:5;scrollbar-width:none;";
+    // Generated from this creator's brand kit and any per-video override,
+    // sanitised — the widget used to hard-code all of this, so a brand using
+    // the script embed rather than the iframe got platform defaults whatever
+    // they chose.
+    c.style.cssText=WSTYLE.container;
     products.forEach(function(p){
       var a=document.createElement("a");
       a.href=p.productUrl||"#";a.target="_blank";a.rel="noopener";
-      a.style.cssText="flex:0 0 auto;background:rgba(255,255,255,.95);border-radius:clamp(6px,1.5%,10px);padding:clamp(3px,1%,6px);width:clamp(60px,20%,100px);text-decoration:none;backdrop-filter:blur(8px);";
-      if(p.imageUrl){var img=document.createElement("img");img.src=p.imageUrl;img.alt=p.name;img.style.cssText="width:100%;height:clamp(30px,8vw,60px);object-fit:cover;border-radius:clamp(4px,1%,6px)";a.appendChild(img);}
-      var nd=document.createElement("div");nd.style.cssText="font-size:clamp(7px,2%,10px);font-weight:600;color:#333;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap";
+      a.style.cssText=WSTYLE.card;
+      if(p.imageUrl){var img=document.createElement("img");img.src=p.imageUrl;img.alt=p.name;img.style.cssText=WSTYLE.image;a.appendChild(img);}
+      var nd=document.createElement("div");nd.style.cssText=WSTYLE.name;
       nd.textContent=p.name||"";a.appendChild(nd);
-      if(p.price){var pd=document.createElement("div");pd.style.cssText="font-size:9px;color:#677A67;font-weight:700";pd.textContent=CURRENCY_SYMBOL+p.price;a.appendChild(pd);}
+      if(p.price){var pd=document.createElement("div");pd.style.cssText=WSTYLE.price;pd.textContent=CURRENCY_SYMBOL+p.price;a.appendChild(pd);}
       a.addEventListener("click",function(){track("click")});
       c.appendChild(a);
     });

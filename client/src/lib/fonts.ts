@@ -20,40 +20,12 @@
  *   so the UI can say "not found" rather than showing a silent fallback.
  */
 
-/** Fonts guaranteed to render: in the index.html Google Fonts link, or a local @font-face. */
-export const BUILT_IN_FONTS = [
-  { value: "system", label: "System default", stack: "system-ui, -apple-system, sans-serif" },
-  { value: "aileron", label: "Aileron", stack: "'Aileron', sans-serif" },
-  { value: "lekton", label: "Lekton", stack: "'Lekton', monospace" },
-  { value: "inter", label: "Inter", stack: "'Inter', sans-serif" },
-  { value: "roboto", label: "Roboto", stack: "'Roboto', sans-serif" },
-  { value: "poppins", label: "Poppins", stack: "'Poppins', sans-serif" },
-  { value: "montserrat", label: "Montserrat", stack: "'Montserrat', sans-serif" },
-  { value: "playfair", label: "Playfair Display", stack: "'Playfair Display', serif" },
-  { value: "dm-sans", label: "DM Sans", stack: "'DM Sans', sans-serif" },
-  { value: "outfit", label: "Outfit", stack: "'Outfit', sans-serif" },
-  { value: "lora", label: "Lora", stack: "'Lora', serif" },
-  { value: "space-grotesk", label: "Space Grotesk", stack: "'Space Grotesk', sans-serif" },
-] as const;
-
-const BUILT_IN_BY_VALUE = new Map<string, { value: string; label: string; stack: string }>(
-  BUILT_IN_FONTS.map((f) => [f.value, f]),
-);
-
-/**
- * Resolve a stored font setting to a CSS font-family stack.
- *
- * Falls back to the system stack for an unknown value, as before — but the
- * picker no longer offers values that land here, and a custom name is loaded by
- * ensureGoogleFont before being used.
- */
-export function fontStack(value: string | undefined | null): string {
-  if (!value) return BUILT_IN_BY_VALUE.get("system")!.stack;
-  const builtIn = BUILT_IN_BY_VALUE.get(value);
-  if (builtIn) return builtIn.stack;
-  // A custom (Google) font is stored by its display name.
-  return `'${value.replace(/'/g, "")}', sans-serif`;
-}
+// The stacks and `fontStack` now live in shared/fonts.ts so the server-rendered
+// embed resolves fonts identically. Re-exported here so existing imports of
+// "@/lib/fonts" keep working.
+export { BUILT_IN_FONTS, fontStack } from "@shared/fonts";
+// Also imported by value — ensureGoogleFont below reads the list.
+import { BUILT_IN_FONTS } from "@shared/fonts";
 
 /** Track injected stylesheets so the same family is never requested twice. */
 const requested = new Set<string>();

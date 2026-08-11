@@ -19,7 +19,10 @@
  * lets the client restyle a single video for a season without disturbing the
  * thirty others that use her defaults.
  */
-import { BUTTON_LABEL_OPTIONS, CAROUSEL_POSITION_OPTIONS } from "./schema";
+import { BUTTON_LABEL_OPTIONS, CAROUSEL_POSITION_OPTIONS, FONT_OPTIONS } from "./schema";
+
+/** The font keys that may appear in a stylesheet. See sanitiseSettings. */
+const FONT_KEYS = FONT_OPTIONS.map((f) => f.value) as readonly string[];
 
 export type CarouselPosition = (typeof CAROUSEL_POSITION_OPTIONS)[number];
 export type ButtonLabel = (typeof BUTTON_LABEL_OPTIONS)[number];
@@ -203,4 +206,95 @@ export function withAlpha(hex: string, opacityPct: number): string {
  */
 export function isStackedPosition(position: CarouselPosition | string): boolean {
   return position === "left" || position === "right";
+}
+
+// ── Sanitising, for anywhere settings are interpolated into CSS or HTML ──────
+//
+// THE THREAT
+//   Colours and fonts are free-text columns a creator controls. The embed is
+//   server-rendered HTML served INSIDE A BRAND'S PAGE, so a value like
+//       #fff;} #pay{display:none} .x{
+//   would close the rule it sits in and write arbitrary CSS — hiding the
+//   checkout, covering the video, or overlaying content on someone else's site.
+//   Nothing about the storage path prevents that: the column is `text`, and the
+//   admin screen is not the only way to write it.
+//
+//   So no value reaches a stylesheet without passing through here. Anything
+//   that does not match its expected shape falls back to the default rather
+//   than being escaped and emitted — an invalid colour has no correct rendering
+//   anyway, and a fallback is the only safe interpretation.
+
+/** `#rgb` or `#rrggbb`, and nothing else. */
+const HEX = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
+
+/** A colour, or the given fallback if it is not one. */
+export function safeColor(value: unknown, fallback: string): string {
+  const v = typeof value === "string" ? value.trim() : "";
+  return HEX.test(v) ? v : fallback;
+}
+
+/** A whole number inside [min, max], or the fallback. */
+export function safeInt(value: unknown, min: number, max: number, fallback: number): number {
+  // `Number("")` and `Number(null)` are both 0, and 0 is finite — so an unset
+  // value would sail through as a real zero. For backgroundOpacity that is an
+  // invisible carousel, reached by leaving a field blank.
+  if (value === null || value === undefined) return fallback;
+  if (typeof value === "string" && value.trim() === "") return fallback;
+  if (typeof value === "boolean") return fallback;
+  const n = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(max, Math.max(min, Math.round(n)));
+}
+
+/** One of `allowed`, compared case-insensitively, or the fallback. */
+export function safeEnum<T extends string>(value: unknown, allowed: readonly T[], fallback: T): T {
+  const v = typeof value === "string" ? value.trim().toLowerCase() : "";
+  return (allowed.find((a) => a.toLowerCase() === v) ?? fallback) as T;
+}
+
+/**
+ * Every field validated against its own shape.
+ *
+ * Call this on anything read from the database before it is rendered. It is
+ * deliberately total — it returns a complete settings object, so a caller
+ * cannot forget one field and interpolate the raw value by accident.
+ */
+export function sanitiseSettings(raw: Partial<CarouselSettings> | null | undefined): CarouselSettings {
+  const d = CAROUSEL_DEFAULTS;
+  const r = raw ?? {};
+  return {
+    position: safeEnum(r.position, CAROUSEL_POSITION_OPTIONS, d.position),
+    positionOffsetX: safeInt(r.positionOffsetX, -200, 200, d.positionOffsetX),
+    positionOffsetY: safeInt(r.positionOffsetY, -200, 200, d.positionOffsetY),
+    delayUntilEnd: typeof r.delayUntilEnd === "boolean" ? r.delayUntilEnd : d.delayUntilEnd,
+
+    carouselBackgroundColor: safeColor(r.carouselBackgroundColor, d.carouselBackgroundColor),
+    backgroundOpacity: safeInt(r.backgroundOpacity, 0, 100, d.backgroundOpacity),
+    cornerRadius: safeInt(r.cornerRadius, 0, 80, d.cornerRadius),
+
+    buttonColor: safeColor(r.buttonColor, d.buttonColor),
+    buttonTextColor: safeColor(r.buttonTextColor, d.buttonTextColor),
+    buttonHoverColor: safeColor(r.buttonHoverColor, d.buttonHoverColor),
+    buttonOpacity: safeInt(r.buttonOpacity, 0, 100, d.buttonOpacity),
+    buttonCornerRadius: safeInt(r.buttonCornerRadius, 0, 999, d.buttonCornerRadius),
+    buttonLabel: safeEnum(r.buttonLabel, BUTTON_LABEL_OPTIONS, d.buttonLabel),
+
+    brandTitleColor: safeColor(r.brandTitleColor, d.brandTitleColor),
+    productTitleColor: safeColor(r.productTitleColor, d.productTitleColor),
+
+    // Fonts are keys into a fixed list, never raw family names — a family name
+    // is a string that ends up inside `font-family:` and closes just as easily.
+    buttonFont: safeEnum(r.buttonFont, FONT_KEYS, d.buttonFont),
+    titleFont: safeEnum(r.titleFont, FONT_KEYS, d.titleFont),
+    titleFontSize: safeInt(r.titleFontSize, 50, 200, d.titleFontSize),
+    priceFontSize: safeInt(r.priceFontSize, 50, 200, d.priceFontSize),
+    buttonFontSize: safeInt(r.buttonFontSize, 50, 200, d.buttonFontSize),
+
+    showThumbnail: typeof r.showThumbnail === "boolean" ? r.showThumbnail : d.showThumbnail,
+    showButton: typeof r.showButton === "boolean" ? r.showButton : d.showButton,
+    showPrice: typeof r.showPrice === "boolean" ? r.showPrice : d.showPrice,
+    showTitle: typeof r.showTitle === "boolean" ? r.showTitle : d.showTitle,
+
+    commerceEnabled: typeof r.commerceEnabled === "boolean" ? r.commerceEnabled : d.commerceEnabled,
+  };
 }
