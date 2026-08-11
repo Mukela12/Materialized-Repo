@@ -327,6 +327,30 @@ export const brandKits = pgTable("brand_kits", {
   defaultShowTitle: boolean("default_show_title").default(true),
   defaultButtonLabel: buttonLabelEnum("default_button_label").default("BUY NOW"),
   defaultPosition: carouselPositionEnum("default_position").default("bottom"),
+
+  // ── The rest of the client's styling list (0022) ──────────────────────────
+  // The carousel's own panel colour. It was hard-coded black at whatever
+  // opacity was set, so a brand could colour the button and nothing else.
+  defaultCarouselBackgroundColor: text("default_carousel_background_color"),
+  // Two separate radii. One value drove both the panel and the button, so a
+  // square panel forced square buttons and a pill button forced a pill panel.
+  defaultButtonCornerRadius: integer("default_button_corner_radius"),
+  // Text colours. Both were inherited from the theme, which is white — legible
+  // on a dark panel and invisible on a pale one.
+  defaultBrandTitleColor: text("default_brand_title_color"),
+  defaultProductTitleColor: text("default_product_title_color"),
+  // Hover state and button opacity, both requested explicitly.
+  defaultButtonHoverColor: text("default_button_hover_color"),
+  defaultButtonOpacity: integer("default_button_opacity"),
+  /**
+   * Whether the carousel sells during playback.
+   *
+   * Disabled, the viewer is shown a product list at the end of the video
+   * instead of an overlay during it. Nullable so an existing row keeps
+   * behaving as it did rather than being silently switched by a default.
+   */
+  defaultCommerceEnabled: boolean("default_commerce_enabled"),
+
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
   updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`),
 });
@@ -349,6 +373,18 @@ export const videoCarouselOverrides = pgTable("video_carousel_overrides", {
   buttonFont: text("button_font"),
   buttonColor: text("button_color"),
   buttonTextColor: text("button_text_color"),
+
+  // Mirrors of the brand-kit defaults above. NULL means "inherit" — the client
+  // asked to change colours per video for a season or a collection without
+  // disturbing the defaults every other video uses.
+  carouselBackgroundColor: text("carousel_background_color"),
+  buttonCornerRadius: integer("button_corner_radius"),
+  brandTitleColor: text("brand_title_color"),
+  productTitleColor: text("product_title_color"),
+  buttonHoverColor: text("button_hover_color"),
+  buttonOpacity: integer("button_opacity"),
+  commerceEnabled: boolean("commerce_enabled"),
+
   manualProducts: text("manual_products"),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
 });

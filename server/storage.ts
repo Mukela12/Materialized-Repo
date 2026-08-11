@@ -1214,6 +1214,18 @@ export class MemStorage implements IStorage {
       defaultShowTitle: kit.defaultShowTitle ?? true,
       defaultButtonLabel: kit.defaultButtonLabel ?? "BUY NOW",
       defaultPosition: kit.defaultPosition ?? "bottom",
+      // Added with 0022. DatabaseStorage hands the whole object to Drizzle, so
+      // it picks new columns up on its own; this one names every field, so a
+      // column added there and forgotten here makes the fake QUIETLY LOSE a
+      // setting the real store keeps. Compile-time errors are the only reason
+      // that is caught, which is why these are typed rather than `any`.
+      defaultCarouselBackgroundColor: kit.defaultCarouselBackgroundColor ?? null,
+      defaultButtonCornerRadius: kit.defaultButtonCornerRadius ?? null,
+      defaultBrandTitleColor: kit.defaultBrandTitleColor ?? null,
+      defaultProductTitleColor: kit.defaultProductTitleColor ?? null,
+      defaultButtonHoverColor: kit.defaultButtonHoverColor ?? null,
+      defaultButtonOpacity: kit.defaultButtonOpacity ?? null,
+      defaultCommerceEnabled: kit.defaultCommerceEnabled ?? null,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -1253,6 +1265,15 @@ export class MemStorage implements IStorage {
       buttonFont: override.buttonFont ?? null,
       buttonColor: override.buttonColor ?? null,
       buttonTextColor: override.buttonTextColor ?? null,
+      // NULL means inherit from the brand kit — see the note in 0022.
+      carouselBackgroundColor: override.carouselBackgroundColor ?? null,
+      buttonCornerRadius: override.buttonCornerRadius ?? null,
+      brandTitleColor: override.brandTitleColor ?? null,
+      productTitleColor: override.productTitleColor ?? null,
+      buttonHoverColor: override.buttonHoverColor ?? null,
+      buttonOpacity: override.buttonOpacity ?? null,
+      commerceEnabled: override.commerceEnabled ?? null,
+      manualProducts: override.manualProducts ?? null,
       createdAt: new Date(),
     };
     this.videoCarouselOverrides.set(id, newOverride);

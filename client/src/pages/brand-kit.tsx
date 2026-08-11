@@ -1,4 +1,10 @@
 import { useState, useEffect } from "react";
+import { CarouselMockup } from "@/components/CarouselMockup";
+import { ProductCarouselEditor } from "@/components/ProductCarouselEditor";
+import {
+  CAROUSEL_DEFAULTS, settingsFromBrandKit, brandKitFromSettings,
+  type CarouselSettings,
+} from "@shared/carousel";
 import { CarouselPreviewFrame } from "@/components/CarouselPreviewFrame";
 import { carouselPositionStyles, isStackedPosition } from "@/lib/carouselPosition";
 import { ensureGoogleFont, fontStack } from "@/lib/fonts";
@@ -43,19 +49,6 @@ interface FontEntry {
   weight: string;
 }
 
-interface CarouselSettings {
-  buttonFont: string;
-  buttonColor: string;
-  buttonTextColor: string;
-  cornerRadius: number;
-  backgroundOpacity: number;
-  showThumbnail: boolean;
-  showButton: boolean;
-  showPrice: boolean;
-  showTitle: boolean;
-  buttonLabel: typeof BUTTON_LABEL_OPTIONS[number];
-  position: typeof CAROUSEL_POSITION_OPTIONS[number];
-}
 
 /**
  * The carousel mock-up, rendered from live settings state.
@@ -97,42 +90,10 @@ function CarouselPreview({
       emptyLabel="Upload a video to preview against it"
       testId={`${testId}-frame`}
     >
-      <div
-        className="p-3 flex items-center gap-3"
-        style={{
-          ...carouselPositionStyles(settings.position),
-          backgroundColor: `rgba(0,0,0,${settings.backgroundOpacity / 100})`,
-          borderRadius: `${settings.cornerRadius}px`,
-          // Side positions stack; top and bottom run side by side. Constraining
-          // the width here is what makes a stacked column look stacked.
-          maxWidth: isStackedPosition(settings.position) ? 150 : 260,
-        }}
-        data-testid={testId}
-      >
-        {settings.showThumbnail && (
-          <div className="w-12 h-12 bg-background/50 rounded-lg flex items-center justify-center shrink-0">
-            <div className="w-8 h-8 bg-primary/20 rounded" />
-          </div>
-        )}
-        <div className="flex-1 text-white min-w-0">
-          {settings.showTitle && <p className="font-medium text-sm">Product Name</p>}
-          {settings.showPrice && <p className="text-xs opacity-80">$99.00</p>}
-        </div>
-        {settings.showButton && (
-          <Button
-            size="sm"
-            className="rounded-full text-xs shrink-0"
-            style={{
-              backgroundColor: settings.buttonColor,
-              color: settings.buttonTextColor,
-              fontFamily: fontStack(settings.buttonFont),
-            }}
-            data-testid={`${testId}-cta`}
-          >
-            {settings.buttonLabel}
-          </Button>
-        )}
-      </div>
+      {/* Same renderer as the upload editor. This page used to have its own
+          copy of the markup, and it drifted every time the carousel changed —
+          positions, then colours. */}
+      <CarouselMockup settings={settings} scale={1.15} testId={testId} />
     </CarouselPreviewFrame>
   );
 }
@@ -156,19 +117,7 @@ export default function BrandKitPage() {
   const [newFont, setNewFont] = useState<FontEntry>({ name: "", weight: "400" });
   const [fontChecking, setFontChecking] = useState(false);
   
-  const [carouselSettings, setCarouselSettings] = useState({
-    buttonFont: "Inter",
-    buttonColor: CAROUSEL_DEFAULT_BUTTON_COLOR,
-    buttonTextColor: CAROUSEL_DEFAULT_BUTTON_TEXT_COLOR,
-    cornerRadius: 16,
-    backgroundOpacity: 55,
-    showThumbnail: true,
-    showButton: true,
-    showPrice: true,
-    showTitle: true,
-    buttonLabel: "BUY NOW" as typeof BUTTON_LABEL_OPTIONS[number],
-    position: "bottom" as typeof CAROUSEL_POSITION_OPTIONS[number],
-  });
+  const [carouselSettings, setCarouselSettings] = useState<CarouselSettings>(CAROUSEL_DEFAULTS);
 
   const { data: brandKit, isLoading } = useQuery<BrandKit>({
     queryKey: ["/api/brand-kit"],
@@ -195,20 +144,16 @@ export default function BrandKitPage() {
         console.error("Error parsing brand kit data:", e);
       }
 
-      // Set carousel settings from brand kit
-      setCarouselSettings({
-        buttonFont: brandKit.defaultButtonFont || "Inter",
-        buttonColor: brandKit.defaultButtonColor || CAROUSEL_DEFAULT_BUTTON_COLOR,
-        buttonTextColor: brandKit.defaultButtonTextColor || CAROUSEL_DEFAULT_BUTTON_TEXT_COLOR,
-        cornerRadius: brandKit.defaultCornerRadius ?? 16,
-        backgroundOpacity: brandKit.defaultBackgroundOpacity ?? 55,
-        showThumbnail: brandKit.defaultShowThumbnail ?? true,
-        showButton: brandKit.defaultShowButton ?? true,
-        showPrice: brandKit.defaultShowPrice ?? true,
-        showTitle: brandKit.defaultShowTitle ?? true,
-        buttonLabel: (brandKit.defaultButtonLabel as any) || "BUY NOW",
-        position: (brandKit.defaultPosition as any) || "bottom",
-      });
+      /**
+       * Hydrate from the row through the shared mapper.
+       *
+       * This was eleven hand-written lines mapping `default*` columns onto
+       * settings, with the reverse written out again in the save handler. Every
+       * new setting meant remembering to edit both, and the same list existed a
+       * third time in the upload editor. They drifted: the preview here only
+       * ever honoured two of the eight carousel positions.
+       */
+      setCarouselSettings(settingsFromBrandKit(brandKit));
     }
   }, [brandKit]);
 
@@ -242,19 +187,8 @@ export default function BrandKitPage() {
   const handleSaveCarouselDefault = () => {
     saveBrandKitMutation.mutate({
       carouselOnly: true,
-      data: {
-        defaultButtonFont: carouselSettings.buttonFont,
-        defaultButtonColor: carouselSettings.buttonColor,
-        defaultButtonTextColor: carouselSettings.buttonTextColor,
-        defaultCornerRadius: carouselSettings.cornerRadius,
-        defaultBackgroundOpacity: carouselSettings.backgroundOpacity,
-        defaultShowThumbnail: carouselSettings.showThumbnail,
-        defaultShowButton: carouselSettings.showButton,
-        defaultShowPrice: carouselSettings.showPrice,
-        defaultShowTitle: carouselSettings.showTitle,
-        defaultButtonLabel: carouselSettings.buttonLabel,
-        defaultPosition: carouselSettings.position,
-      },
+      // Reverse of the same mapping — one list, not two.
+      data: brandKitFromSettings(carouselSettings),
     });
   };
 
@@ -925,149 +859,26 @@ export default function BrandKitPage() {
                 </div>
               </div>
             </CardHeader>
-            <CardContent className="space-y-6">
-              {/*
-                Live preview, sticky so it stays in view while you scroll the
-                controls below it. Reads the same state the inputs write, so it
-                reflects every change as it is made rather than after a save.
-              */}
-              <div className="md:sticky md:top-4 z-10">
-                <p className="text-xs font-medium text-muted-foreground mb-2">Live preview</p>
-                <CarouselPreview settings={carouselSettings} testId="carousel-live-preview" />
-              </div>
+            <CardContent>
+              {/* ── ONE set of controls, shared with the upload editor ────────
+                  This page had its own copy: eleven controls, hand-written,
+                  missing every setting added since. The client's sidebar sends
+                  her HERE for "Product Carousel Styling", so a control added to
+                  the upload editor and not to this page is a control she cannot
+                  reach. Rendering the same component removes the possibility.
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-4">
-                  <div>
-                    <Label>Button Color</Label>
-                    <div className="flex gap-2 mt-2">
-                      <Input
-                        type="color"
-                        value={carouselSettings.buttonColor}
-                        onChange={(e) => setCarouselSettings({ ...carouselSettings, buttonColor: e.target.value })}
-                        className="w-12 h-10 p-1"
-                        data-testid="input-button-color"
-                      />
-                      <Input
-                        value={carouselSettings.buttonColor}
-                        onChange={(e) => setCarouselSettings({ ...carouselSettings, buttonColor: e.target.value })}
-                        data-testid="input-button-color-hex"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <Label>Button Text Color</Label>
-                    <div className="flex gap-2 mt-2">
-                      <Input
-                        type="color"
-                        value={carouselSettings.buttonTextColor}
-                        onChange={(e) => setCarouselSettings({ ...carouselSettings, buttonTextColor: e.target.value })}
-                        className="w-12 h-10 p-1"
-                        data-testid="input-button-text-color"
-                      />
-                      <Input
-                        value={carouselSettings.buttonTextColor}
-                        onChange={(e) => setCarouselSettings({ ...carouselSettings, buttonTextColor: e.target.value })}
-                        data-testid="input-button-text-color-hex"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <Label>Button Label</Label>
-                    <Select 
-                      value={carouselSettings.buttonLabel} 
-                      onValueChange={(val) => setCarouselSettings({ ...carouselSettings, buttonLabel: val as any })}
-                    >
-                      <SelectTrigger className="mt-2" data-testid="select-button-label">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {BUTTON_LABEL_OPTIONS.map((label) => (
-                          <SelectItem key={label} value={label}>{label}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  <div>
-                    <Label>Position</Label>
-                    <Select 
-                      value={carouselSettings.position} 
-                      onValueChange={(val) => setCarouselSettings({ ...carouselSettings, position: val as any })}
-                    >
-                      <SelectTrigger className="mt-2" data-testid="select-position">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {CAROUSEL_POSITION_OPTIONS.map((pos) => (
-                          <SelectItem key={pos} value={pos}>{pos.replace("-", " ").toUpperCase()}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  <div>
-                    <Label>Corner Radius: {carouselSettings.cornerRadius}px</Label>
-                    <Slider
-                      value={[carouselSettings.cornerRadius]}
-                      onValueChange={(val) => setCarouselSettings({ ...carouselSettings, cornerRadius: val[0] })}
-                      max={24}
-                      step={1}
-                      className="mt-2"
-                      data-testid="slider-corner-radius"
-                    />
-                  </div>
-
-                  <div>
-                    <Label>Background Opacity: {carouselSettings.backgroundOpacity}%</Label>
-                    <Slider
-                      value={[carouselSettings.backgroundOpacity]}
-                      onValueChange={(val) => setCarouselSettings({ ...carouselSettings, backgroundOpacity: val[0] })}
-                      max={100}
-                      step={5}
-                      className="mt-2"
-                      data-testid="slider-background-opacity"
-                    />
-                  </div>
-
-                  <div className="space-y-3 pt-2">
-                    <div className="flex items-center justify-between">
-                      <Label>Show Thumbnail</Label>
-                      <Switch
-                        checked={carouselSettings.showThumbnail}
-                        onCheckedChange={(checked) => setCarouselSettings({ ...carouselSettings, showThumbnail: checked })}
-                        data-testid="switch-show-thumbnail"
-                      />
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <Label>Show Button</Label>
-                      <Switch
-                        checked={carouselSettings.showButton}
-                        onCheckedChange={(checked) => setCarouselSettings({ ...carouselSettings, showButton: checked })}
-                        data-testid="switch-show-button"
-                      />
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <Label>Show Price</Label>
-                      <Switch
-                        checked={carouselSettings.showPrice}
-                        onCheckedChange={(checked) => setCarouselSettings({ ...carouselSettings, showPrice: checked })}
-                        data-testid="switch-show-price"
-                      />
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <Label>Show Title</Label>
-                      <Switch
-                        checked={carouselSettings.showTitle}
-                        onCheckedChange={(checked) => setCarouselSettings({ ...carouselSettings, showTitle: checked })}
-                        data-testid="switch-show-title"
-                      />
-                    </div>
-                  </div>
+                  The preview beside it reads the same state, so changing a
+                  colour shows its effect without switching tabs — which is what
+                  she asked for and why the second preview exists at all. */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <ProductCarouselEditor
+                  settings={carouselSettings}
+                  onChange={setCarouselSettings}
+                  compact
+                />
+                <div>
+                  <p className="text-xs text-muted-foreground mb-2">Live preview</p>
+                  <CarouselPreview settings={carouselSettings} testId="carousel-live-preview" />
                 </div>
               </div>
             </CardContent>

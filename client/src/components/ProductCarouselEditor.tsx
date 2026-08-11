@@ -1,4 +1,10 @@
 import { useState, useRef } from "react";
+import { CarouselMockup } from "@/components/CarouselMockup";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import {
+  CAROUSEL_DEFAULTS, panelBackground, buttonBackground, isStackedPosition,
+  type CarouselSettings,
+} from "@shared/carousel";
 import { CarouselPreviewFrame } from "@/components/CarouselPreviewFrame";
 import { carouselPositionStyles } from "@/lib/carouselPosition";
 import { videoDeliveryUrl } from "@shared/videoDelivery";
@@ -23,25 +29,39 @@ import { BUTTON_LABEL_OPTIONS, CAROUSEL_POSITION_OPTIONS, FONT_OPTIONS } from "@
 import { fontStack } from "@/lib/fonts";
 import { CAROUSEL_DEFAULT_BUTTON_COLOR, CAROUSEL_DEFAULT_BUTTON_TEXT_COLOR } from "@/lib/carouselDefaults";
 
-export interface CarouselSettings {
-  position: typeof CAROUSEL_POSITION_OPTIONS[number];
-  positionOffsetX: number;
-  positionOffsetY: number;
-  delayUntilEnd: boolean;
-  cornerRadius: number;
-  backgroundOpacity: number;
-  showThumbnail: boolean;
-  showButton: boolean;
-  showPrice: boolean;
-  showTitle: boolean;
-  buttonLabel: typeof BUTTON_LABEL_OPTIONS[number];
-  buttonColor: string;
-  buttonTextColor: string;
-  buttonFont: string;
-  titleFont: string;
-  titleFontSize: number;
-  priceFontSize: number;
-  buttonFontSize: number;
+/**
+ * Re-exported so the many call sites that import it from here keep working.
+ * The definition itself lives in shared/carousel.ts — it was declared here AND
+ * in the Brand Kit page, and the two drifted until the Brand Kit preview
+ * honoured two of the eight carousel positions.
+ */
+export type { CarouselSettings };
+
+
+/** One colour control: swatch + hex field, kept in step with each other. */
+function ColorField({
+  label, value, onChange, testId,
+}: { label: string; value: string; onChange: (v: string) => void; testId: string }) {
+  return (
+    <div>
+      <Label className="text-xs">{label}</Label>
+      <div className="flex gap-1 mt-1">
+        <Input
+          type="color"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="w-8 h-8 p-0.5 shrink-0"
+          data-testid={`input-${testId}`}
+        />
+        <Input
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="flex-1 h-8 text-xs font-mono"
+          data-testid={`input-${testId}-hex`}
+        />
+      </div>
+    </div>
+  );
 }
 
 interface ProductCarouselEditorProps {
@@ -53,26 +73,7 @@ interface ProductCarouselEditorProps {
   videoUrl?: string;
 }
 
-const defaultSettings: CarouselSettings = {
-  position: "bottom",
-  positionOffsetX: 0,
-  positionOffsetY: 0,
-  delayUntilEnd: false,
-  cornerRadius: 16,
-  backgroundOpacity: 55,
-  showThumbnail: true,
-  showButton: true,
-  showPrice: true,
-  showTitle: true,
-  buttonLabel: "BUY NOW",
-  buttonColor: CAROUSEL_DEFAULT_BUTTON_COLOR,
-  buttonTextColor: CAROUSEL_DEFAULT_BUTTON_TEXT_COLOR,
-  buttonFont: "system",
-  titleFont: "system",
-  titleFontSize: 100,
-  priceFontSize: 100,
-  buttonFontSize: 100,
-};
+const defaultSettings = CAROUSEL_DEFAULTS;
 
 // Stacks live in client/src/lib/fonts.ts alongside FONT_OPTIONS, so the list of
 // offered fonts and the list of loadable fonts cannot drift apart again.
@@ -87,6 +88,8 @@ export function ProductCarouselEditor({
   videoUrl,
 }: ProductCarouselEditorProps) {
   const [showPreview, setShowPreview] = useState(true);
+  // So the hover colour can actually be judged in the preview.
+  const [hovered, setHovered] = useState(false);
   const [videoLoading, setVideoLoading] = useState(true);
 
   const updateSetting = <K extends keyof CarouselSettings>(
@@ -143,56 +146,7 @@ export function ProductCarouselEditor({
 
       {showPreview && (
         <CarouselPreviewFrame videoUrl={videoUrl} testId="carousel-preview-frame">
-          <div
-            className="p-2 flex items-center gap-2 max-w-[200px]"
-            style={{
-              ...carouselPositionStyles(settings.position, settings.positionOffsetX, settings.positionOffsetY),
-              backgroundColor: `rgba(0,0,0,${settings.backgroundOpacity / 100})`,
-              borderRadius: `${settings.cornerRadius}px`,
-            }}
-            data-testid="carousel-preview-element"
-          >
-            {settings.showThumbnail && (
-              <div className="w-8 h-8 bg-background/50 rounded flex items-center justify-center flex-shrink-0">
-                <div className="w-5 h-5 bg-primary/20 rounded" />
-              </div>
-            )}
-            <div className="flex-1 text-white min-w-0">
-              {settings.showTitle && (
-                <p 
-                  className="font-medium truncate"
-                  style={{ 
-                    fontFamily: getFontFamily(settings.titleFont),
-                    fontSize: `${12 * (settings.titleFontSize / 100)}px`,
-                  }}
-                >
-                  Product
-                </p>
-              )}
-              {settings.showPrice && (
-                <p 
-                  className="opacity-80"
-                  style={{ fontSize: `${10 * (settings.priceFontSize / 100)}px` }}
-                >
-                  $99
-                </p>
-              )}
-            </div>
-            {settings.showButton && (
-              <button 
-                className="rounded-full px-2 py-1 flex-shrink-0 font-medium"
-                style={{
-                  backgroundColor: settings.buttonColor,
-                  color: settings.buttonTextColor,
-                  fontFamily: getFontFamily(settings.buttonFont),
-                  fontSize: `${9 * (settings.buttonFontSize / 100)}px`,
-                }}
-                data-testid="button-preview-cta"
-              >
-                {settings.buttonLabel}
-              </button>
-            )}
-          </div>
+          <CarouselMockup settings={settings} testId="carousel-preview-element" />
         </CarouselPreviewFrame>
       )}
 
@@ -284,13 +238,21 @@ export function ProductCarouselEditor({
         </TabsContent>
 
         <TabsContent value="style" className="space-y-3 mt-3">
+          {/* ── The panel ─────────────────────────────────────────────────── */}
+          <p className="text-[10px] uppercase tracking-wide text-muted-foreground">Carousel panel</p>
           <div className="grid grid-cols-2 gap-3">
+            <ColorField
+              label="Carousel background"
+              value={settings.carouselBackgroundColor}
+              onChange={(v) => updateSetting("carouselBackgroundColor", v)}
+              testId="carousel-bg-color"
+            />
             <div>
-              <Label className="text-xs">Corner Radius: {settings.cornerRadius}px</Label>
+              <Label className="text-xs">Carousel corners: {settings.cornerRadius}px</Label>
               <Slider
                 value={[settings.cornerRadius]}
                 onValueChange={(val) => updateSetting("cornerRadius", val[0])}
-                max={24}
+                max={40}
                 step={1}
                 className="mt-2"
                 data-testid="slider-corner-radius"
@@ -298,7 +260,7 @@ export function ProductCarouselEditor({
             </div>
 
             <div>
-              <Label className="text-xs">Opacity: {settings.backgroundOpacity}%</Label>
+              <Label className="text-xs">Carousel opacity: {settings.backgroundOpacity}%</Label>
               <Slider
                 value={[settings.backgroundOpacity]}
                 onValueChange={(val) => updateSetting("backgroundOpacity", val[0])}
@@ -312,7 +274,7 @@ export function ProductCarouselEditor({
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label className="text-xs">Button Color</Label>
+              <Label className="text-xs">Button background</Label>
               <div className="flex gap-1 mt-1">
                 <Input
                   type="color"
@@ -331,7 +293,7 @@ export function ProductCarouselEditor({
             </div>
 
             <div>
-              <Label className="text-xs">Text Color</Label>
+              <Label className="text-xs">Button text</Label>
               <div className="flex gap-1 mt-1">
                 <Input
                   type="color"
@@ -348,6 +310,59 @@ export function ProductCarouselEditor({
                 />
               </div>
             </div>
+          </div>
+        
+          {/* ── The button ────────────────────────────────────────────────── */}
+          <p className="text-[10px] uppercase tracking-wide text-muted-foreground pt-1">Button</p>
+          <div className="grid grid-cols-2 gap-3">
+            <ColorField
+              label="Button on hover"
+              value={settings.buttonHoverColor}
+              onChange={(v) => updateSetting("buttonHoverColor", v)}
+              testId="button-hover-color"
+            />
+            <div>
+              <Label className="text-xs">Button corners: {settings.buttonCornerRadius >= 999 ? "pill" : `${settings.buttonCornerRadius}px`}</Label>
+              {/* Separate from the panel's radius. One value used to drive both,
+                  so a square panel forced square buttons. 999 reads as a pill. */}
+              <Slider
+                value={[Math.min(settings.buttonCornerRadius, 40)]}
+                onValueChange={(val) => updateSetting("buttonCornerRadius", val[0] >= 40 ? 999 : val[0])}
+                max={40}
+                step={1}
+                className="mt-2"
+                data-testid="slider-button-corner-radius"
+              />
+            </div>
+          </div>
+
+          <div>
+            <Label className="text-xs">Button opacity: {settings.buttonOpacity}%</Label>
+            <Slider
+              value={[settings.buttonOpacity]}
+              onValueChange={(val) => updateSetting("buttonOpacity", val[0])}
+              max={100}
+              step={5}
+              className="mt-2"
+              data-testid="slider-button-opacity"
+            />
+          </div>
+
+          {/* ── Text ──────────────────────────────────────────────────────── */}
+          <p className="text-[10px] uppercase tracking-wide text-muted-foreground pt-1">Text</p>
+          <div className="grid grid-cols-2 gap-3">
+            <ColorField
+              label="Brand title"
+              value={settings.brandTitleColor}
+              onChange={(v) => updateSetting("brandTitleColor", v)}
+              testId="brand-title-color"
+            />
+            <ColorField
+              label="Product title"
+              value={settings.productTitleColor}
+              onChange={(v) => updateSetting("productTitleColor", v)}
+              testId="product-title-color"
+            />
           </div>
         </TabsContent>
 
@@ -476,6 +491,38 @@ export function ProductCarouselEditor({
         </TabsContent>
 
         <TabsContent value="toggle" className="space-y-2 mt-3">
+          {/* ── Commerce on or off ────────────────────────────────────────────
+              The client asked for this as a radio rather than a switch, because
+              the two states are not "on" and "not on" — they are two different
+              ways of showing products, and the second needs describing. */}
+          <div className="rounded-lg border border-border p-3 space-y-2">
+            <Label className="text-xs font-medium">Commerce</Label>
+            <RadioGroup
+              value={settings.commerceEnabled ? "enabled" : "disabled"}
+              onValueChange={(v) => updateSetting("commerceEnabled", v === "enabled")}
+              className="gap-2"
+            >
+              <div className="flex items-start gap-2">
+                <RadioGroupItem value="enabled" id="commerce-on" className="mt-0.5" data-testid="radio-commerce-enabled" />
+                <Label htmlFor="commerce-on" className="text-xs font-normal leading-snug cursor-pointer">
+                  <span className="font-medium">Enable commerce</span>
+                  <span className="block text-muted-foreground">
+                    Products appear over the video while it plays, shoppable as they are shown.
+                  </span>
+                </Label>
+              </div>
+              <div className="flex items-start gap-2">
+                <RadioGroupItem value="disabled" id="commerce-off" className="mt-0.5" data-testid="radio-commerce-disabled" />
+                <Label htmlFor="commerce-off" className="text-xs font-normal leading-snug cursor-pointer">
+                  <span className="font-medium">Disable commerce</span>
+                  <span className="block text-muted-foreground">
+                    Nothing over the video. A product list appears at the end of playback instead.
+                  </span>
+                </Label>
+              </div>
+            </RadioGroup>
+          </div>
+
           <div className="flex items-center justify-between py-1">
             <Label className="text-xs">Show Thumbnail</Label>
             <Switch
