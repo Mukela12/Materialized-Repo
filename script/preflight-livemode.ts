@@ -112,12 +112,59 @@ async function dbChecks() {
   }
 }
 
+
+/**
+ * Who the platform's email appears to come from.
+ *
+ * ── Why this is a go-live check ──────────────────────────────────────────────
+ * Every email — verification, password resets, invoices, payout notices — left
+ * from `noreply@degreedesk.app` for months. That is a domain belonging to an
+ * unrelated project, and it was the only one verified on the Resend account, so
+ * nothing ever failed and nothing ever warned. Mail simply arrived looking like
+ * phishing, and landed in spam accordingly.
+ *
+ * It surfaced only because the client could not log in and someone went looking
+ * for why her password reset had not arrived. A recipient cannot report this —
+ * they never see the mail. So it has to be checked from the inside, before the
+ * first real customer is the one who does not receive their invoice.
+ */
+function emailChecks() {
+  console.log('\nEMAIL\n' + '-'.repeat(60));
+
+  const from = process.env.RESEND_FROM_EMAIL;
+  const site = (process.env.PUBLIC_SITE_DOMAIN ?? 'mtrlzd.com').toLowerCase();
+
+  if (!process.env.RESEND_API_KEY) {
+    line('RESEND_API_KEY', 'NOT SET — no email is sent at all', false);
+    return;
+  }
+  line('RESEND_API_KEY', 'set', true);
+
+  if (!from) {
+    // The code falls back to onboarding@resend.dev, which delivers but is
+    // obviously a placeholder to anyone who reads the sender.
+    line('RESEND_FROM_EMAIL', 'NOT SET — falls back to onboarding@resend.dev', false);
+    return;
+  }
+
+  const domain = from.split('@')[1]?.toLowerCase() ?? '';
+  const matches = domain === site || domain.endsWith('.' + site);
+  line('sender address', from, matches);
+
+  if (!matches) {
+    console.log(`     -> Mail leaves from "${domain}" but the product is "${site}".`);
+    console.log('        Recipients see a sender unrelated to the brand they signed');
+    console.log('        up with, which reads as phishing and is filtered as spam.');
+    console.log('        Verify the real domain in Resend and point this at it.');
+  }
+}
+
 (async () => {
   console.log('='.repeat(60));
   console.log(' STRIPE LIVE-MODE PREFLIGHT');
   console.log('='.repeat(60));
   if (DB_ONLY) await dbChecks();
-  else await stripeChecks();
+  else { await stripeChecks(); emailChecks(); }
   console.log('\nNothing above was modified. See docs/LIVE_CUTOVER.md.\n');
   process.exit(0);
 })().catch(e => { console.error('preflight failed:', e.message); process.exit(1); });
