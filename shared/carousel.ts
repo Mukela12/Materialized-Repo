@@ -298,3 +298,56 @@ export function sanitiseSettings(raw: Partial<CarouselSettings> | null | undefin
     commerceEnabled: typeof r.commerceEnabled === "boolean" ? r.commerceEnabled : d.commerceEnabled,
   };
 }
+
+/**
+ * What this video overrides, relative to the creator's defaults.
+ *
+ * ── Why a diff, and not just "save the settings" ─────────────────────────────
+ * The client's intent: "Product Carousel Styling are Default settings for this
+ * user and all of their videos. However, the user should have capabilities to
+ * edit each unique video setting."
+ *
+ * Both halves matter. If editing one video wrote all eighteen fields as
+ * overrides — which is what saving a whole settings object does — that video
+ * would be permanently detached from the brand kit. She changes her palette for
+ * a season, every video follows except the ones she once tweaked, and nothing
+ * on screen explains why. The override table's nullable columns exist precisely
+ * to avoid that: NULL means inherit.
+ *
+ * So only fields that actually DIFFER from the baseline are stored. Everything
+ * else is explicitly NULLed, which also means unticking a change restores
+ * inheritance rather than freezing the current value.
+ */
+export function overrideFromSettings(
+  base: CarouselSettings,
+  edited: CarouselSettings,
+): Record<string, any> {
+  const out: Record<string, any> = {};
+  for (const key of [...SHARED_KEYS, ...OVERRIDE_ONLY_KEYS]) {
+    const a = (base as any)[key];
+    const b = (edited as any)[key];
+    // Colours compare case-insensitively: a picker returns "#1F1B6D" for a
+    // stored "#1f1b6d", and storing that as an override would detach the field
+    // from the brand kit over a difference nobody can see.
+    const same = typeof a === "string" && typeof b === "string"
+      ? a.toLowerCase() === b.toLowerCase()
+      : a === b;
+    out[key] = same ? null : b;
+  }
+  return out;
+}
+
+/** Which fields this video overrides. For telling someone what is not inherited. */
+export function overriddenKeys(override: Record<string, any> | null | undefined): string[] {
+  if (!override) return [];
+  return [...SHARED_KEYS, ...OVERRIDE_ONLY_KEYS].filter(
+    (k) => override[k] !== null && override[k] !== undefined,
+  );
+}
+
+/** An override that inherits everything — used to reset a video to the defaults. */
+export function emptyOverride(): Record<string, any> {
+  const out: Record<string, any> = {};
+  for (const key of [...SHARED_KEYS, ...OVERRIDE_ONLY_KEYS]) out[key] = null;
+  return out;
+}

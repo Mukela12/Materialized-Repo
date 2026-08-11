@@ -2446,6 +2446,36 @@ export async function registerRoutes(
   });
 
   // Create or update carousel override for a video
+
+  /**
+   * This video's carousel override, as raw settings.
+   *
+   * Separate from GET /api/videos/:id/carousel, which reshapes the row into the
+   * product list the player wants and drops every styling column. The editor
+   * needs the columns themselves — and specifically needs to see which are NULL,
+   * because NULL is what "inherits from the Brand Kit" looks like.
+   */
+  app.get("/api/videos/:id/carousel/settings", async (req, res) => {
+    try {
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ error: "Authentication required" });
+      const video = await storage.getVideo(req.params.id);
+      if (!video) return res.status(404).json({ error: "Video not found" });
+      const actor = await storage.getUser(sessionUserId);
+      if (!actor?.isAdmin && video.creatorId !== sessionUserId) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+      const override = await storage.getVideoCarouselOverride(req.params.id);
+      if (!override) return res.json(null);
+      // manualProducts is a JSON blob of products, not styling; it is served by
+      // the other route and would only confuse this one.
+      const { manualProducts, ...settings } = override as any;
+      res.json(settings);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to load carousel settings" });
+    }
+  });
+
   app.post("/api/videos/:id/carousel", async (req, res) => {
     try {
       const sessionUserId = (req.session as any)?.userId;

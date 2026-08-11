@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { VideoCarouselOverride } from "@/components/VideoCarouselOverride";
 import { useUpload } from "@/hooks/use-upload";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
@@ -534,6 +535,15 @@ export function VideoDetailSheet({ video, open, onOpenChange }: Props) {
                 </TokenPayOption>
               </>
             )}
+          </div>
+
+          {/* ── Carousel styling for this video ──────────────────────────
+              Beside the product links, because they are the two things you
+              change about one video's carousel and she should not have to know
+              they live in different places. The Brand Kit is still where the
+              defaults are set; this is the per-video exception she asked for. */}
+          <div className="space-y-3 border border-border rounded-xl p-4 bg-muted/30">
+            <VideoCarouselOverride videoId={video.id} videoUrl={video.videoUrl} />
           </div>
 
           {/* Product Carousel Links */}
