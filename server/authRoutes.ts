@@ -1,4 +1,5 @@
 import { type Express } from "express";
+import { publicOrigin } from "./publicOrigin";
 import { storage } from "./storage";
 import { hashPassword, verifyPassword } from "./auth";
 import { checkRedeemable, grantsOf, normaliseCode } from "./vouchers";
@@ -194,7 +195,7 @@ export function registerAuthRoutes(app: Express) {
 
     // Send verification email
     if (isEmailConfigured()) {
-      const origin = req.headers.origin ?? `${req.protocol}://${req.headers.host}`;
+      const origin = req.headers.origin ?? publicOrigin(req);
       try {
         await sendVerificationEmail({
           email,
@@ -304,7 +305,7 @@ export function registerAuthRoutes(app: Express) {
     } as any);
 
     if (isEmailConfigured()) {
-      const origin = req.headers.origin ?? `${req.protocol}://${req.headers.host}`;
+      const origin = req.headers.origin ?? publicOrigin(req);
       try {
         await sendVerificationEmail({
           email: user.email,
@@ -342,7 +343,7 @@ export function registerAuthRoutes(app: Express) {
       } as any);
 
       if (isEmailConfigured()) {
-        const origin = req.headers.origin ?? `${req.protocol}://${req.headers.host}`;
+        const origin = req.headers.origin ?? publicOrigin(req);
         try {
           await sendPasswordResetEmail({
             email: user.email,

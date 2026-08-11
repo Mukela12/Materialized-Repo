@@ -11,6 +11,7 @@ import { recordSaleCommissions, clawbackSaleCommissions } from "./commissions";
 import { recordFeeAccrual, voidFeeAccrual } from "./feeAccruals";
 import { generateFeeInvoice, finalizeFeeInvoice } from "./feeInvoicing";
 import { quoteCheckout, checkoutIdempotencyKey, parsePriceToCents } from "./inVideoCheckout";
+import { publicOrigin } from "./publicOrigin";
 import { resolveEmbedSettings, embedCarouselCss, widgetInlineStyles } from "./embedCarousel";
 import {
   resolvePlaylistStyle, playlistFrameStyles, playlistPlaybackFlags,
@@ -189,7 +190,7 @@ export async function registerRoutes(
         await storage.updateUser(userId, { stripeCustomerId: customerId });
       }
 
-      const origin = req.headers.origin ?? `${req.protocol}://${req.headers.host}`;
+      const origin = req.headers.origin ?? publicOrigin(req);
       const successUrl = `${origin}/creator/settings/subscription?checkout=success`;
       const cancelUrl = `${origin}/creator/settings/subscription?checkout=cancelled`;
 
@@ -278,7 +279,7 @@ export async function registerRoutes(
         return res.status(400).json({ error: "No billing account on file. Please subscribe first." });
       }
 
-      const origin = req.headers.origin ?? `${req.protocol}://${req.headers.host}`;
+      const origin = req.headers.origin ?? publicOrigin(req);
       const portal = await stripeService.createBillingPortal(
         user.stripeCustomerId,
         `${origin}/creator/settings/subscription`,
@@ -709,7 +710,7 @@ export async function registerRoutes(
       // Send the referral email to the brand's PR contact, then mark it "sent".
       if (isEmailConfigured()) {
         try {
-          const signupUrl = `${req.protocol}://${req.get("host")}/register?ref=${referral.signupToken}`;
+          const signupUrl = `${publicOrigin(req)}/register?ref=${referral.signupToken}`;
           await sendReferralEmail({
             prContactName: referral.prContactName,
             prContactEmail: referral.prContactEmail,
@@ -746,7 +747,7 @@ export async function registerRoutes(
       // Send the referral email to the brand's PR contact, then mark it "sent".
       if (isEmailConfigured()) {
         try {
-          const signupUrl = `${req.protocol}://${req.get("host")}/register?ref=${referral.signupToken}`;
+          const signupUrl = `${publicOrigin(req)}/register?ref=${referral.signupToken}`;
           await sendReferralEmail({
             prContactName: referral.prContactName,
             prContactEmail: referral.prContactEmail,
@@ -790,7 +791,7 @@ export async function registerRoutes(
         return res.status(503).json({ error: "Email is not configured" });
       }
 
-      const signupUrl = `${req.protocol}://${req.get("host")}/register?ref=${referral.signupToken}`;
+      const signupUrl = `${publicOrigin(req)}/register?ref=${referral.signupToken}`;
       await sendReferralEmail({
         prContactName: referral.prContactName,
         prContactEmail: referral.prContactEmail,
@@ -825,7 +826,7 @@ export async function registerRoutes(
 
       const outreach = await storage.createBrandOutreach(data);
 
-      const baseUrl = `${req.protocol}://${req.get("host")}`;
+      const baseUrl = publicOrigin(req);
       const authorizeUrl = `${baseUrl}/brand-authorize/${outreach.authToken}`;
       const videoPreviewUrl = data.videoUrl
         ? `${baseUrl}/creator/my-videos`
@@ -911,7 +912,7 @@ export async function registerRoutes(
       // When DOCUSIGN_* is unset this returns the exact static fallback
       // (process.env.DOCUSIGN_SIGNING_URL ?? "https://app.docusign.com/templates");
       // when configured it mints a real embedded-signing envelope URL. Never throws.
-      const signCompleteUrl = `${req.protocol}://${req.get("host")}/brand-outreach/signed/${outreach.id}`;
+      const signCompleteUrl = `${publicOrigin(req)}/brand-outreach/signed/${outreach.id}`;
       const docuSignUrl = await resolveSigningUrl(outreach, signCompleteUrl);
 
       if (isEmailConfigured()) {
@@ -1578,7 +1579,7 @@ export async function registerRoutes(
   // Build the public base URL for outbound webhook registration. Same convention
   // used elsewhere in this file (APP_URL wins, then Origin, then the request host).
   const webhookBaseUrl = (req: any): string =>
-    process.env.APP_URL || req.headers.origin || `${req.protocol}://${req.headers.host}`;
+    process.env.APP_URL || req.headers.origin || publicOrigin(req);
 
   // The exact receiver address the store should sign + POST orders to.
   const receiverUrl = (req: any, platform: "shopify" | "woocommerce", connectionId: string): string =>
@@ -2201,7 +2202,7 @@ export async function registerRoutes(
       if (isEmailConfigured()) {
         try {
           const brandName = brands.find(b => b.id === useBrandId)?.name || "A brand";
-          const acceptUrl = `${req.protocol}://${req.get("host")}/register`;
+          const acceptUrl = `${publicOrigin(req)}/register`;
           await sendCreatorInvitationEmail({
             creatorName,
             creatorEmail,
@@ -2283,7 +2284,7 @@ export async function registerRoutes(
       // Notify each invited creator (best-effort; a failed send never fails the row).
       if (isEmailConfigured()) {
         const brandName = brands.find(b => b.id === useBrandId)?.name || "A brand";
-        const acceptUrl = `${req.protocol}://${req.get("host")}/register`;
+        const acceptUrl = `${publicOrigin(req)}/register`;
         for (const inv of created) {
           try {
             await sendCreatorInvitationEmail({
@@ -3132,7 +3133,7 @@ Identify which products from the catalog are most likely to appear or be feature
       const { widgetConfig } = req.body;
       
       // Generate embed code with UTM tracking
-      const baseUrl = process.env.APP_URL || req.headers.origin || `${req.protocol}://${req.headers.host}`;
+      const baseUrl = process.env.APP_URL || req.headers.origin || publicOrigin(req);
       const embedCode = generateEmbedCode(video.id, baseUrl, widgetConfig);
 
       // Create publish record
@@ -3207,7 +3208,7 @@ Identify which products from the catalog are most likely to appear or be feature
       // they can accept via POST /api/affiliates/accept/:token), then mark "sent".
       if (isEmailConfigured()) {
         try {
-          const acceptUrl = `${req.protocol}://${req.get("host")}/affiliate/accept/${invitation.inviteToken}`;
+          const acceptUrl = `${publicOrigin(req)}/affiliate/accept/${invitation.inviteToken}`;
           await sendAffiliateInvitationEmail({
             affiliateName: invitation.affiliateName,
             affiliateEmail: invitation.email,
@@ -3264,7 +3265,7 @@ Identify which products from the catalog are most likely to appear or be feature
       if (isEmailConfigured()) {
         for (const inv of created) {
           try {
-            const acceptUrl = `${req.protocol}://${req.get("host")}/affiliate/accept/${inv.inviteToken}`;
+            const acceptUrl = `${publicOrigin(req)}/affiliate/accept/${inv.inviteToken}`;
             await sendAffiliateInvitationEmail({
               affiliateName: inv.affiliateName,
               affiliateEmail: inv.email,
@@ -3361,7 +3362,7 @@ Identify which products from the catalog are most likely to appear or be feature
       const assignment = await storage.createCampaignAffiliate(validatedData);
 
       // Generate personalized embed code for affiliate
-      const baseUrl = process.env.APP_URL || req.headers.origin || `${req.protocol}://${req.headers.host}`;
+      const baseUrl = process.env.APP_URL || req.headers.origin || publicOrigin(req);
       const embedCode = generateAffiliateEmbedCode(video.id, assignment.utmCode!, baseUrl);
       await storage.updateCampaignAffiliateStats(assignment.id, { embedCode });
 
@@ -4040,7 +4041,7 @@ Identify which products from the catalog are most likely to appear or be feature
       // Get listing and video for embed code generation
       const listing = await storage.getGlobalVideoListing(purchase.globalListingId);
       if (listing) {
-        const baseUrl = process.env.APP_URL || req.headers.origin || `${req.protocol}://${req.headers.host}`;
+        const baseUrl = process.env.APP_URL || req.headers.origin || publicOrigin(req);
         const embedCode = generateAffiliateEmbedCode(listing.videoId, purchase.utmCode!, baseUrl);
         
         // Update purchase with embed code
@@ -4144,7 +4145,7 @@ Identify which products from the catalog are most likely to appear or be feature
       // finish connecting an account. Use the same convention as every other
       // redirect in this file.
       const baseUrl =
-        process.env.APP_URL || req.headers.origin || `${req.protocol}://${req.headers.host}`;
+        process.env.APP_URL || req.headers.origin || publicOrigin(req);
       const accountLink = await stripeService.createConnectAccountLink(
         user.stripeConnectAccountId,
         `${baseUrl}/affiliate/settings`,
@@ -5116,7 +5117,7 @@ Identify which products from the catalog are most likely to appear or be feature
         await storage.updateUser(user.id, { stripeCustomerId: customerId } as any);
       }
 
-      const baseUrl = process.env.APP_URL || req.headers.origin || `${req.protocol}://${req.get("host")}`;
+      const baseUrl = process.env.APP_URL || publicOrigin(req);
       const session = await stripeService.createCardSetupCheckout(
         customerId,
         `${baseUrl}/creator/more?card=saved`,
@@ -5700,7 +5701,7 @@ Identify which products from the catalog are most likely to appear or be feature
         await storage.updateUser(userId, { stripeCustomerId: customerId });
       }
 
-      const origin = req.headers.origin ?? `${req.protocol}://${req.headers.host}`;
+      const origin = req.headers.origin ?? publicOrigin(req);
       const session = await stripeService.createSubscriptionCheckout(
         customerId,
         plan,
@@ -5727,7 +5728,7 @@ Identify which products from the catalog are most likely to appear or be feature
         return res.status(400).json({ error: "No billing account on file. Please subscribe first." });
       }
 
-      const origin = req.headers.origin ?? `${req.protocol}://${req.headers.host}`;
+      const origin = req.headers.origin ?? publicOrigin(req);
       const portal = await stripeService.createBillingPortal(
         user.stripeCustomerId,
         `${origin}/brand/settings/subscription`,
@@ -6321,7 +6322,7 @@ Identify which products from the catalog are most likely to appear or be feature
     // div, which is how the generated embed code is shaped.
     const bootOnly = !Number.isInteger(playlistId) || playlistId <= 0;
     if (bootOnly) {
-      const apiBase = `${req.protocol}://${req.get("host")}`;
+      const apiBase = publicOrigin(req);
       return res.send(playlistBootstrapScript(apiBase));
     }
 
@@ -6336,7 +6337,7 @@ Identify which products from the catalog are most likely to appear or be feature
       const style = resolvePlaylistStyle(playlist as any);
       const styles = playlistFrameStyles(style);
       const flags = playlistPlaybackFlags(style);
-      const apiBase = `${req.protocol}://${req.get("host")}`;
+      const apiBase = publicOrigin(req);
 
       const items = await storage.getPlaylistItems(playlistId);
       const resolved: any[] = [];
@@ -6405,7 +6406,7 @@ Identify which products from the catalog are most likely to appear or be feature
         buyable: o.priceCents != null && o.priceCents > 0,
       }));
 
-      const apiBase = `${req.protocol}://${req.get("host")}`;
+      const apiBase = publicOrigin(req);
 
       /**
        * THE CAROUSEL'S APPEARANCE.
@@ -6638,7 +6639,7 @@ ${embedCarouselCss(carousel)}
         productUrl: appendUtm(o.productUrl, utm),
       }));
 
-      const apiBase = `${req.protocol}://${req.get("host")}`;
+      const apiBase = publicOrigin(req);
       const safeVideoUrl = (video.videoUrl || "").replace(/"/g, '\\"');
 
       // Same resolution and sanitising as the iframe embed, so the two surfaces
