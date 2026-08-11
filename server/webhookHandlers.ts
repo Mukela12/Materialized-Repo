@@ -1,4 +1,5 @@
 import Stripe from 'stripe';
+import { computeCreatorBonus } from "./creatorBonus";
 import { getUncachableStripeClient } from './stripeClient';
 import { storage } from './storage';
 import { stripeService } from './stripeService';
@@ -458,6 +459,79 @@ async function handleInvoicePaymentSucceeded(invoice: Stripe.Invoice): Promise<v
     stripeSubscriptionId: subscriptionId,
     planResolved,
   });
+
+  /**
+   * And the creator's 5% of this payment.
+   *
+   * Separate from the token mint above on purpose. That is one $49 token per
+   * brand, ever; this is cash, on EVERY paid invoice, and it does not care
+   * which tier the brand is on — 5% of what was paid is well defined whatever
+   * the plan, so it deliberately does not inherit the token's plan gate.
+   *
+   * It is also not gated on `planResolved`. The token refuses to mint on an
+   * unidentified plan because its $49 is a flat amount that a custom price
+   * could clear without deserving; a percentage of the actual payment has no
+   * such hole — an unrecognised $10 price simply earns 50 cents.
+   */
+  await recordCreatorBonusSafely({
+    subscriberUserId: user.id,
+    amountPaidCents: invoice.amount_paid ?? 0,
+    stripeInvoiceId: invoice.id ?? "",
+    stripeSubscriptionId: subscriptionId,
+  });
+}
+
+/**
+ * Bonus wrapper that CANNOT throw, for the same reason the mint has one:
+ * dispatchStripeEvent swallows handler errors, so an uncaught failure here
+ * would be entirely silent.
+ */
+async function recordCreatorBonusSafely(args: {
+  subscriberUserId: string;
+  amountPaidCents: number;
+  stripeInvoiceId: string;
+  stripeSubscriptionId: string | null;
+}): Promise<void> {
+  // No invoice id means no idempotency key, and without one a Stripe redelivery
+  // pays the creator twice. Refuse rather than record something unrepeatable.
+  if (!args.stripeInvoiceId) {
+    console.warn('[Bonus] No invoice id on invoice.payment_succeeded — skipped');
+    return;
+  }
+  try {
+    const result = await computeCreatorBonus(storage as any, args);
+    if (!result.earned) {
+      if (result.reason !== 'no_owned_brand' && result.reason !== 'no_attribution') {
+        console.log(`[Bonus] None for invoice ${args.stripeInvoiceId} — ${result.reason}`);
+      }
+      return;
+    }
+    const row = await storage.recordCreatorBonus({
+      creatorId: result.creatorId,
+      brandId: result.brandId,
+      subscriberUserId: args.subscriberUserId,
+      stripeInvoiceId: args.stripeInvoiceId,
+      stripeSubscriptionId: args.stripeSubscriptionId,
+      basisCents: result.basisCents,
+      ratePct: String(result.ratePct),
+      amountCents: result.amountCents,
+      attributedVideoId: result.attributedVideoId,
+      attributionMethod: result.attributionMethod,
+    } as any);
+
+    if (!row) {
+      // The unique index rejected it — a redelivery or a replay. Expected.
+      console.log(`[Bonus] Already recorded for invoice ${args.stripeInvoiceId}`);
+      return;
+    }
+    console.log(
+      `[Bonus] ${result.amountCents}c to creator ${result.creatorId} ` +
+      `(${result.ratePct}% of ${result.basisCents}c, brand ${result.brandId}, ` +
+      `invoice ${args.stripeInvoiceId})`,
+    );
+  } catch (err) {
+    console.error(`[Bonus] Failed for invoice ${args.stripeInvoiceId}:`, err);
+  }
 }
 
 /**
@@ -698,6 +772,28 @@ async function handleChargeRefunded(charge: Stripe.Charge): Promise<void> {
   if (!invoiceId) {
     console.log(`[Webhook] charge.refunded: charge ${charge.id} not tied to an invoice — ignoring (likely a one-off/license charge)`);
     return;
+  }
+
+  /**
+   * CLAW THE BONUS BACK FIRST, BEFORE the partial-refund early return.
+   *
+   * A partial refund leaves the subscription active — correct, and why that
+   * return exists. But it does NOT mean the creator should keep 5% of money the
+   * brand got back. Reversing on any refund of the invoice is the safe
+   * direction: the alternative is paying a creator a share of revenue the
+   * platform has refunded, out of the platform's own account.
+   *
+   * Only rows still 'approved' move. One already transferred needs a real
+   * clawback against the creator's balance — the existing negative-commission
+   * path — and must not be quietly rewritten to look unpaid.
+   */
+  try {
+    const reversed = await storage.reverseCreatorBonusesForInvoice(invoiceId);
+    if (reversed > 0) {
+      console.log(`[Bonus] Reversed ${reversed} unpaid bonus row(s) for refunded invoice ${invoiceId}`);
+    }
+  } catch (err) {
+    console.error(`[Bonus] Failed to reverse for invoice ${invoiceId}:`, err);
   }
 
   const fullyRefunded = charge.amount_refunded >= charge.amount;

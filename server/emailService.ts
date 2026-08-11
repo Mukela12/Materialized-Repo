@@ -1,6 +1,19 @@
 import { Resend } from "resend";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+/**
+ * Constructed on first use, not at import.
+ *
+ * `new Resend(undefined)` THROWS. Building it at module scope meant that
+ * importing anything that transitively reached this file — the payout runner,
+ * for one — exploded the moment no key was set, which is every test run. The
+ * module already has isEmailConfigured() for the no-key case; the constructor
+ * was simply running before anyone could check.
+ */
+let _resend: Resend | null = null;
+function client(): Resend {
+  if (!_resend) _resend = new Resend(process.env.RESEND_API_KEY);
+  return _resend;
+}
 
 const FROM_ADDRESS = process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev";
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "missbethanieashton@gmail.com";
@@ -50,7 +63,7 @@ function baseTemplate(body: string): string {
 }
 
 async function sendEmail(to: string, subject: string, html: string, replyTo?: string): Promise<void> {
-  await resend.emails.send({
+  await client().emails.send({
     from: `Materialized <${FROM_ADDRESS}>`,
     to,
     subject,

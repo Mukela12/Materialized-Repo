@@ -1,4 +1,7 @@
 import { randomUUID } from "crypto";
+// The same 23505 check the wallet uses — one definition of "the unique
+// index rejected this", so both money paths agree on what a duplicate is.
+import { isUniqueViolation } from "./wallet";
 import { eq, desc, asc, sql, and, inArray, isNull, gte, lt } from "drizzle-orm";
 import { db } from "./db";
 import { LICENSE_FEE_DECIMAL } from "@shared/pricing";
@@ -19,6 +22,7 @@ export interface FeeAccrualSummaryRow {
   platformCents: number;
 }
 import {
+  creatorBonuses, type CreatorBonus, type InsertCreatorBonus,
   type User, type InsertUser,
   type Brand, type InsertBrand,
   type Product, type InsertProduct,
@@ -220,6 +224,15 @@ export interface IStorage {
   getCommissionsByPayoutId(payoutId: string): Promise<CommissionTransaction[]>;
   getCommissionTransaction(id: string): Promise<CommissionTransaction | undefined>;
   markCommissionsPaid(commissionIds: string[], payoutId: string): Promise<void>;
+
+  // ── Creator subscription bonuses (0024) ──────────────────────────────────
+  /** Insert one. Returns null when this invoice already paid this creator. */
+  recordCreatorBonus(b: InsertCreatorBonus): Promise<CreatorBonus | null>;
+  getCreatorBonusesByStatus(status: string): Promise<CreatorBonus[]>;
+  markCreatorBonusesPaid(ids: string[], payoutId: string): Promise<void>;
+  /** Clawback: a refunded or disputed invoice reverses its bonus. */
+  reverseCreatorBonusesForInvoice(stripeInvoiceId: string): Promise<number>;
+  getCreatorBonusesForUser(creatorId: string): Promise<CreatorBonus[]>;
   markCommissionsReversed(commissionIds: string[]): Promise<void>;
   hasCommissionForExternalOrder(externalOrderId: string, storeConnectionId?: string | null): Promise<boolean>;
 
@@ -481,6 +494,7 @@ export interface IStorage {
 }
 
 export class MemStorage implements IStorage {
+  private creatorBonusesMap = new Map<string, any>();
   private users: Map<string, User> = new Map();
   private brands: Map<string, Brand> = new Map();
   private products: Map<string, Product> = new Map();
@@ -2287,6 +2301,43 @@ export class MemStorage implements IStorage {
       }
     }
   }
+  // ── Creator subscription bonuses ─────────────────────────────────────────
+
+  async recordCreatorBonus(b: any): Promise<any | null> {
+    // Mirrors the real unique index, so a test exercising redelivery behaves
+    // the same here as in Postgres.
+    const clash = Array.from(this.creatorBonusesMap.values()).find(
+      (x: any) => x.stripeInvoiceId === b.stripeInvoiceId && x.creatorId === b.creatorId,
+    );
+    if (clash) return null;
+    const row = { id: randomUUID(), status: "approved", payoutId: null, createdAt: new Date(), ...b };
+    this.creatorBonusesMap.set(row.id, row);
+    return row;
+  }
+
+  async getCreatorBonusesByStatus(status: string): Promise<any[]> {
+    return Array.from(this.creatorBonusesMap.values()).filter((b: any) => b.status === status);
+  }
+
+  async markCreatorBonusesPaid(ids: string[], payoutId: string): Promise<void> {
+    for (const id of ids) {
+      const b: any = this.creatorBonusesMap.get(id);
+      if (b && b.status === "approved") { b.status = "paid"; b.payoutId = payoutId; }
+    }
+  }
+
+  async reverseCreatorBonusesForInvoice(stripeInvoiceId: string): Promise<number> {
+    let n = 0;
+    for (const b of Array.from(this.creatorBonusesMap.values()) as any[]) {
+      if (b.stripeInvoiceId === stripeInvoiceId && b.status === "approved") { b.status = "reversed"; n++; }
+    }
+    return n;
+  }
+
+  async getCreatorBonusesForUser(creatorId: string): Promise<any[]> {
+    return Array.from(this.creatorBonusesMap.values()).filter((b: any) => b.creatorId === creatorId);
+  }
+
 
   async markCommissionsReversed(commissionIds: string[]): Promise<void> {
     for (const id of commissionIds) {
@@ -3942,6 +3993,61 @@ export class DatabaseStorage implements IStorage {
       .set({ status: "paid", payoutId })
       .where(and(inArray(commissionTransactions.id, commissionIds), eq(commissionTransactions.status, "approved")));
   }
+  // ── Creator subscription bonuses ─────────────────────────────────────────
+
+  async recordCreatorBonus(b: InsertCreatorBonus): Promise<CreatorBonus | null> {
+    try {
+      const [row] = await db.insert(creatorBonuses).values(b).returning();
+      return row;
+    } catch (err) {
+      /**
+       * The unique index on (stripe_invoice_id, creator_id) did its job.
+       *
+       * Stripe redelivers invoice.payment_succeeded on retry and on any manual
+       * replay, and two deliveries can arrive at once. Letting the database
+       * decide is the only version that holds under that race — a read-then-
+       * insert check has both callers read nothing and both insert.
+       */
+      if (isUniqueViolation(err)) return null;
+      throw err;
+    }
+  }
+
+  async getCreatorBonusesByStatus(status: string): Promise<CreatorBonus[]> {
+    return db.select().from(creatorBonuses)
+      .where(eq(creatorBonuses.status, status as any));
+  }
+
+  async markCreatorBonusesPaid(ids: string[], payoutId: string): Promise<void> {
+    if (ids.length === 0) return;
+    // Same guard as commissions: only advance rows still "approved", so a
+    // clawback landing mid-run cannot be overwritten back into a payment.
+    await db.update(creatorBonuses)
+      .set({ status: "paid", payoutId })
+      .where(and(inArray(creatorBonuses.id, ids), eq(creatorBonuses.status, "approved")));
+  }
+
+  async reverseCreatorBonusesForInvoice(stripeInvoiceId: string): Promise<number> {
+    // Only rows not yet paid out can be reversed here. One already transferred
+    // needs a real clawback against the creator's balance, which is the
+    // existing negative-commission path and not something to fake with a
+    // status change.
+    const rows = await db.update(creatorBonuses)
+      .set({ status: "reversed" })
+      .where(and(
+        eq(creatorBonuses.stripeInvoiceId, stripeInvoiceId),
+        eq(creatorBonuses.status, "approved"),
+      ))
+      .returning({ id: creatorBonuses.id });
+    return rows.length;
+  }
+
+  async getCreatorBonusesForUser(creatorId: string): Promise<CreatorBonus[]> {
+    return db.select().from(creatorBonuses)
+      .where(eq(creatorBonuses.creatorId, creatorId))
+      .orderBy(desc(creatorBonuses.createdAt)).limit(500);
+  }
+
 
   async markCommissionsReversed(commissionIds: string[]): Promise<void> {
     if (commissionIds.length === 0) return;

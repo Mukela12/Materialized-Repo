@@ -708,6 +708,61 @@ export const commissionTransactions = pgTable("commission_transactions", {
     .where(sql`${t.externalOrderId} IS NOT NULL`),
 }));
 
+/**
+ * The creator's 5% share of a subscription they brought in.
+ *
+ * ── Why its own table, and not commission_transactions ───────────────────────
+ * A commission row is sale-shaped: it REQUIRES a videoId and hangs off a
+ * product, an analytics event and a store order. A subscription payment has
+ * none of those. Forcing one in would mean a fake videoId on a money row and
+ * would corrupt every sales report that counts commission rows as sales.
+ *
+ * It is still paid by the SAME engine — approved rows, batched per creator,
+ * transferred over Connect — because a second payout path is a second place for
+ * money to go wrong unattended.
+ *
+ * ── The unique index IS the idempotency ──────────────────────────────────────
+ * Stripe delivers invoice.payment_succeeded more than once: on retry after a
+ * timeout, and again on a manual replay from the dashboard. A code-level "have
+ * I seen this?" check loses that race under concurrent delivery. The database
+ * decides instead, on (stripe_invoice_id, creator_id) — the second insert
+ * violates and is caught as "already recorded".
+ */
+export const creatorBonuses = pgTable("creator_bonuses", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  /** Who earns it — the creator who first tagged the brand. */
+  creatorId: varchar("creator_id").notNull().references(() => users.id),
+  /** The brand whose subscription generated it. */
+  brandId: varchar("brand_id").notNull().references(() => brands.id),
+  /** The account that was actually charged. */
+  subscriberUserId: varchar("subscriber_user_id").notNull().references(() => users.id),
+
+  stripeInvoiceId: text("stripe_invoice_id").notNull(),
+  stripeSubscriptionId: text("stripe_subscription_id"),
+
+  /** What was actually paid, in cents — Stripe's own amount_paid, not a list price. */
+  basisCents: integer("basis_cents").notNull(),
+  ratePct: decimal("rate_pct", { precision: 5, scale: 2 }).notNull(),
+  /** The payable amount. Stored in cents; a transfer is made in cents. */
+  amountCents: integer("amount_cents").notNull(),
+
+  status: commissionStatusEnum("status").default("approved"),
+  payoutId: varchar("payout_id").references(() => affiliatePayouts.id),
+
+  /** Kept so an attribution can be explained, and audited, months later. */
+  attributedVideoId: varchar("attributed_video_id").references(() => videos.id),
+  attributionMethod: text("attribution_method"),
+
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
+}, (t) => ({
+  invoiceCreatorUniq: uniqueIndex("creator_bonus_invoice_creator_uniq")
+    .on(t.stripeInvoiceId, t.creatorId),
+  creatorStatusIdx: index("creator_bonus_creator_status_idx").on(t.creatorId, t.status),
+}));
+
+export type CreatorBonus = typeof creatorBonuses.$inferSelect;
+export type InsertCreatorBonus = typeof creatorBonuses.$inferInsert;
+
 // Admin-editable platform fee/commission defaults (single "singleton" row).
 // Null columns fall back to the env/code defaults (15 / 8 / 2).
 export const platformSettings = pgTable("platform_settings", {

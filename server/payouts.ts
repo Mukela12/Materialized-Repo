@@ -35,6 +35,20 @@ import { MIN_PAYOUT_CENTS } from "../shared/pricing";
  */
 export const DEFAULT_MIN_TRANSFER_CENTS = MIN_PAYOUT_CENTS;
 
+/**
+ * Marks a payable id as coming from creator_bonuses rather than
+ * commission_transactions.
+ *
+ * Both tables use uuids, so once their rows are in one list a prefix is the
+ * only thing telling them apart — and getting that wrong means marking the
+ * WRONG table paid, leaving real rows approved to be paid again next run.
+ *
+ * It lives here, in the engine, rather than in payoutRunner: importing the
+ * runner pulls in emailService, and a constant that money-routing depends on
+ * should be reachable without dragging half the server in behind it.
+ */
+export const BONUS_ID_PREFIX = "bonus:";
+
 export interface PayableCommission {
   id: string;
   affiliateId: string;
