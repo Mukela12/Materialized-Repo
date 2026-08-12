@@ -331,10 +331,29 @@
   }
 
   /* Does not work on elements with overflow:hidden! */
-  .hover-elevate:not(.no-default-hover-elevate),
-  .active-elevate:not(.no-default-active-elevate),
-  .hover-elevate-2:not(.no-default-hover-elevate),
-  .active-elevate-2:not(.no-default-active-elevate) {
+  /**
+   * The ::after overlay needs a positioned parent and its own stacking
+   * context — but WRAPPED IN :where(), which has ZERO specificity.
+   *
+   * These selectors read `.hover-elevate:not(.no-default-hover-elevate)`,
+   * which is specificity (0,2,0) and therefore beat Tailwind's `.absolute`
+   * and `.z-20` at (0,1,0) — regardless of source order. Every Button in the
+   * app placed with `absolute` was silently computing `position: relative`
+   * instead, and falling back to its normal flow position with the top/right
+   * offsets applied from there.
+   *
+   * The client saw it as the ⋮ menu on a video card sitting at the bottom
+   * left, half outside the card: `absolute top-2 right-2` was resolving to
+   * "8px down and 8px left of wherever it happened to land". Eight components
+   * position a Button this way, so all eight were wrong.
+   *
+   * :where() keeps the default for anything that sets no position of its own,
+   * while letting a utility class win the moment one is applied.
+   */
+  :where(.hover-elevate:not(.no-default-hover-elevate)),
+  :where(.active-elevate:not(.no-default-active-elevate)),
+  :where(.hover-elevate-2:not(.no-default-hover-elevate)),
+  :where(.active-elevate-2:not(.no-default-active-elevate)) {
     position: relative;
     z-index: 0;
   }
