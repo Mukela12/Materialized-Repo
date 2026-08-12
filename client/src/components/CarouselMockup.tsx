@@ -120,6 +120,22 @@ export function CarouselMockup({
       )}
 
       <div className="flex-1 min-w-0">
+        {/* The brand name — what brandTitleColor colours. Previously the
+            carousel showed no brand line at all, so that control had nothing
+            of its own to affect and had been pointed at the price instead. */}
+        {settings.showTitle && (
+          <p
+            className="truncate uppercase tracking-wide"
+            style={{
+              color: settings.brandTitleColor,
+              opacity: 0.85,
+              fontFamily: fontStack(settings.titleFont),
+              fontSize: px(8 * (settings.titleFontSize / 100)),
+            }}
+          >
+            Brand Name
+          </p>
+        )}
         {settings.showTitle && (
           <p
             className="font-medium truncate"
@@ -135,7 +151,10 @@ export function CarouselMockup({
         {settings.showPrice && (
           <p
             style={{
-              color: settings.brandTitleColor,
+              // The price sits with the product, so it follows the product
+              // title's colour. Binding it to brandTitleColor is what made
+              // "Brand title colour" appear to control the price.
+              color: settings.productTitleColor,
               opacity: 0.8,
               fontSize: px(10 * (settings.priceFontSize / 100)),
             }}

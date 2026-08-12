@@ -93,10 +93,25 @@ export function embedCarouselCss(raw: CarouselSettings): string {
       font-size:calc(clamp(8px,2vw,11px) * ${s.titleFontSize / 100});
       ${s.showTitle ? "" : "display:none;"}
     }
+    /* PRICE FOLLOWS THE PRODUCT TITLE, NOT THE BRAND TITLE.
+       It was bound to brandTitleColor, so changing "Brand title colour"
+       recoloured the price and nothing else — the client reported exactly
+       that. The price belongs to the product line; the brand name is its own
+       element, styled below. */
     .product-price{
-      color:${s.brandTitleColor};
+      color:${s.productTitleColor};
       font-size:calc(clamp(7px,1.8vw,10px) * ${s.priceFontSize / 100});
       ${s.showPrice ? "" : "display:none;"}
+    }
+    /* The brand name — what brandTitleColor is actually for. */
+    .product-brand{
+      color:${s.brandTitleColor};
+      font-family:${fontStack(s.titleFont)};
+      font-size:calc(clamp(6px,1.5vw,9px) * ${s.titleFontSize / 100});
+      text-transform:uppercase;
+      letter-spacing:.04em;
+      opacity:.85;
+      ${s.showTitle ? "" : "display:none;"}
     }
     .product-card img{ ${s.showThumbnail ? "" : "display:none;"} }
     .buy-btn{
@@ -162,8 +177,12 @@ export function widgetInlineStyles(raw: CarouselSettings) {
       `overflow:hidden;text-overflow:ellipsis;white-space:nowrap;` +
       `${s.showTitle ? "" : "display:none;"}`,
     price:
-      `font-size:calc(9px * ${s.priceFontSize / 100});color:${s.brandTitleColor};font-weight:700;` +
+      `font-size:calc(9px * ${s.priceFontSize / 100});color:${s.productTitleColor};font-weight:700;` +
       `${s.showPrice ? "" : "display:none;"}`,
+    brand:
+      `font-size:calc(7px * ${s.titleFontSize / 100});color:${s.brandTitleColor};` +
+      `text-transform:uppercase;letter-spacing:.04em;opacity:.85;` +
+      `font-family:${fontStack(s.titleFont)};${s.showTitle ? "" : "display:none;"}`,
   };
 }
 

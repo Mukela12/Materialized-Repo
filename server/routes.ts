@@ -6707,6 +6707,10 @@ ${embedCarouselCss(carousel)}
       var a=document.createElement("a");
       a.href=p.productUrl||"#";a.target="_blank";a.rel="noopener";a.className="product-card";
       if(p.imageUrl){var img=document.createElement("img");img.src=p.imageUrl;img.alt=p.name;a.appendChild(img);}
+      // The brand line. brandTitleColor had nothing of its own to colour, so
+      // it had been pointed at the price — which is what the client saw as
+      // "Brand Title color changes the Price color".
+      if(p.brandName){var bd=document.createElement("div");bd.className="product-brand";bd.textContent=p.brandName;a.appendChild(bd);}
       var nameDiv=document.createElement("div");nameDiv.className="product-name";nameDiv.textContent=p.name;a.appendChild(nameDiv);
       if(p.price){var priceDiv=document.createElement("div");priceDiv.className="product-price";priceDiv.textContent=CURRENCY_SYMBOL+p.price;a.appendChild(priceDiv);}
       a.addEventListener("click",function(){track("click")});
@@ -6839,6 +6843,9 @@ ${embedCarouselCss(carousel)}
       const overlays = await storage.getVideoProductOverlays(video.id);
       const products = overlays.map(o => ({
         name: (o.name || "").replace(/"/g, '\\"'),
+        // The widget rendered no brand line, so brandTitleColor had nothing to
+        // colour here either. Same fix as the iframe embed.
+        brandName: (o.brandName || "").replace(/[<>"'&]/g, ""),
         imageUrl: o.imageUrl,
         price: o.price,
         productUrl: appendUtm(o.productUrl, utm),
@@ -6885,6 +6892,7 @@ ${embedCarouselCss(carousel)}
       a.href=p.productUrl||"#";a.target="_blank";a.rel="noopener";
       a.style.cssText=WSTYLE.card;
       if(p.imageUrl){var img=document.createElement("img");img.src=p.imageUrl;img.alt=p.name;img.style.cssText=WSTYLE.image;a.appendChild(img);}
+      if(p.brandName){var bd=document.createElement("div");bd.style.cssText=WSTYLE.brand;bd.textContent=p.brandName;a.appendChild(bd);}
       var nd=document.createElement("div");nd.style.cssText=WSTYLE.name;
       nd.textContent=p.name||"";a.appendChild(nd);
       if(p.price){var pd=document.createElement("div");pd.style.cssText=WSTYLE.price;pd.textContent=CURRENCY_SYMBOL+p.price;a.appendChild(pd);}

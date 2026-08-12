@@ -38,7 +38,24 @@ const DialogContent = React.forwardRef<
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
-        "fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] sm:rounded-lg",
+        /**
+         * max-h + overflow, on the BASE component.
+         *
+         * A dialog is centred with `top-50% translate-y-[-50%]` and had no
+         * height cap, so anything taller than the viewport overflowed off BOTH
+         * ends with nothing scrollable — you could reach neither the top nor
+         * the bottom. The client hit it on the playlist checkout: the "Use 1
+         * token" button was below the fold and unreachable, so a playlist
+         * simply could not be paid for on a laptop screen.
+         *
+         * Fixed here rather than on that one dialog, because every tall dialog
+         * in the app has the same fault and would acquire it again the next
+         * time one grew.
+         *
+         * dvh, not vh: on mobile Safari `vh` ignores the browser chrome, which
+         * is precisely the case where the overflow bites hardest.
+         */
+        "fixed left-[50%] top-[50%] z-50 grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] max-h-[calc(100dvh-2rem)] overflow-y-auto gap-4 border bg-background p-6 shadow-lg duration-200 data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[state=closed]:slide-out-to-left-1/2 data-[state=closed]:slide-out-to-top-[48%] data-[state=open]:slide-in-from-left-1/2 data-[state=open]:slide-in-from-top-[48%] sm:rounded-lg",
         className
       )}
       {...props}

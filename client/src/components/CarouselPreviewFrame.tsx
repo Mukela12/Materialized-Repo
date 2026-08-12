@@ -70,11 +70,28 @@ export function CarouselPreviewFrame({
         <div
           className="relative shrink-0"
           style={{
+            /**
+             * WIDTH AND ASPECT ONLY. The height is derived.
+             *
+             * This previously set `height` AND `aspectRatio` AND `maxWidth:100%`
+             * together. Three constraints for two degrees of freedom: as soon as
+             * maxWidth bound, the width shrank while the height stayed put, so
+             * the box was no longer the video's shape. `object-contain` then
+             * letterboxed inside it — and because the carousel is positioned
+             * against the BOX, "bottom" landed on the black bar rather than on
+             * the picture.
+             *
+             * The client, exactly: "There should be zero black frame though...
+             * The product carousel therefore must sit on the video and not get
+             * cropped out."
+             *
+             * With width and aspect-ratio set and max-height as the only cap,
+             * the browser shrinks the width to keep the ratio — so the box is
+             * always precisely the video, and there is nothing to letterbox.
+             */
+            width: zoom === 1 ? "100%" : `calc(100% * ${zoom})`,
             aspectRatio: String(aspect),
-            height: maxHeight * zoom,
-            // Never wider than the panel at rest, or a 16:9 video overflows
-            // horizontally before anyone has asked it to.
-            maxWidth: zoom === 1 ? "100%" : undefined,
+            maxHeight: maxHeight * zoom,
           }}
         >
           {videoUrl ? (
