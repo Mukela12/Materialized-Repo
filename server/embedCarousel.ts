@@ -123,6 +123,17 @@ export function embedCarouselCss(raw: CarouselSettings): string {
       ${s.showButton ? "" : "display:none;"}
     }
     .buy-btn:hover{ background:${s.buttonHoverColor}; }
+    /* ── The end-of-video list, when commerce is off ──────────────────────
+       Its elements reuse .product-brand/.product-name/.product-price/.buy-btn
+       above, so the client's show/hide toggles apply to BOTH places without
+       being decided twice. Only the layout differs. */
+    .end-thumb{
+      width:44px;height:44px;object-fit:cover;border-radius:6px;flex:0 0 auto;
+      ${s.showThumbnail ? "" : "display:none;"}
+    }
+    .end-cta{
+      width:auto;padding:4px 12px;flex:0 0 auto;
+    }
     /* Commerce off: nothing over the video during playback. The end-of-video
        list is rendered by the embed's own script, not by this rule. */
     ${s.commerceEnabled ? "" : "#carousel{display:none}"}

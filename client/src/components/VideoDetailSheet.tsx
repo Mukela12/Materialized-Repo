@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { ImageDropField } from "@/components/ImageDropField";
 import { VideoCarouselOverride } from "@/components/VideoCarouselOverride";
 import { useUpload } from "@/hooks/use-upload";
 import { useMutation, useQuery } from "@tanstack/react-query";
@@ -721,15 +722,14 @@ export function VideoDetailSheet({ video, open, onOpenChange }: Props) {
                   <Label className="text-xs">Product URL</Label>
                   <Input data-testid="input-overlay-url" placeholder="https://shop.example.com/product" value={oUrl} onChange={(e) => setOUrl(e.target.value)} className="h-8 text-sm" />
                 </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <div className="space-y-1">
-                    <Label className="text-xs">Image URL</Label>
-                    <Input data-testid="input-overlay-image" placeholder="https://..." value={oImageUrl} onChange={(e) => setOImageUrl(e.target.value)} className="h-8 text-sm" />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Price</Label>
-                    <Input data-testid="input-overlay-price" placeholder="49.99" value={oPrice} onChange={(e) => setOPrice(e.target.value)} className="h-8 text-sm" />
-                  </div>
+                {/* Drag and drop, per the client — a product photo is on her
+                    desktop, not at a public address. Pasting a URL is still
+                    possible behind a smaller control, because brands do keep
+                    product images on their own CDN. */}
+                <ImageDropField value={oImageUrl} onChange={setOImageUrl} />
+                <div className="space-y-1">
+                  <Label className="text-xs">Price</Label>
+                  <Input data-testid="input-overlay-price" placeholder="49.99" value={oPrice} onChange={(e) => setOPrice(e.target.value)} className="h-8 text-sm" />
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs">Brand Name</Label>

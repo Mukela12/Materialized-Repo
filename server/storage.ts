@@ -1761,6 +1761,7 @@ export class MemStorage implements IStorage {
       bio: profile.bio ?? null,
       profileMediaUrl: profile.profileMediaUrl ?? null,
       profileMediaType: profile.profileMediaType ?? null,
+      instagramHandle: profile.instagramHandle ?? null,
       locationCity: profile.locationCity ?? null,
       locationCountry: profile.locationCountry ?? null,
       createdAt: new Date(),

@@ -541,6 +541,15 @@ export const userProfiles = pgTable("user_profiles", {
   profileMediaType: text("profile_media_type"), // "image" or "video"
   locationCity: text("location_city"),
   locationCountry: text("location_country"),
+  /**
+   * The creator's Instagram handle (0026).
+   *
+   * The client asked the brand-outreach email to say "by [Creator_Instagram_
+   * Handle]" rather than a display name. A brand's PR contact recognises a
+   * handle they can look up; a display name means nothing to them. Stored
+   * without the "@", which is added when it is shown.
+   */
+  instagramHandle: text("instagram_handle"),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
   updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`),
 });

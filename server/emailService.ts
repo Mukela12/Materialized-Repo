@@ -1,4 +1,5 @@
 import { Resend } from "resend";
+import { publicOrigin } from "./publicOrigin";
 
 /**
  * Constructed on first use, not at import.
@@ -17,6 +18,19 @@ function client(): Resend {
 
 const FROM_ADDRESS = process.env.RESEND_FROM_EMAIL || "onboarding@resend.dev";
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "missbethanieashton@gmail.com";
+
+/**
+ * A creator's Instagram handle, safe to place in HTML.
+ *
+ * It reaches a brand's inbox inside a mail template, so it is restricted to
+ * the characters Instagram itself permits rather than escaped — a handle has
+ * no legitimate reason to contain a bracket or a quote, and allowing them
+ * would put user text into markup we send on someone's behalf.
+ */
+export function formatCreatorHandle(handle: string | null | undefined): string | null {
+  const clean = (handle ?? "").trim().replace(/^@+/, "").replace(/[^A-Za-z0-9._]/g, "");
+  return clean ? `@${clean.slice(0, 30)}` : null;
+}
 
 function baseTemplate(body: string): string {
   return `
@@ -47,7 +61,13 @@ function baseTemplate(body: string): string {
 <body>
   <div class="wrapper">
     <div class="header">
-      <div style="font-size:20px;font-weight:800;color:#ffffff;letter-spacing:2px;">MATERIALIZED</div>
+      <!-- The mark, per the client: "Can email pls use MTRLZD logo at the top
+           of email layout for branding". Served from the canonical host as a
+           stable, unhashed path — a bundled asset's filename changes on every
+           build, which would silently break the logo in every email already
+           sent. alt text carries the brand for clients that block images. -->
+      <img src="${publicOrigin()}/mtrlzd-logo.png" alt="MTRLZD"
+           width="150" style="display:block;margin:0 auto;max-width:150px;height:auto;border:0;" />
       <div class="header-title">Video Commerce Platform</div>
     </div>
     <div class="body">
@@ -122,6 +142,8 @@ export async function sendBrandOutreachEmail(opts: {
   prContactName: string;
   prContactEmail: string;
   creatorDisplayName: string;
+  /** Preferred over the display name — see below. */
+  creatorInstagramHandle?: string | null;
   brandName: string;
   videoTitle: string;
   videoPreviewUrl: string;
@@ -129,31 +151,65 @@ export async function sendBrandOutreachEmail(opts: {
   creatorMessage?: string;
 }): Promise<void> {
   const firstName = opts.prContactName.split(" ")[0];
+
+  /**
+   * WHO THE EMAIL SAYS IT IS FROM.
+   *
+   * The client: replace "by a creator" with "by [Creator_Instagram_Handle]".
+   * A PR contact can look up a handle and size the audience in ten seconds; a
+   * display name tells them nothing, which is the difference between a reply
+   * and a deletion. Falls back to the display name when a creator has not set
+   * one, rather than printing an empty "by".
+   */
+  const handle = formatCreatorHandle(opts.creatorInstagramHandle);
+  const creator = handle ?? opts.creatorDisplayName;
+
   const body = `
     <h1>Hey ${firstName},</h1>
     <p>
-      <strong>${opts.creatorDisplayName}</strong> would like to make their latest video featuring
-      <strong>${opts.brandName}</strong> products shoppable using Materialized &mdash; turning it into
+      <strong>${creator}</strong> would like to make their latest video featuring
+      <strong>${opts.brandName}</strong> products shoppable using MTRLZD &mdash; turning it into
       a fully interactive, commission-tracked experience your customers can shop directly from.
     </p>
     ${opts.creatorMessage ? `<p style="font-style:italic;border-left:3px solid #677A67;padding-left:14px;color:#444;">"${opts.creatorMessage}"</p>` : ""}
     <div class="video-box">
       <p><strong>${opts.videoTitle || "Video Preview"}</strong></p>
-      <p style="margin-top:8px;">You can <a href="${opts.videoPreviewUrl}">preview the video here &rarr;</a></p>
+      <p style="margin-top:8px;">
+        <a href="${opts.videoPreviewUrl}">Preview the campaign &rarr;</a>
+      </p>
     </div>
+
+    <!-- What it costs and what it buys. The client asked for this stated up
+         front: a PR contact who does not know the price cannot say yes, and
+         finding out later reads as a hidden fee. -->
+    <div style="background:#f7f7f5;border:1px solid #e8e8e8;border-radius:10px;padding:16px;margin:22px 0;">
+      <p style="margin:0 0 8px;font-weight:700;color:#202120;">One-time $29 campaign activation</p>
+      <p style="margin:0;font-size:14px;color:#555;line-height:1.7;">
+        The admin set-up fee covers <strong>30 days of licensing</strong>, and the video can be
+        <strong>embedded on your own eCommerce site</strong> for the duration &mdash; shoppable,
+        with every click and sale tracked back to it.
+      </p>
+    </div>
+
     <p>
-      Clicking the button below authorises ${opts.creatorDisplayName} to make this video shoppable
-      with your brand's products. You'll then receive a <strong>Materialized Brand Agreement</strong>
-      (via DocuSign) covering video marketplace commissions.
+      Clicking below authorises ${creator} to make this video shoppable with your products.
+      You'll then receive a <strong>MTRLZD Brand Agreement</strong> (via DocuSign) covering
+      video marketplace commissions.
     </p>
     <div class="cta-wrap">
       <a href="${opts.authorizeUrl}" class="cta">Let's Do This!</a>
     </div>
+
+    <p style="font-size:14px;color:#555;">
+      And if you like how well in-video shopping works, ask us about our latest Offers for
+      Brands who wish to integrate their Influencer Content 💥
+    </p>
+
     <p class="note">If you weren't expecting this email, you can safely ignore it.</p>
   `;
   await sendEmail(
     opts.prContactEmail,
-    `${opts.creatorDisplayName} wants to make their video shoppable with ${opts.brandName}`,
+    `${creator} wants to make their video shoppable with ${opts.brandName}`,
     baseTemplate(body)
   );
 }

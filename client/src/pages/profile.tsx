@@ -23,6 +23,15 @@ const profileFormSchema = z.object({
   profileMediaType: z.enum(["image", "video"]).optional(),
   locationCity: z.string().optional(),
   locationCountry: z.string().optional(),
+  /**
+   * Shown to brands in the outreach email, so it is stored without the "@" —
+   * one canonical form, and the "@" is added wherever it is displayed.
+   */
+  instagramHandle: z.string()
+    .max(30, "Instagram handles are at most 30 characters")
+    .regex(/^[A-Za-z0-9._]*$/, "Letters, numbers, full stops and underscores only")
+    .optional()
+    .or(z.literal("")),
 });
 
 type ProfileFormData = z.infer<typeof profileFormSchema>;
@@ -341,6 +350,31 @@ export default function ProfilePage() {
         </CardHeader>
         <CardContent>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+            {/* The handle a brand sees in the outreach email. Stored without
+                the "@" so there is one canonical form; the prefix is shown
+                here as an adornment rather than typed. */}
+            <div>
+              <Label htmlFor="instagramHandle">Instagram handle</Label>
+              <div className="flex items-center gap-1 mt-1">
+                <span className="text-muted-foreground text-sm">@</span>
+                <Input
+                  id="instagramHandle"
+                  placeholder="yourhandle"
+                  {...form.register("instagramHandle")}
+                  data-testid="input-instagram-handle"
+                />
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                Used when you tag a brand — their PR contact sees the handle
+                rather than a display name, so they can look you up.
+              </p>
+              {form.formState.errors.instagramHandle && (
+                <p className="text-xs text-destructive mt-1">
+                  {form.formState.errors.instagramHandle.message}
+                </p>
+              )}
+            </div>
+
             <div className="grid gap-4 md:grid-cols-2">
               <div>
                 <Label htmlFor="locationCity">City</Label>

@@ -834,15 +834,32 @@ export async function registerRoutes(
 
       const baseUrl = publicOrigin(req);
       const authorizeUrl = `${baseUrl}/brand-authorize/${outreach.authToken}`;
-      const videoPreviewUrl = data.videoUrl
-        ? `${baseUrl}/creator/my-videos`
-        : `${baseUrl}/creator/my-videos`;
+      /**
+       * A LINK THE RECIPIENT CAN ACTUALLY OPEN.
+       *
+       * Both branches of this pointed at /creator/my-videos — the creator's own
+       * dashboard, behind AuthGuard. A brand's PR contact clicking "preview the
+       * video" was sent to a login screen for an account they do not have. The
+       * client asked to "include the Video link to preview the campaign"; this
+       * is why it was not working.
+       *
+       * The embed is the public, no-auth view of exactly what they are being
+       * asked to authorise.
+       */
+      const videoPreviewUrl = outreach.videoId
+        ? `${baseUrl}/embed/${outreach.videoId}`
+        : `${baseUrl}/`;
+
+      const creatorProfile = await storage.getUserProfile(user.id).catch(() => undefined);
 
       if (isEmailConfigured()) {
         await sendBrandOutreachEmail({
           prContactName: outreach.prContactName,
           prContactEmail: outreach.prContactEmail,
           creatorDisplayName: user.displayName,
+          // The handle the client asked the email to use. Null for a creator
+          // who has not set one; the email falls back to the display name.
+          creatorInstagramHandle: creatorProfile?.instagramHandle ?? null,
           brandName: outreach.brandName,
           videoTitle: outreach.videoTitle ?? "Video Preview",
           videoPreviewUrl,
@@ -6793,13 +6810,30 @@ ${embedCarouselCss(carousel)}
         var row=document.createElement("a");
         row.href=p.productUrl||"#";row.target="_blank";row.rel="noopener";
         row.style.cssText="display:flex;align-items:center;justify-content:space-between;gap:10px;text-decoration:none;padding:6px 8px;border-radius:8px";
-        var left=document.createElement("div");left.style.cssText="min-width:0";
+        /**
+         * The SAME show/hide toggles as the in-video carousel.
+         *
+         * The client: "Can the selected Show thumbnail, Show Price, Show
+         * Title, etc also be visible in List form on the final screen after
+         * video playback." So every element carries the class whose generated
+         * rule already carries her toggle, rather than being re-decided here —
+         * one set of switches, two places they appear.
+         */
+        if(p.imageUrl){
+          var th=document.createElement("img");
+          th.className="end-thumb";th.src=p.imageUrl;th.alt="";
+          row.appendChild(th);
+        }
+        var left=document.createElement("div");left.style.cssText="min-width:0;flex:1";
+        if(p.brandName){var bn=document.createElement("div");bn.className="product-brand";bn.textContent=p.brandName;left.appendChild(bn);}
         var n=document.createElement("div");n.className="product-name";n.textContent=p.name;left.appendChild(n);
         if(p.price){var pr=document.createElement("div");pr.className="product-price";pr.textContent=CURRENCY_SYMBOL+p.price;left.appendChild(pr);}
         row.appendChild(left);
         var cta=document.createElement("span");
-        cta.className="buy-btn";
-        cta.style.cssText="width:auto;padding:4px 12px;display:inline-block";
+        cta.className="buy-btn end-cta";
+        // NO inline display: the .buy-btn rule carries display:none when Show
+        // Button is off, and an inline display would override it — the toggle
+        // would work in the carousel and be silently ignored here.
         cta.textContent=BUY_LABEL;
         row.appendChild(cta);
         row.addEventListener("click",function(){track("click")});
