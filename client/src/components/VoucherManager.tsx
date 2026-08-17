@@ -10,8 +10,9 @@
  * are left" is the question a brand asks, and it needs answering without anyone
  * running a query.
  */
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import Papa from "papaparse";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -20,7 +21,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Ticket, Copy, Ban, Check, Download } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
+import { Ticket, Copy, Ban, Check, Download, Upload, CalendarClock } from "lucide-react";
 import { exportToCsv } from "@/lib/exportCsv";
 
 interface VoucherRow {
@@ -32,6 +40,8 @@ interface VoucherRow {
   maxRedemptions: number | null;
   redemptionCount: number;
   seatsRemaining: number | null;
+  /** Null means usable immediately — how every code behaved before 0027. */
+  activeFrom: string | null;
   expiresAt: string | null;
   revokedAt: string | null;
   createdAt: string;
@@ -39,6 +49,8 @@ interface VoucherRow {
   batchId: string | null;
   /** Who it was handed to. Free text: most recipients have no account yet. */
   assignedTo: string | null;
+  /** Which partner within that batch. Filled in by the organiser, not by us. */
+  partner: string | null;
   /** Who actually redeemed it, once someone has. */
   redeemedBy: string | null;
 }
@@ -68,7 +80,7 @@ function roleLabel(role: string | null): string {
 export function VoucherManager() {
   const { toast } = useToast();
   const qc = useQueryClient();
-  const [form, setForm] = useState({ ...GTM_DEFAULTS, code: "", expiresAt: "" });
+  const [form, setForm] = useState({ ...GTM_DEFAULTS, code: "", activeFrom: "", expiresAt: "" });
   const [editing, setEditing] = useState<Record<string, string>>({});
   /**
    * Which recipient's codes to show.
@@ -80,6 +92,9 @@ export function VoucherManager() {
    */
   const [recipient, setRecipient] = useState<string>("all");
   const [copied, setCopied] = useState<string | null>(null);
+  const [datesOpen, setDatesOpen] = useState(false);
+  const [dates, setDates] = useState({ activeFrom: "", expiresAt: "" });
+  const partnerFileRef = useRef<HTMLInputElement>(null);
 
   const { data: vouchers = [], isLoading } = useQuery<VoucherRow[]>({
     queryKey: ["/api/admin/vouchers"],
@@ -90,7 +105,7 @@ export function VoucherManager() {
     onSuccess: async (res: any) => {
       qc.invalidateQueries({ queryKey: ["/api/admin/vouchers"] });
       const body = typeof res?.json === "function" ? await res.json() : res;
-      setForm({ ...GTM_DEFAULTS, code: "", expiresAt: "" });
+      setForm({ ...GTM_DEFAULTS, code: "", activeFrom: "", expiresAt: "" });
       toast({
         title: body?.count > 1 ? `${body.count} vouchers created` : "Voucher created",
         description: body?.count > 1 ? "Export them as CSV to hand to a partner." : undefined,
@@ -110,6 +125,83 @@ export function VoucherManager() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/admin/vouchers"] });
       toast({ title: "Voucher revoked", description: "Accounts already created with it keep their access." });
+    },
+  });
+
+  /**
+   * Read the PARTNER column back out of the organiser's spreadsheet.
+   *
+   * Parsed in the browser and posted as rows, matching the creator-invite
+   * importer — the server never sees a file, and only code+partner crosses.
+   */
+  const importPartners = useMutation({
+    mutationFn: (entries: Array<{ code: string; partner: string }>) =>
+      apiRequest("POST", "/api/admin/vouchers/partners", { entries }),
+    onSuccess: async (res) => {
+      const body = await res.json();
+      qc.invalidateQueries({ queryKey: ["/api/admin/vouchers"] });
+      // Naming the unmatched codes matters: a spreadsheet edited by a third
+      // party is exactly where a code gets mangled, and a bare count of what
+      // failed gives nobody anything to act on.
+      const missed: string[] = body.unmatched ?? [];
+      toast({
+        title: `${body.updated} code${body.updated === 1 ? "" : "s"} updated`,
+        description: missed.length
+          ? `${missed.length} not recognised: ${missed.slice(0, 3).join(", ")}${missed.length > 3 ? "…" : ""}`
+          : undefined,
+        variant: missed.length ? "destructive" : undefined,
+      });
+    },
+    onError: () => toast({ title: "Import failed", variant: "destructive" }),
+  });
+
+  const onPartnerFile = (file: File) => {
+    if (!file.name.toLowerCase().endsWith(".csv")) {
+      toast({ title: "That is not a CSV", variant: "destructive" });
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const parsed = Papa.parse<Record<string, string>>(String(reader.result ?? ""), {
+        header: true,
+        skipEmptyLines: true,
+        transformHeader: (h) => h.toLowerCase().trim(),
+      });
+      if (parsed.errors.length > 0) {
+        toast({ title: "Could not read that CSV", description: parsed.errors[0].message, variant: "destructive" });
+        return;
+      }
+      const entries = parsed.data
+        .map(r => ({ code: (r.code ?? "").trim(), partner: (r.partner ?? "").trim() }))
+        .filter(r => r.code && r.partner);
+
+      if (entries.length === 0) {
+        toast({
+          title: "Nothing to import",
+          description: "The file needs a 'Code' column and a filled-in 'PARTNER' column.",
+          variant: "destructive",
+        });
+        return;
+      }
+      importPartners.mutate(entries);
+    };
+    reader.readAsText(file);
+  };
+
+  /** Dates for a whole batch — nobody sets 81 codes one at a time. */
+  const setWindow = useMutation({
+    mutationFn: (vars: { assignedTo: string; activeFrom: string | null; expiresAt: string | null }) =>
+      apiRequest("PATCH", "/api/admin/vouchers/window", vars),
+    onSuccess: async (res) => {
+      const body = await res.json();
+      qc.invalidateQueries({ queryKey: ["/api/admin/vouchers"] });
+      setDatesOpen(false);
+      toast({ title: `Dates set on ${body.updated} code${body.updated === 1 ? "" : "s"}` });
+    },
+    onError: async (err: any) => {
+      let detail = "";
+      try { detail = (await err?.response?.json?.())?.error ?? ""; } catch { /* keep generic */ }
+      toast({ title: "Could not set dates", description: detail || undefined, variant: "destructive" });
     },
   });
 
@@ -237,6 +329,15 @@ export function VoucherManager() {
               />
             </div>
             <div>
+              <Label>Active from (optional)</Label>
+              <Input
+                type="date"
+                value={form.activeFrom}
+                onChange={(e) => setForm({ ...form, activeFrom: e.target.value })}
+                data-testid="input-voucher-active-from-new"
+              />
+            </div>
+            <div>
               <Label>Expires (optional)</Label>
               <Input
                 type="date"
@@ -254,6 +355,7 @@ export function VoucherManager() {
               code: form.code || undefined,
               roleRestriction: form.roleRestriction || undefined,
               maxRedemptions: form.maxRedemptions || null,
+              activeFrom: form.activeFrom || null,
               expiresAt: form.expiresAt || null,
             })}
             disabled={create.isPending}
@@ -311,12 +413,17 @@ export function VoucherManager() {
                   : `mtrlzd-vouchers-${recipient.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`,
                 shown, [
                 { header: "Code", value: (v) => v.code },
+                // PARTNER sits second, right beside the code, because it is the
+                // column the organiser is being asked to fill in — at the far
+                // right of eleven columns it is missed.
+                { header: "PARTNER", value: (v) => v.partner ?? "" },
                 { header: "Given to", value: (v) => v.assignedTo ?? "" },
                 { header: "For", value: (v) => v.label ?? "" },
                 { header: "Grants", value: (v) => v.grantType === "free_access" ? "Free access" : "Setup fee waived" },
                 { header: "Who can use", value: (v) => v.roleRestriction ?? "any" },
                 { header: "Uses left", value: (v) => v.seatsRemaining == null ? "unlimited" : String(v.seatsRemaining) },
                 { header: "Redeemed by", value: (v) => v.redeemedBy ?? "" },
+                { header: "Activation", value: (v) => v.activeFrom ? v.activeFrom.slice(0, 10) : "" },
                 { header: "Expires", value: (v) => v.expiresAt ? v.expiresAt.slice(0, 10) : "" },
                 { header: "Status", value: (v) => v.revokedAt ? "Revoked" : v.seatsRemaining === 0 ? "Used" : "Active" },
               ])}
@@ -324,6 +431,50 @@ export function VoucherManager() {
             >
               <Download className="h-3.5 w-3.5" />
               Export CSV
+            </Button>
+
+            {/* The other half of the round-trip. Hidden input, because a bare
+                file picker beside two buttons reads as a broken layout. */}
+            <input
+              ref={partnerFileRef}
+              type="file"
+              accept=".csv"
+              className="hidden"
+              data-testid="input-partner-csv"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) onPartnerFile(f);
+                // Reset so re-picking the same filename fires change again.
+                e.target.value = "";
+              }}
+            />
+            <Button
+              variant="outline" size="sm" className="gap-1.5"
+              disabled={importPartners.isPending}
+              onClick={() => partnerFileRef.current?.click()}
+              data-testid="button-import-partners"
+            >
+              <Upload className="h-3.5 w-3.5" />
+              {importPartners.isPending ? "Importing…" : "Import PARTNER"}
+            </Button>
+
+            {/* Dating a batch needs a batch selected — "all" is not one. */}
+            <Button
+              variant="outline" size="sm" className="gap-1.5"
+              disabled={recipient === "all" || shown.length === 0}
+              title={recipient === "all" ? "Pick a recipient first" : undefined}
+              onClick={() => {
+                const first = shown[0];
+                setDates({
+                  activeFrom: first?.activeFrom?.slice(0, 10) ?? "",
+                  expiresAt: first?.expiresAt?.slice(0, 10) ?? "",
+                });
+                setDatesOpen(true);
+              }}
+              data-testid="button-set-voucher-dates"
+            >
+              <CalendarClock className="h-3.5 w-3.5" />
+              Set dates
             </Button>
             </div>
           </div>
@@ -426,6 +577,59 @@ export function VoucherManager() {
           )}
         </CardContent>
       </Card>
+
+      {/* Setting a window on a live batch can lock people out mid-festival, so
+          the dialog states the count and what each empty field means. */}
+      <Dialog open={datesOpen} onOpenChange={setDatesOpen}>
+        <DialogContent data-testid="dialog-voucher-dates">
+          <DialogHeader>
+            <DialogTitle>Dates for {recipient}'s codes</DialogTitle>
+            <DialogDescription>
+              Applies to all {shown.length} code{shown.length === 1 ? "" : "s"} given to {recipient}.
+              A code cannot be redeemed before its activation date or after it expires.
+              Leave either blank to remove that limit.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-2 gap-4 pt-2">
+            <div className="space-y-2">
+              <Label htmlFor="voucher-active-from">Active from</Label>
+              <Input
+                id="voucher-active-from"
+                type="date"
+                value={dates.activeFrom}
+                onChange={(e) => setDates(d => ({ ...d, activeFrom: e.target.value }))}
+                data-testid="input-voucher-active-from"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="voucher-expires-at">Expires</Label>
+              <Input
+                id="voucher-expires-at"
+                type="date"
+                value={dates.expiresAt}
+                onChange={(e) => setDates(d => ({ ...d, expiresAt: e.target.value }))}
+                data-testid="input-voucher-expires-at"
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 pt-4">
+            <Button variant="outline" onClick={() => setDatesOpen(false)} data-testid="button-cancel-dates">
+              Cancel
+            </Button>
+            <Button
+              disabled={setWindow.isPending}
+              onClick={() => setWindow.mutate({
+                assignedTo: recipient,
+                activeFrom: dates.activeFrom || null,
+                expiresAt: dates.expiresAt || null,
+              })}
+              data-testid="button-save-voucher-dates"
+            >
+              {setWindow.isPending ? "Saving…" : `Apply to ${shown.length} code${shown.length === 1 ? "" : "s"}`}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

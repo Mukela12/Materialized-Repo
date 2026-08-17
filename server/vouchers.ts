@@ -30,6 +30,8 @@ export interface VoucherRecord {
   brandUserId: string | null;
   roleRestriction: string | null;
   maxRedemptions: number | null;
+  /** Null means usable immediately — the behaviour before the column existed. */
+  activeFrom: Date | null;
   expiresAt: Date | null;
   revokedAt: Date | null;
 }
@@ -37,6 +39,7 @@ export interface VoucherRecord {
 export type RedeemRefusal =
   | { ok: false; reason: "not_found"; message: string }
   | { ok: false; reason: "revoked"; message: string }
+  | { ok: false; reason: "not_yet_active"; message: string }
   | { ok: false; reason: "expired"; message: string }
   | { ok: false; reason: "exhausted"; message: string }
   | { ok: false; reason: "wrong_role"; message: string };
@@ -130,7 +133,17 @@ export function checkRedeemable(
   if (voucher.revokedAt) {
     return { ok: false, reason: "revoked", message: "That voucher is no longer active." };
   }
-  // Read-time expiry: no scheduler decides this, the comparison does.
+  // Read-time window: no scheduler decides either edge, the comparisons do.
+  //
+  // Checked before expiry so a code with both dates the wrong way round refuses
+  // as "not yet active" rather than "expired" — the honest answer for a code
+  // that has simply not opened.
+  if (voucher.activeFrom && voucher.activeFrom.getTime() > now.getTime()) {
+    return {
+      ok: false, reason: "not_yet_active",
+      message: `That voucher is not active until ${voucher.activeFrom.toISOString().slice(0, 10)}.`,
+    };
+  }
   if (voucher.expiresAt && voucher.expiresAt.getTime() <= now.getTime()) {
     return { ok: false, reason: "expired", message: "That voucher has expired." };
   }

@@ -5418,6 +5418,16 @@ Identify which products from the catalog are most likely to appear or be feature
         return res.status(400).json({ error: "expiresAt must be a valid date" });
       }
 
+      // Festival codes are cut weeks before the doors open, so a mint needs to be
+      // able to say when the batch starts working — not only when it stops.
+      const activeFrom = req.body?.activeFrom ? new Date(req.body.activeFrom) : null;
+      if (activeFrom && Number.isNaN(activeFrom.getTime())) {
+        return res.status(400).json({ error: "activeFrom must be a valid date" });
+      }
+      if (activeFrom && expiry && activeFrom.getTime() >= expiry.getTime()) {
+        return res.status(400).json({ error: "The activation date must be before the expiry date" });
+      }
+
       /**
        * `quantity` mints N DISTINCT codes in one batch.
        *
@@ -5461,6 +5471,7 @@ Identify which products from the catalog are most likely to appear or be feature
           brandUserId: typeof brandUserId === "string" && brandUserId ? brandUserId : null,
           roleRestriction: roleRestriction ?? null,
           maxRedemptions: cap,
+          activeFrom,
           expiresAt: expiry,
           createdBy: (req.session as any)?.userId ?? null,
           batchId,
@@ -5486,6 +5497,97 @@ Identify which products from the catalog are most likely to appear or be feature
     } catch (error) {
       console.error("Voucher list error:", error);
       res.status(500).json({ error: "Failed to load vouchers" });
+    }
+  });
+
+  /**
+   * Admin: set the active/expiry window across a whole batch.
+   *
+   * Batch-at-a-time because nobody dates 81 festival codes individually, which
+   * is why 215 of 216 live vouchers had no expiry at all.
+   *
+   * Omitting a field leaves it untouched; sending null clears it. That
+   * distinction is what makes "remove the expiry I set by mistake" expressible.
+   */
+  app.patch("/api/admin/vouchers/window", requireAdmin, async (req, res) => {
+    try {
+      const batchId = typeof req.body?.batchId === "string" ? req.body.batchId : undefined;
+      const assignedTo = typeof req.body?.assignedTo === "string" ? req.body.assignedTo : undefined;
+      if (!batchId && !assignedTo) {
+        return res.status(400).json({ error: "Pass a batchId or an assignedTo to identify the batch" });
+      }
+
+      // `null` clears, a string sets, absent leaves alone — so the three cases
+      // have to survive as three, rather than collapsing to truthy/falsy.
+      const parseEdge = (raw: unknown, name: string): Date | null | undefined | { error: string } => {
+        if (raw === undefined) return undefined;
+        if (raw === null || raw === "") return null;
+        if (typeof raw !== "string") return { error: `${name} must be a date string or null` };
+        const d = new Date(raw);
+        return Number.isNaN(d.getTime()) ? { error: `${name} must be a valid date` } : d;
+      };
+
+      const activeFrom = parseEdge(req.body?.activeFrom, "activeFrom");
+      const expiresAt = parseEdge(req.body?.expiresAt, "expiresAt");
+      for (const v of [activeFrom, expiresAt]) {
+        if (v && typeof v === "object" && "error" in v) return res.status(400).json({ error: v.error });
+      }
+
+      const from = activeFrom as Date | null | undefined;
+      const until = expiresAt as Date | null | undefined;
+      // A window that closes before it opens locks the batch out permanently and
+      // gives no error at redemption beyond "not yet active" — refuse it here.
+      if (from && until && from.getTime() >= until.getTime()) {
+        return res.status(400).json({ error: "The activation date must be before the expiry date" });
+      }
+
+      const updated = await storage.setVoucherWindow(
+        { batchId, assignedTo },
+        { activeFrom: from, expiresAt: until },
+      );
+      res.json({ ok: true, updated });
+    } catch (error) {
+      console.error("Voucher window error:", error);
+      res.status(500).json({ error: "Failed to set voucher dates" });
+    }
+  });
+
+  /**
+   * Admin: read the PARTNER column back from the organiser's spreadsheet.
+   *
+   * Takes rows of { code, partner } rather than a file — the CSV is parsed in
+   * the browser, as the affiliate importer already does, so there is no upload
+   * handling here and the admin sees what matched before anything is written.
+   *
+   * Unmatched codes are reported rather than silently dropped: a spreadsheet
+   * that has been edited by a third party is exactly where a code gets mangled,
+   * and "97 of 100 updated" with no list of the other three is not an answer.
+   */
+  app.post("/api/admin/vouchers/partners", requireAdmin, async (req, res) => {
+    try {
+      const raw = req.body?.entries;
+      if (!Array.isArray(raw)) return res.status(400).json({ error: "entries must be an array" });
+      if (raw.length > 2000) return res.status(400).json({ error: "Too many rows in one import (max 2000)" });
+
+      const entries: Array<{ code: string; partner: string | null }> = [];
+      for (const r of raw) {
+        const code = typeof r?.code === "string" ? r.code.trim() : "";
+        if (!code) continue;
+        const partnerRaw = typeof r?.partner === "string" ? r.partner.trim() : "";
+        // A blank cell means "the organiser did not fill this one in", which is
+        // not the same as "clear the partner" — skip rather than wipe a value.
+        if (!partnerRaw) continue;
+        entries.push({ code, partner: partnerRaw.slice(0, 200) });
+      }
+      if (entries.length === 0) {
+        return res.status(400).json({ error: "No rows with both a code and a partner" });
+      }
+
+      const result = await storage.setVoucherPartners(entries);
+      res.json({ ok: true, ...result, submitted: entries.length });
+    } catch (error) {
+      console.error("Voucher partner import error:", error);
+      res.status(500).json({ error: "Failed to import partners" });
     }
   });
 

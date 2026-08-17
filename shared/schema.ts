@@ -1612,6 +1612,23 @@ export const vouchers = pgTable("vouchers", {
    * spreadsheet. An FK would make the common case unrepresentable.
    */
   assignedTo: text("assigned_to"),
+  /**
+   * WHICH partner within the batch, where assignedTo is WHO the batch went to.
+   *
+   * Brooklyn's 81 codes all carry assignedTo "Brooklyn"; the festival organiser
+   * is the only person who knows that a given code went to a particular brand.
+   * They fill this in on the exported CSV and it is read back by code, so
+   * redemptions can be attributed to a partner rather than to a festival.
+   */
+  partner: text("partner"),
+  /**
+   * Not usable before this instant. Null means usable immediately, which is how
+   * every code behaved before this column existed.
+   *
+   * Distinct from createdAt: a festival's codes are minted weeks ahead and must
+   * not work until the doors open.
+   */
+  activeFrom: timestamp("active_from"),
   expiresAt: timestamp("expires_at"),
   /** Revocation is a timestamp, not a delete: redemptions already made stay valid. */
   revokedAt: timestamp("revoked_at"),

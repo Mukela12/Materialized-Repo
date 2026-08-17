@@ -27,7 +27,7 @@ import {
 const voucher = (over: Partial<VoucherRecord> = {}): VoucherRecord => ({
   id: "v1", code: "MTZ-ABCD-EFGH-JKMN", grantType: "free_access",
   brandUserId: null, roleRestriction: null, maxRedemptions: 20,
-  expiresAt: null, revokedAt: null, ...over,
+  activeFrom: null, expiresAt: null, revokedAt: null, ...over,
 });
 
 const NOW = new Date("2026-08-05T12:00:00Z");
@@ -67,6 +67,57 @@ describe("redeeming a voucher", () => {
   it("treats the expiry instant itself as expired", () => {
     const r = checkRedeemable(voucher({ expiresAt: NOW }), { role: "creator", redemptionCount: 0, now: NOW });
     expect(!r.ok && r.reason).toBe("expired");
+  });
+
+  /**
+   * Activation, added for the festival batches. Brooklyn's codes are cut weeks
+   * before the doors open, and before this a minted code worked immediately.
+   */
+  it("refuses a voucher whose activation date has not arrived", () => {
+    const r = checkRedeemable(voucher({ activeFrom: new Date("2026-09-01") }),
+      { role: "creator", redemptionCount: 0, now: NOW });
+    expect(!r.ok && r.reason).toBe("not_yet_active");
+  });
+
+  it("names the activation date in the refusal, so the reader knows when to come back", () => {
+    const r = checkRedeemable(voucher({ activeFrom: new Date("2026-09-01T00:00:00Z") }),
+      { role: "creator", redemptionCount: 0, now: NOW });
+    expect(!r.ok && r.message).toContain("2026-09-01");
+  });
+
+  it("accepts a voucher on the activation instant itself", () => {
+    // The boundary opposite to expiry: expiry closes ON the instant, activation
+    // opens ON it. A festival code must work at 00:00 on the day it starts.
+    const r = checkRedeemable(voucher({ activeFrom: NOW }), { role: "creator", redemptionCount: 0, now: NOW });
+    expect(r.ok).toBe(true);
+  });
+
+  it("accepts a voucher once its activation date has passed", () => {
+    const r = checkRedeemable(voucher({ activeFrom: new Date("2026-08-01") }),
+      { role: "creator", redemptionCount: 0, now: NOW });
+    expect(r.ok).toBe(true);
+  });
+
+  it("null activeFrom keeps the pre-0027 behaviour of working immediately", () => {
+    // 215 of 216 live codes have no dates at all; they must not start refusing.
+    const r = checkRedeemable(voucher({ activeFrom: null }), { role: "creator", redemptionCount: 0, now: NOW });
+    expect(r.ok).toBe(true);
+  });
+
+  it("reports a back-to-front window as not-yet-active rather than expired", () => {
+    // Both edges are wrong, but "has not opened" is the honest answer and the
+    // one that tells whoever set the dates what they actually did.
+    const r = checkRedeemable(
+      voucher({ activeFrom: new Date("2026-09-01"), expiresAt: new Date("2026-08-01") }),
+      { role: "creator", redemptionCount: 0, now: NOW });
+    expect(!r.ok && r.reason).toBe("not_yet_active");
+  });
+
+  it("still refuses a revoked voucher before considering its activation date", () => {
+    const r = checkRedeemable(
+      voucher({ revokedAt: new Date("2026-08-01"), activeFrom: new Date("2026-09-01") }),
+      { role: "creator", redemptionCount: 0, now: NOW });
+    expect(!r.ok && r.reason).toBe("revoked");
   });
 
   it("accepts a voucher that has not yet expired", () => {

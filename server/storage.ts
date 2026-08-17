@@ -289,6 +289,13 @@ export interface IStorage {
   getVoucherByCode(code: string): Promise<VoucherRecord | null>;
   listVouchers(): Promise<Array<Voucher & { redemptionCount: number; redeemedBy: string | null }>>;
   setVoucherAssignee(id: string, assignedTo: string | null): Promise<boolean>;
+  setVoucherWindow(
+    target: { batchId?: string; assignedTo?: string },
+    window: { activeFrom?: Date | null; expiresAt?: Date | null },
+  ): Promise<number>;
+  setVoucherPartners(
+    entries: Array<{ code: string; partner: string | null }>,
+  ): Promise<{ updated: number; unmatched: string[] }>;
   revokeVoucher(id: string): Promise<boolean>;
   /**
    * Redeem atomically. Returns null when the cap was reached or the user has
@@ -2081,6 +2088,39 @@ export class MemStorage implements IStorage {
         redeemedBy: first ? (this.users.get(first.userId)?.email ?? null) : null,
       };
     });
+  }
+
+  async setVoucherWindow(
+    target: { batchId?: string; assignedTo?: string },
+    window: { activeFrom?: Date | null; expiresAt?: Date | null },
+  ): Promise<number> {
+    if (window.activeFrom === undefined && window.expiresAt === undefined) return 0;
+    let n = 0;
+    for (const v of Array.from(this.vouchersMap.values())) {
+      const hit = target.batchId ? v.batchId === target.batchId : v.assignedTo === target.assignedTo;
+      if (!hit) continue;
+      if (window.activeFrom !== undefined) v.activeFrom = window.activeFrom;
+      if (window.expiresAt !== undefined) v.expiresAt = window.expiresAt;
+      n++;
+    }
+    return n;
+  }
+
+  async setVoucherPartners(
+    entries: Array<{ code: string; partner: string | null }>,
+  ): Promise<{ updated: number; unmatched: string[] }> {
+    // Same canonical comparison as getVoucherByCode — a fake that matches on the
+    // raw string would pass tests the real, punctuation-insensitive one fails.
+    const canon = (c: string) => c.toUpperCase().replace(/[^A-Z0-9]/g, "");
+    const unmatched: string[] = [];
+    let updated = 0;
+    for (const { code, partner } of entries) {
+      const want = canon(code);
+      const hits = Array.from(this.vouchersMap.values()).filter(v => canon(v.code) === want);
+      if (hits.length === 0) { unmatched.push(code); continue; }
+      for (const v of hits) { v.partner = partner; updated++; }
+    }
+    return { updated, unmatched };
   }
 
   async setVoucherAssignee(id: string, assignedTo: string | null): Promise<boolean> {
@@ -3915,7 +3955,10 @@ export class DatabaseStorage implements IStorage {
     return row ? {
       id: row.id, code: row.code, grantType: row.grantType as any,
       brandUserId: row.brandUserId, roleRestriction: row.roleRestriction,
-      maxRedemptions: row.maxRedemptions, expiresAt: row.expiresAt, revokedAt: row.revokedAt,
+      maxRedemptions: row.maxRedemptions,
+      // Explicitly mapped, not spread: omitting this here is silent, because an
+      // undefined activeFrom reads as "no start date" and the code redeems early.
+      activeFrom: row.activeFrom, expiresAt: row.expiresAt, revokedAt: row.revokedAt,
     } : null;
   }
 
@@ -3944,6 +3987,63 @@ export class DatabaseStorage implements IStorage {
         order by vr.redeemed_at limit 1)`,
     }).from(vouchers).orderBy(desc(vouchers.createdAt)).limit(1000);
     return rows.map(r => ({ ...r.v, redemptionCount: r.redemptionCount, redeemedBy: r.redeemedBy }));
+  }
+
+  /**
+   * Set the active/expiry window across a whole batch in one statement.
+   *
+   * Batch-at-a-time because the unit people think in is "Brooklyn's codes", not
+   * one of eighty-one. Selecting by assignedTo as well as batchId because the
+   * existing festival codes predate batching and have a null batch_id — without
+   * that they could only be dated one at a time.
+   *
+   * `undefined` leaves a column alone; explicit `null` clears it. Those are
+   * different operations and collapsing them would make "remove the expiry"
+   * impossible to express.
+   */
+  async setVoucherWindow(
+    target: { batchId?: string; assignedTo?: string },
+    window: { activeFrom?: Date | null; expiresAt?: Date | null },
+  ): Promise<number> {
+    const patch: Record<string, unknown> = {};
+    if (window.activeFrom !== undefined) patch.activeFrom = window.activeFrom;
+    if (window.expiresAt !== undefined) patch.expiresAt = window.expiresAt;
+    if (Object.keys(patch).length === 0) return 0;
+
+    const where = target.batchId
+      ? eq(vouchers.batchId, target.batchId)
+      : eq(vouchers.assignedTo, target.assignedTo!);
+
+    // Revoked codes are deliberately included: a revoked code stays refused by
+    // checkRedeemable regardless, and excluding them would leave the export
+    // showing a batch with inconsistent dates.
+    const rows = await db.update(vouchers).set(patch).where(where).returning({ id: vouchers.id });
+    return rows.length;
+  }
+
+  /**
+   * Write the partner column back from the organiser's spreadsheet.
+   *
+   * Matched on the canonical code — the same letters-and-digits comparison
+   * redemption uses — because a spreadsheet round-trip is exactly where a code
+   * loses its dashes or gains a space.
+   */
+  async setVoucherPartners(
+    entries: Array<{ code: string; partner: string | null }>,
+  ): Promise<{ updated: number; unmatched: string[] }> {
+    const unmatched: string[] = [];
+    let updated = 0;
+
+    for (const { code, partner } of entries) {
+      const canonical = code.toUpperCase().replace(/[^A-Z0-9]/g, "");
+      const rows = await db.update(vouchers)
+        .set({ partner })
+        .where(sql`regexp_replace(upper(${vouchers.code}), '[^A-Z0-9]', '', 'g') = ${canonical}`)
+        .returning({ id: vouchers.id });
+      if (rows.length === 0) unmatched.push(code);
+      else updated += rows.length;
+    }
+    return { updated, unmatched };
   }
 
   /** Note who a code was handed to. Free text — see the note in 0020. */
