@@ -285,8 +285,18 @@ export interface IStorage {
     batchId: string | null;
     /** Who they were handed to. Free text — most recipients have no account yet. */
     assignedTo: string | null;
+    /** Not usable before this instant. Null means usable immediately. */
+    activeFrom: Date | null;
   }): Promise<Voucher>;
   getVoucherByCode(code: string): Promise<VoucherRecord | null>;
+  /**
+   * How many times one voucher has been taken.
+   *
+   * Separate from listVouchers because the pre-signup check needs this for a
+   * single code, and listVouchers pulls up to a thousand rows with two
+   * correlated subqueries each to answer it.
+   */
+  countVoucherRedemptions(voucherId: string): Promise<number>;
   listVouchers(): Promise<Array<Voucher & { redemptionCount: number; redeemedBy: string | null }>>;
   setVoucherAssignee(id: string, assignedTo: string | null): Promise<boolean>;
   setVoucherWindow(
@@ -2077,6 +2087,10 @@ export class MemStorage implements IStorage {
     const want = canon(code);
     const row = Array.from(this.vouchersMap.values()).find(v => canon(v.code) === want);
     return row ?? null;
+  }
+
+  async countVoucherRedemptions(voucherId: string): Promise<number> {
+    return this.voucherRedemptionsList.filter(r => r.voucherId === voucherId).length;
   }
 
   async listVouchers(): Promise<Array<Voucher & { redemptionCount: number; redeemedBy: string | null }>> {
@@ -3933,6 +3947,7 @@ export class DatabaseStorage implements IStorage {
       createdBy: v.createdBy,
       batchId: v.batchId ?? null,
       assignedTo: v.assignedTo ?? null,
+      activeFrom: v.activeFrom ?? null,
     }).returning();
     return row;
   }
@@ -3960,6 +3975,12 @@ export class DatabaseStorage implements IStorage {
       // undefined activeFrom reads as "no start date" and the code redeems early.
       activeFrom: row.activeFrom, expiresAt: row.expiresAt, revokedAt: row.revokedAt,
     } : null;
+  }
+
+  async countVoucherRedemptions(voucherId: string): Promise<number> {
+    const [row] = await db.select({ n: sql<number>`count(*)::int` })
+      .from(voucherRedemptions).where(eq(voucherRedemptions.voucherId, voucherId));
+    return row?.n ?? 0;
   }
 
   async listVouchers(): Promise<Array<Voucher & { redemptionCount: number; redeemedBy: string | null }>> {

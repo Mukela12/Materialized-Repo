@@ -5633,7 +5633,22 @@ Identify which products from the catalog are most likely to appear or be feature
       const role = typeof req.body?.role === "string" ? req.body.role : "creator";
 
       const voucher = await storage.getVoucherByCode(normaliseCode(raw));
-      const check = checkRedeemable(voucher, { role, redemptionCount: 0 });
+
+      /**
+       * The real count, not 0.
+       *
+       * This used to hardcode `redemptionCount: 0`, which made exhaustion the
+       * one refusal this check could never return: a single-use code that had
+       * already been taken answered "Voucher accepted", and the person only
+       * found out at the end of the signup form. With 216 single-use codes going
+       * out to two festivals, the code someone tries second is exactly the case.
+       *
+       * Redemption itself was never at risk — storage.redeemVoucher counts
+       * inside the transaction under an advisory lock, and that is what actually
+       * guards a seat. This is the pre-check agreeing with it.
+       */
+      const redemptionCount = voucher ? await storage.countVoucherRedemptions(voucher.id) : 0;
+      const check = checkRedeemable(voucher, { role, redemptionCount });
       if (!check.ok) return res.status(404).json({ valid: false, message: check.message, reason: check.reason });
 
       const grants = grantsOf(check.voucher);
