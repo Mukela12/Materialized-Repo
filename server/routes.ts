@@ -5281,13 +5281,31 @@ Identify which products from the catalog are most likely to appear or be feature
     }
   });
 
-  /** Admin: fee invoices raised, newest first. */
+  /**
+   * Admin: fee invoices raised, newest first.
+   *
+   * Enriched with the brand's name here rather than in storage, matching
+   * /api/admin/payouts: a fee invoice row carries only brandUserId, and an admin
+   * deciding whether to charge someone needs to see who they are.
+   */
   app.get("/api/admin/fee-invoices", requireAdmin, async (req, res) => {
     try {
       const rows = await storage.listFeeInvoices(
         typeof req.query.brandUserId === "string" ? req.query.brandUserId : undefined,
       );
-      res.json(rows);
+
+      const userIds = Array.from(new Set(rows.map(r => r.brandUserId)));
+      const brands = new Map<string, { name: string; email: string }>();
+      await Promise.all(userIds.map(async (id) => {
+        const u = await storage.getUser(id);
+        if (u) brands.set(id, { name: u.displayName, email: u.email });
+      }));
+
+      res.json(rows.map(r => ({
+        ...r,
+        brandName: brands.get(r.brandUserId)?.name ?? "Unknown brand",
+        brandEmail: brands.get(r.brandUserId)?.email ?? "",
+      })));
     } catch (error) {
       console.error("Fee invoice list error:", error);
       res.status(500).json({ error: "Failed to load fee invoices" });

@@ -595,6 +595,24 @@ interface PayoutRunSummary {
   failed: Array<{ affiliateId: string; payoutId?: string; amountCents: number; error: string }>;
 }
 
+interface AdminFeeInvoice {
+  id: string;
+  brandUserId: string;
+  brandName: string;
+  brandEmail: string;
+  currency: string;
+  periodStart: string;
+  periodEnd: string;
+  subtotalCents: number;
+  lineCount: number;
+  status: "pending" | "created" | "failed" | "void";
+  stripeInvoiceId: string | null;
+  hostedInvoiceUrl: string | null;
+  finalized: boolean;
+  error: string | null;
+  createdAt: string | null;
+}
+
 const money = (v: string | number) => formatMoney(Number(v));
 const centsMoney = (c: number) => formatMoney(c / 100);
 
@@ -639,13 +657,13 @@ function SortTh({
 }
 
 function AdminMoneyOps() {
-  const [subTab, setSubTab] = useState<"payouts" | "commissions" | "rates">("payouts");
+  const [subTab, setSubTab] = useState<"payouts" | "commissions" | "invoices" | "rates">("payouts");
 
   return (
     <div>
       {/* Money Ops sub-tabs — same underline pattern as the top-level tabs */}
       <div className="flex gap-1 mb-6 border-b overflow-x-auto">
-        {(["payouts", "commissions", "rates"] as const).map(t => (
+        {(["payouts", "commissions", "invoices", "rates"] as const).map(t => (
           <button
             key={t}
             onClick={() => setSubTab(t)}
@@ -663,6 +681,7 @@ function AdminMoneyOps() {
 
       {subTab === "payouts" && <MoneyPayouts />}
       {subTab === "commissions" && <MoneyCommissions />}
+      {subTab === "invoices" && <MoneyFeeInvoices />}
       {subTab === "rates" && <MoneyRates />}
     </div>
   );
@@ -1021,6 +1040,307 @@ function MoneyCommissions() {
       )}
     </div>
   );
+}
+
+/**
+ * The 15% marketplace fee, from draft to charged.
+ *
+ * The monthly job (FEE_INVOICE_CRON) never finalises anything — it raises DRAFT
+ * invoices and stops, deliberately, so that an unattended cron is never the
+ * thing that first bills a real customer. Finalising is the human step, and
+ * this screen is where it happens; without it the only way to charge a brand
+ * was to hand-fire POST /api/admin/fee-invoices/:id/finalize.
+ *
+ * Once finalised, collection is Stripe's problem: these are created
+ * `charge_automatically` against the card the brand already has on file for
+ * their subscription, so there is no invoice to chase.
+ */
+function MoneyFeeInvoices() {
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [confirming, setConfirming] = useState<AdminFeeInvoice | null>(null);
+  const [releasing, setReleasing] = useState<AdminFeeInvoice | null>(null);
+  const [releaseReason, setReleaseReason] = useState("");
+
+  const { data: invoices = [], isLoading } = useQuery<AdminFeeInvoice[]>({
+    queryKey: ["/api/admin/fee-invoices"],
+    queryFn: () => fetch("/api/admin/fee-invoices", { credentials: "include" }).then(r => r.json()),
+  });
+
+  // A draft is anything with a Stripe invoice behind it that nobody has charged
+  // yet. `void`/`failed` rows have already released their accruals, so they are
+  // history rather than work.
+  const drafts = invoices.filter(i => !i.finalized && i.status === "created" && i.stripeInvoiceId);
+  const draftTotalCents = drafts.reduce((s, i) => s + i.subtotalCents, 0);
+  const unbillable = invoices.filter(i => i.status === "failed" || (i.error && !i.finalized));
+
+  const finalizeMutation = useMutation({
+    mutationFn: (id: string) => apiRequest("POST", `/api/admin/fee-invoices/${id}/finalize`),
+    onSuccess: async (res) => {
+      const body = await res.json();
+      setConfirming(null);
+      toast({
+        title: body.alreadyFinalized ? "Already charged" : "Invoice finalised",
+        description: body.total ? `${centsMoney(body.total)} charged to the card on file` : undefined,
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/fee-invoices"] });
+    },
+    onError: async (err: any) => {
+      // The zero-total trap and "no payment method" both land here, and both
+      // need the real message rather than a generic failure.
+      let detail = "";
+      try { detail = (await err?.response?.json?.())?.error ?? ""; } catch { /* keep generic */ }
+      toast({ title: "Could not finalise", description: detail || String(err?.message ?? ""), variant: "destructive" });
+    },
+  });
+
+  const releaseMutation = useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
+      apiRequest("POST", `/api/admin/fee-invoices/${id}/release`, { reason }),
+    onSuccess: async (res) => {
+      const body = await res.json();
+      setReleasing(null);
+      setReleaseReason("");
+      toast({
+        title: "Invoice released",
+        description: `${body.released ?? 0} sale(s) returned to the next run`,
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/fee-invoices"] });
+    },
+    onError: () => toast({ title: "Could not release invoice", variant: "destructive" }),
+  });
+
+  const period = (i: AdminFeeInvoice) => format(new Date(i.periodStart), "MMM yyyy");
+
+  const { query, setQuery, sortKey, sortDir, toggleSort, rows } = useTableControls(invoices, {
+    searchFields: (i) => [i.brandName, i.brandEmail, i.stripeInvoiceId],
+    sortAccessors: {
+      brand: (i) => i.brandName,
+      period: (i) => i.periodStart,
+      amount: (i) => i.subtotalCents,
+      status: (i) => (i.finalized ? "charged" : i.status),
+      createdAt: (i) => i.createdAt,
+    },
+  });
+
+  const handleExport = () =>
+    exportToCsv("fee-invoices", rows, [
+      { header: "Brand", value: (i) => i.brandName },
+      { header: "Email", value: (i) => i.brandEmail },
+      { header: "Period", value: (i) => period(i) },
+      { header: "Amount", value: (i) => (i.subtotalCents / 100).toFixed(2) },
+      { header: "Sales", value: (i) => String(i.lineCount) },
+      { header: "Status", value: (i) => (i.finalized ? "charged" : i.status) },
+      { header: "Stripe Invoice", value: (i) => i.stripeInvoiceId ?? "" },
+    ]);
+
+  return (
+    <div className="space-y-6">
+      {/* What is waiting on a human */}
+      <Card className="shadow-none border">
+        <CardContent className="p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <p className="text-sm font-medium">Drafts awaiting approval</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {drafts.length === 0
+                ? "Nothing to charge. The monthly run raises drafts here on the 1st."
+                : `${drafts.length} draft${drafts.length === 1 ? "" : "s"} · ${centsMoney(draftTotalCents)} · charged to the card each brand has on file`}
+            </p>
+          </div>
+          {drafts.length > 0 && (
+            <Badge className="bg-amber-500/20 text-amber-600 border-0 gap-1">
+              <Clock className="h-3 w-3" /> {drafts.length} pending
+            </Badge>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Owed but uncollectable — a silent failure if it is not surfaced */}
+      {unbillable.length > 0 && (
+        <Card className="shadow-none border border-red-500/30">
+          <CardContent className="p-4">
+            <p className="text-sm font-medium text-red-600 mb-2 flex items-center gap-1">
+              <AlertCircle className="h-4 w-4" /> {unbillable.length} invoice(s) could not be raised
+            </p>
+            <div className="space-y-1">
+              {unbillable.map(i => (
+                <p key={i.id} className="text-xs text-muted-foreground" data-testid={`fee-invoice-error-${i.id}`}>
+                  <span className="font-medium text-foreground">{i.brandName}</span> — {i.error ?? "no payment method on file"}
+                </p>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <TableToolbar
+        query={query}
+        onQueryChange={setQuery}
+        searchPlaceholder="Search brand or Stripe invoice..."
+        onExport={handleExport}
+        exportDisabled={rows.length === 0}
+        data-testid="admin-fee-invoices-toolbar"
+      />
+
+      {isLoading ? (
+        <p className="text-sm text-muted-foreground">Loading…</p>
+      ) : rows.length === 0 ? (
+        <p className="text-sm text-muted-foreground" data-testid="fee-invoices-empty">
+          No fee invoices yet.
+        </p>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b text-left text-muted-foreground">
+                <SortTh sortKey="brand" label="Brand" activeKey={sortKey} dir={sortDir} onSort={toggleSort} />
+                <SortTh sortKey="period" label="Period" activeKey={sortKey} dir={sortDir} onSort={toggleSort} />
+                <SortTh sortKey="amount" label="Amount" activeKey={sortKey} dir={sortDir} onSort={toggleSort} />
+                <th className="py-2 pr-4 font-medium">Sales</th>
+                <SortTh sortKey="status" label="Status" activeKey={sortKey} dir={sortDir} onSort={toggleSort} />
+                <th className="py-2 pr-4 font-medium text-right">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map(i => {
+                const isDraft = !i.finalized && i.status === "created" && !!i.stripeInvoiceId;
+                return (
+                  <tr key={i.id} className="border-b last:border-0" data-testid={`fee-invoice-row-${i.id}`}>
+                    <td className="py-3 pr-4">
+                      <p className="font-medium">{i.brandName}</p>
+                      <p className="text-xs text-muted-foreground">{i.brandEmail}</p>
+                    </td>
+                    <td className="py-3 pr-4 whitespace-nowrap">{period(i)}</td>
+                    <td className="py-3 pr-4 font-medium whitespace-nowrap">{centsMoney(i.subtotalCents)}</td>
+                    <td className="py-3 pr-4">{i.lineCount}</td>
+                    <td className="py-3 pr-4">{feeInvoiceStatusBadge(i)}</td>
+                    <td className="py-3 pr-4">
+                      <div className="flex items-center justify-end gap-2">
+                        {i.hostedInvoiceUrl && (
+                          <a
+                            href={i.hostedInvoiceUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-xs text-primary hover:underline"
+                            data-testid={`link-hosted-invoice-${i.id}`}
+                          >
+                            View
+                          </a>
+                        )}
+                        {isDraft && (
+                          <>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              onClick={() => { setReleasing(i); setReleaseReason(""); }}
+                              data-testid={`button-release-invoice-${i.id}`}
+                            >
+                              Release
+                            </Button>
+                            <Button
+                              size="sm"
+                              onClick={() => setConfirming(i)}
+                              disabled={finalizeMutation.isPending}
+                              className="gap-1"
+                              data-testid={`button-finalize-invoice-${i.id}`}
+                            >
+                              <CreditCard className="h-3 w-3" /> Finalise &amp; charge
+                            </Button>
+                          </>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Charging a real card — say plainly what is about to happen */}
+      <Dialog open={!!confirming} onOpenChange={(o) => !o && setConfirming(null)}>
+        <DialogContent data-testid="dialog-finalize-invoice">
+          <DialogHeader>
+            <DialogTitle>Charge {confirming?.brandName}?</DialogTitle>
+            <DialogDescription asChild>
+              <div className="space-y-2 pt-2">
+                <p>
+                  This finalises the invoice and charges{" "}
+                  <span className="font-medium text-foreground">
+                    {confirming ? centsMoney(confirming.subtotalCents) : ""}
+                  </span>{" "}
+                  to the card {confirming?.brandName} has on file, covering{" "}
+                  {confirming?.lineCount} sale{confirming?.lineCount === 1 ? "" : "s"} in{" "}
+                  {confirming ? period(confirming) : ""}.
+                </p>
+                <p>This is real money and it cannot be undone here — a mistake has to be refunded in Stripe.</p>
+              </div>
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => setConfirming(null)} data-testid="button-cancel-finalize">
+              Cancel
+            </Button>
+            <Button
+              onClick={() => confirming && finalizeMutation.mutate(confirming.id)}
+              disabled={finalizeMutation.isPending}
+              className="gap-2"
+              data-testid="button-confirm-finalize"
+            >
+              {finalizeMutation.isPending ? <RefreshCw className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
+              Charge {confirming ? centsMoney(confirming.subtotalCents) : ""}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Releasing puts the sales back in the pot rather than writing them off */}
+      <Dialog open={!!releasing} onOpenChange={(o) => !o && setReleasing(null)}>
+        <DialogContent data-testid="dialog-release-invoice">
+          <DialogHeader>
+            <DialogTitle>Release {releasing?.brandName}'s draft?</DialogTitle>
+            <DialogDescription>
+              The draft is cancelled and its {releasing?.lineCount} sale
+              {releasing?.lineCount === 1 ? "" : "s"} go back into the pot, so they are billed on a later
+              run instead of being lost. Nobody is charged.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 pt-2">
+            <Label htmlFor="release-reason">Reason (optional)</Label>
+            <Input
+              id="release-reason"
+              value={releaseReason}
+              onChange={(e) => setReleaseReason(e.target.value)}
+              placeholder="e.g. disputed by the brand"
+              data-testid="input-release-reason"
+            />
+          </div>
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={() => setReleasing(null)} data-testid="button-cancel-release">
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => releasing && releaseMutation.mutate({ id: releasing.id, reason: releaseReason || "released by admin" })}
+              disabled={releaseMutation.isPending}
+              data-testid="button-confirm-release"
+            >
+              Release draft
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+function feeInvoiceStatusBadge(i: AdminFeeInvoice) {
+  if (i.finalized) return <Badge className="bg-green-500/20 text-green-600 border-0">Charged</Badge>;
+  if (i.status === "created") return <Badge className="bg-amber-500/20 text-amber-600 border-0">Draft</Badge>;
+  if (i.status === "failed") return <Badge className="bg-red-500/20 text-red-600 border-0">Failed</Badge>;
+  if (i.status === "void") return <Badge className="bg-gray-500/20 text-gray-600 border-0">Released</Badge>;
+  return <Badge className="bg-blue-500/20 text-blue-600 border-0">Pending</Badge>;
 }
 
 function MoneyRates() {
