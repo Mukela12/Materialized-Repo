@@ -268,10 +268,31 @@ async function initStripe() {
 initStripe();
 
 // ── Stripe webhook: POST /api/webhooks/stripe ────────────────────────────────
+/**
+ * Two secrets, one endpoint URL.
+ *
+ * Stripe scopes a webhook endpoint to EITHER your own account or your connected
+ * accounts — never both — so a Connect platform needs two endpoints, and each
+ * gets its own signing secret. Both point here.
+ *
+ * The connected-account one carries `account.updated`, `payout.paid` and
+ * `payout.failed`. Without it a creator finishes Stripe onboarding and we never
+ * hear about it, so `stripeConnectOnboarded` stays false and they are never paid.
+ * That failure is silent — the endpoint keeps returning 400s to Stripe and
+ * everything looks fine from the app — which is why the absence is warned about
+ * loudly at boot rather than left to be discovered.
+ */
 if (!process.env.STRIPE_WEBHOOK_SECRET) {
   console.warn(
     '[Stripe] STRIPE_WEBHOOK_SECRET is not set. The /api/webhooks/stripe endpoint will ' +
     'reject all incoming events.'
+  );
+}
+if (!process.env.STRIPE_WEBHOOK_SECRET_CONNECT) {
+  console.warn(
+    '[Stripe] STRIPE_WEBHOOK_SECRET_CONNECT is not set. Connected-account events ' +
+    '(account.updated, payout.paid, payout.failed) will fail signature verification, ' +
+    'so creator onboarding and payout status will never update.'
   );
 }
 
@@ -280,10 +301,16 @@ app.post(
   express.raw({ type: "application/json" }),
   async (req, res) => {
     const signature = req.headers["stripe-signature"];
-    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
-    if (!webhookSecret) {
-      console.error("[Stripe] STRIPE_WEBHOOK_SECRET is not set. Rejecting event.");
+    // Ordered account-scope first only because those events are by far the more
+    // frequent; verification is a constant-time HMAC either way.
+    const candidates = [
+      { scope: "account", secret: process.env.STRIPE_WEBHOOK_SECRET },
+      { scope: "connect", secret: process.env.STRIPE_WEBHOOK_SECRET_CONNECT },
+    ].filter((c): c is { scope: string; secret: string } => Boolean(c.secret));
+
+    if (candidates.length === 0) {
+      console.error("[Stripe] No webhook secret is set. Rejecting event.");
       return res.status(400).json({ error: "Webhook secret not configured" });
     }
     if (!signature) {
@@ -291,14 +318,30 @@ app.post(
     }
 
     const sig = Array.isArray(signature) ? signature[0] : signature;
-    let event: Stripe.Event;
-    try {
-      const stripeInstance = await getUncachableStripeClient();
-      event = stripeInstance.webhooks.constructEvent(req.body as Buffer, sig, webhookSecret);
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : String(err);
-      console.error("[Stripe] Webhook signature verification failed:", message);
-      return res.status(400).json({ error: `Signature verification failed: ${message}` });
+    const stripeInstance = await getUncachableStripeClient();
+
+    // Try each configured secret. A signature is only ever valid for the endpoint
+    // that produced it, so the wrong one throws and we move on; an event is
+    // rejected only when no secret verifies it.
+    let event: Stripe.Event | undefined;
+    let lastError = "no webhook secret matched the signature";
+    for (const { scope, secret } of candidates) {
+      try {
+        event = stripeInstance.webhooks.constructEvent(req.body as Buffer, sig, secret);
+        if (scope === "connect" && !event.account) {
+          // Belt and braces: a connect-scope endpoint should only ever deliver
+          // events carrying a connected account id.
+          console.warn(`[Stripe] connect-scope signature on an event with no account id (${event.type})`);
+        }
+        break;
+      } catch (err: unknown) {
+        lastError = err instanceof Error ? err.message : String(err);
+      }
+    }
+
+    if (!event) {
+      console.error("[Stripe] Webhook signature verification failed:", lastError);
+      return res.status(400).json({ error: `Signature verification failed: ${lastError}` });
     }
 
     try {
