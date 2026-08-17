@@ -5606,6 +5606,26 @@ Identify which products from the catalog are most likely to appear or be feature
   });
 
   /**
+   * Admin: set the partner on one code.
+   *
+   * The CSV round trip stays for a batch coming back from an organiser, but the
+   * client's festivals are "an ever changing arrangement of brands", so the
+   * common case is editing one entry in the table rather than exchanging files.
+   */
+  app.patch("/api/admin/vouchers/:id/partner", requireAdmin, async (req, res) => {
+    try {
+      const raw = req.body?.partner;
+      const value = typeof raw === "string" && raw.trim() ? raw.trim().slice(0, 200) : null;
+      const ok = await storage.setVoucherPartner(req.params.id, value);
+      if (!ok) return res.status(404).json({ error: "Voucher not found" });
+      res.json({ ok: true, partner: value });
+    } catch (error) {
+      console.error("Voucher partner error:", error);
+      res.status(500).json({ error: "Failed to save" });
+    }
+  });
+
+  /**
    * Admin: revoke. Sets a timestamp rather than deleting — the accounts already
    * created under this voucher keep their access and stay explicable.
    */

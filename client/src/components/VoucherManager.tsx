@@ -82,6 +82,7 @@ export function VoucherManager() {
   const qc = useQueryClient();
   const [form, setForm] = useState({ ...GTM_DEFAULTS, code: "", activeFrom: "", expiresAt: "" });
   const [editing, setEditing] = useState<Record<string, string>>({});
+  const [editingPartner, setEditingPartner] = useState<Record<string, string>>({});
   /**
    * Which recipient's codes to show.
    *
@@ -118,6 +119,13 @@ export function VoucherManager() {
     mutationFn: ({ id, assignedTo }: { id: string; assignedTo: string }) =>
       apiRequest("PATCH", `/api/admin/vouchers/${id}/assignee`, { assignedTo }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/admin/vouchers"] }),
+  });
+
+  const setPartner = useMutation({
+    mutationFn: ({ id, partner }: { id: string; partner: string }) =>
+      apiRequest("PATCH", `/api/admin/vouchers/${id}/partner`, { partner }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/admin/vouchers"] }),
+    onError: () => toast({ title: "Could not save partner", variant: "destructive" }),
   });
 
   const revoke = useMutation({
@@ -498,6 +506,7 @@ export function VoucherManager() {
                     <th className="py-2 pr-4">Code</th>
                     <th className="py-2 pr-4">Type</th>
                     <th className="py-2 pr-4">Given to</th>
+                    <th className="py-2 pr-4">Partner</th>
                     <th className="py-2 pr-4">Seats left</th>
                     <th className="py-2 pr-4">Status</th>
                     <th className="py-2"></th>
@@ -550,6 +559,24 @@ export function VoucherManager() {
                           {v.label ?? "—"}
                           {v.redeemedBy ? ` · used by ${v.redeemedBy}` : ""}
                         </div>
+                      </td>
+                      {/* PARTNER — which brand within the batch, editable here.
+                          The CSV round trip still exists for a file coming back
+                          from an organiser, but the festivals are "an ever
+                          changing arrangement of brands", so the common case is
+                          correcting one row rather than exchanging spreadsheets. */}
+                      <td className="py-2 pr-4">
+                        <Input
+                          className="h-7 text-xs"
+                          placeholder="partner"
+                          defaultValue={v.partner ?? ""}
+                          onChange={(e) => setEditingPartner({ ...editingPartner, [v.id]: e.target.value })}
+                          onBlur={(e) => {
+                            const val = e.target.value.trim();
+                            if (val !== (v.partner ?? "")) setPartner.mutate({ id: v.id, partner: val });
+                          }}
+                          data-testid={`input-partner-${v.id}`}
+                        />
                       </td>
                       <td className="py-2 pr-4 tabular-nums">
                         {v.seatsRemaining == null

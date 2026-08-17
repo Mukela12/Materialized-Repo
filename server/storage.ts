@@ -299,6 +299,14 @@ export interface IStorage {
   countVoucherRedemptions(voucherId: string): Promise<number>;
   listVouchers(): Promise<Array<Voucher & { redemptionCount: number; redeemedBy: string | null }>>;
   setVoucherAssignee(id: string, assignedTo: string | null): Promise<boolean>;
+  /**
+   * Set the partner on one code from the admin table.
+   *
+   * The CSV import (setVoucherPartners) stays for a whole batch coming back from
+   * an organiser; this is the single-row edit, for the far commoner case of
+   * fixing one entry or filling them in by hand.
+   */
+  setVoucherPartner(id: string, partner: string | null): Promise<boolean>;
   setVoucherWindow(
     target: { batchId?: string; assignedTo?: string },
     window: { activeFrom?: Date | null; expiresAt?: Date | null },
@@ -2141,6 +2149,13 @@ export class MemStorage implements IStorage {
     const v = this.vouchersMap.get(id);
     if (!v) return false;
     v.assignedTo = assignedTo;
+    return true;
+  }
+
+  async setVoucherPartner(id: string, partner: string | null): Promise<boolean> {
+    const v = this.vouchersMap.get(id);
+    if (!v) return false;
+    (v as any).partner = partner;
     return true;
   }
 
@@ -4071,6 +4086,12 @@ export class DatabaseStorage implements IStorage {
   async setVoucherAssignee(id: string, assignedTo: string | null): Promise<boolean> {
     const [row] = await db.update(vouchers)
       .set({ assignedTo }).where(eq(vouchers.id, id)).returning({ id: vouchers.id });
+    return !!row;
+  }
+
+  async setVoucherPartner(id: string, partner: string | null): Promise<boolean> {
+    const [row] = await db.update(vouchers)
+      .set({ partner }).where(eq(vouchers.id, id)).returning({ id: vouchers.id });
     return !!row;
   }
 
