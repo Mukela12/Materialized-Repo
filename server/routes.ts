@@ -6820,7 +6820,10 @@ Identify which products from the catalog are most likely to appear or be feature
        by fitPlayer() below, which puts every overlay back on the footage for any
        shape of video. */
     body{background:#000;overflow:hidden;font-family:-apple-system,sans-serif;width:100vw;height:100vh;display:flex;align-items:center;justify-content:center;margin:0}
-    #player{position:relative;display:flex;align-items:center;justify-content:center;max-width:100vw;max-height:100vh}
+    /* Falls back to the full frame until loadedmetadata arrives, so a slow or
+       failed video shows the loader where it always was rather than collapsing
+       the stage to nothing. fitPlayer() replaces these with explicit pixels. */
+    #player{position:relative;display:flex;align-items:center;justify-content:center;width:100vw;height:100vh;max-width:100vw;max-height:100vh}
     video{width:100%;height:100%;object-fit:contain;display:block}
     #loader{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:10}
     .spinner{width:40px;height:40px;border:3px solid rgba(255,255,255,0.2);border-top-color:#677A67;border-radius:50%;animation:spin 0.8s linear infinite}
