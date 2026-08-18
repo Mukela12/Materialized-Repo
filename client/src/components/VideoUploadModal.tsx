@@ -50,6 +50,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { Brand } from "@shared/schema";
+import { OverlayComposer } from "@/components/OverlayComposer";
 
 const videoUploadSchema = z.object({
   title: z.string().min(1, "Title is required"),
@@ -946,6 +947,16 @@ export function VideoUploadModal({
                 />
               </div>
             </div>
+
+            {/* Shoppable links, before publishing rather than after.
+                These used to live only in the detail sheet, so making a sample
+                video shoppable meant publishing it, finding it again and opening
+                it. The draft already exists by this step, which is what overlays
+                need to attach to. Same component as the sheet — one form, one
+                set of fields. */}
+            {createdVideoId && (
+              <OverlayComposer videoId={createdVideoId} startExpanded={false} />
+            )}
 
             <Separator />
 
