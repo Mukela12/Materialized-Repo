@@ -45,16 +45,31 @@ function positionCss(s: CarouselSettings): string {
   const yUp = `calc(${gap} - ${s.positionOffsetY}px)`;
   const xIn = `calc(${gap} - ${s.positionOffsetX}px)`;
 
+  /**
+   * EVERY EDGE, EVERY TIME — including the ones this position does not anchor.
+   *
+   * This block is appended after the base #carousel rule, which sets bottom,
+   * left AND right. Naming only the edges a position cares about left the
+   * others in force, so the element ended up anchored to all four and stretched
+   * to fill the whole video. "top-right" produced a full-frame panel; with
+   * backgroundOpacity set that is a dark sheet over the footage, and with no
+   * products in it yet, a large blank rectangle — which is exactly how the
+   * client reported it: "blank container sits over the video".
+   *
+   * Only the default `bottom` was unaffected, because it happens to overwrite
+   * every edge the base rule sets. So it looked correct everywhere it was
+   * tested and broke for every other choice in the picker.
+   */
   switch (s.position) {
-    case "top":          return `top:${y};left:${gap};right:${gap};justify-content:center`;
-    case "bottom":       return `bottom:${yUp};left:${gap};right:${gap};justify-content:center`;
-    case "left":         return `left:${x};top:50%;transform:translateY(-50%);max-width:38%`;
-    case "right":        return `right:${xIn};top:50%;transform:translateY(-50%);max-width:38%`;
-    case "top-left":     return `top:${y};left:${x};max-width:70%`;
-    case "top-right":    return `top:${y};right:${xIn};max-width:70%;justify-content:flex-end`;
-    case "bottom-left":  return `bottom:${yUp};left:${x};max-width:70%`;
-    case "bottom-right": return `bottom:${yUp};right:${xIn};max-width:70%;justify-content:flex-end`;
-    default:             return `bottom:${yUp};left:${gap};right:${gap};justify-content:center`;
+    case "top":          return `top:${y};bottom:auto;left:${gap};right:${gap};justify-content:center`;
+    case "bottom":       return `bottom:${yUp};top:auto;left:${gap};right:${gap};justify-content:center`;
+    case "left":         return `left:${x};right:auto;top:50%;bottom:auto;transform:translateY(-50%);max-width:38%`;
+    case "right":        return `right:${xIn};left:auto;top:50%;bottom:auto;transform:translateY(-50%);max-width:38%`;
+    case "top-left":     return `top:${y};bottom:auto;left:${x};right:auto;max-width:70%`;
+    case "top-right":    return `top:${y};bottom:auto;right:${xIn};left:auto;max-width:70%;justify-content:flex-end`;
+    case "bottom-left":  return `bottom:${yUp};top:auto;left:${x};right:auto;max-width:70%`;
+    case "bottom-right": return `bottom:${yUp};top:auto;right:${xIn};left:auto;max-width:70%;justify-content:flex-end`;
+    default:             return `bottom:${yUp};top:auto;left:${gap};right:${gap};justify-content:center`;
   }
 }
 

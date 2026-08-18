@@ -6818,6 +6818,10 @@ Identify which products from the catalog are most likely to appear or be feature
     @keyframes spin{to{transform:rotate(360deg)}}
     #carousel{position:absolute;bottom:clamp(8px,2vw,16px);left:clamp(8px,2vw,16px);right:clamp(8px,2vw,16px);display:flex;gap:clamp(4px,1vw,8px);overflow-x:auto;padding:4px 0;scrollbar-width:none;z-index:5}
     #carousel::-webkit-scrollbar{display:none}
+    /* No products yet, no panel. The container is styled — background, radius,
+       padding — from the video's carousel settings, so an empty one still
+       painted a translucent slab over the footage with nothing in it. */
+    #carousel:empty{display:none}
     .product-card{flex:0 0 auto;background:rgba(255,255,255,0.95);border-radius:clamp(6px,1.5vw,12px);padding:clamp(4px,1vw,8px);width:clamp(72px,18vw,120px);cursor:pointer;transition:transform .2s;text-decoration:none;backdrop-filter:blur(8px)}
     .product-card:hover{transform:scale(1.05)}
     .product-card img{width:100%;height:clamp(40px,10vw,80px);object-fit:cover;border-radius:clamp(4px,1vw,8px)}
