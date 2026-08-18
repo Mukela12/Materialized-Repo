@@ -6834,12 +6834,12 @@ Identify which products from the catalog are most likely to appear or be feature
        padding — from the video's carousel settings, so an empty one still
        painted a translucent slab over the footage with nothing in it. */
     #carousel:empty{display:none}
-    .product-card{flex:0 0 auto;background:rgba(255,255,255,0.95);border-radius:clamp(6px,1.5vw,12px);padding:clamp(4px,1vw,8px);width:clamp(72px,18vw,120px);cursor:pointer;transition:transform .2s;text-decoration:none;backdrop-filter:blur(8px)}
+    .product-card{flex:0 0 auto;background:rgba(255,255,255,0.95);border-radius:clamp(6px,1.5vw,12px);padding:clamp(3px,1vw,8px);width:clamp(58px,var(--card-w,18vw),120px);cursor:pointer;transition:transform .2s;text-decoration:none;backdrop-filter:blur(8px)}
     .product-card:hover{transform:scale(1.05)}
-    .product-card img{width:100%;height:clamp(40px,10vw,80px);object-fit:cover;border-radius:clamp(4px,1vw,8px)}
-    .product-name{font-size:clamp(8px,2vw,11px);font-weight:600;margin-top:clamp(2px,0.5vw,4px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#333}
-    .product-price{font-size:clamp(7px,1.8vw,10px);color:#677A67;font-weight:700;margin-top:1px}
-    .buy-btn{margin-top:3px;width:100%;border:0;border-radius:999px;background:#1351aa;color:#fff;font-size:clamp(7px,1.7vw,10px);font-weight:700;padding:3px 0;cursor:pointer;font-family:inherit}
+    .product-card img{width:100%;height:clamp(30px,var(--card-img-h,10vw),80px);object-fit:cover;border-radius:clamp(4px,1vw,8px)}
+    .product-name{font-size:clamp(7px,var(--card-name,2vw),11px);font-weight:600;margin-top:clamp(2px,0.5vw,4px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#333}
+    .product-price{font-size:clamp(7px,var(--card-price,1.8vw),10px);color:#677A67;font-weight:700;margin-top:1px}
+    .buy-btn{margin-top:3px;width:100%;border:0;border-radius:999px;background:#1351aa;color:#fff;font-size:clamp(7px,var(--card-buy,1.7vw),10px);font-weight:700;padding:3px 0;cursor:pointer;font-family:inherit}
     .buy-btn:hover{background:#0f4189}
     /* The checkout sits OVER the video, inside the same frame — the shopper
        never leaves the brand's page. */
@@ -6905,6 +6905,21 @@ ${embedCarouselCss(carousel)}
       var w=W,h=W/ar;
       if(h>H){h=H;w=H*ar;}
       p.style.width=w+"px";p.style.height=h+"px";
+
+      /**
+       * Cards are sized from the STAGE, not the viewport.
+       *
+       * They used to be clamp(...,18vw,...). Once the stage became the video
+       * rather than the whole frame, a 9:16 clip in a 450px-tall embed left a
+       * 207px stage inside an 800px viewport — so 18vw still resolved against
+       * 800 and three 120px cards were laid into 207px of space. Two of them
+       * were sliced in half, which reads as broken rather than scrollable.
+       */
+      p.style.setProperty("--card-w", (w * 0.29) + "px");
+      p.style.setProperty("--card-img-h", (w * 0.24) + "px");
+      p.style.setProperty("--card-name", (w * 0.032) + "px");
+      p.style.setProperty("--card-price", (w * 0.028) + "px");
+      p.style.setProperty("--card-buy", (w * 0.026) + "px");
     }
     (function(){
       var v=document.getElementById("vid");
