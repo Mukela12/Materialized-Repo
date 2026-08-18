@@ -105,7 +105,7 @@ export function embedCarouselCss(raw: CarouselSettings): string {
     .product-name{
       color:${s.productTitleColor};
       font-family:${fontStack(s.titleFont)};
-      font-size:calc(clamp(8px,2vw,11px) * ${s.titleFontSize / 100});
+      font-size:calc(clamp(7px,var(--card-name,2vw),11px) * ${s.titleFontSize / 100});
       ${s.showTitle ? "" : "display:none;"}
     }
     /* PRICE FOLLOWS THE PRODUCT TITLE, NOT THE BRAND TITLE.
@@ -115,14 +115,14 @@ export function embedCarouselCss(raw: CarouselSettings): string {
        element, styled below. */
     .product-price{
       color:${s.productTitleColor};
-      font-size:calc(clamp(7px,1.8vw,10px) * ${s.priceFontSize / 100});
+      font-size:calc(clamp(7px,var(--card-price,1.8vw),10px) * ${s.priceFontSize / 100});
       ${s.showPrice ? "" : "display:none;"}
     }
     /* The brand name — what brandTitleColor is actually for. */
     .product-brand{
       color:${s.brandTitleColor};
       font-family:${fontStack(s.titleFont)};
-      font-size:calc(clamp(6px,1.5vw,9px) * ${s.titleFontSize / 100});
+      font-size:calc(clamp(6px,var(--card-brand,1.5vw),9px) * ${s.titleFontSize / 100});
       text-transform:uppercase;
       letter-spacing:.04em;
       opacity:.85;
@@ -134,7 +134,7 @@ export function embedCarouselCss(raw: CarouselSettings): string {
       color:${s.buttonTextColor};
       border-radius:${s.buttonCornerRadius}px;
       font-family:${fontStack(s.buttonFont)};
-      font-size:calc(clamp(7px,1.7vw,10px) * ${s.buttonFontSize / 100});
+      font-size:calc(clamp(7px,var(--card-buy,1.7vw),10px) * ${s.buttonFontSize / 100});
       ${s.showButton ? "" : "display:none;"}
     }
     .buy-btn:hover{ background:${s.buttonHoverColor}; }

@@ -6837,6 +6837,11 @@ Identify which products from the catalog are most likely to appear or be feature
     .product-card{flex:0 0 auto;background:rgba(255,255,255,0.95);border-radius:clamp(6px,1.5vw,12px);padding:clamp(3px,1vw,8px);width:clamp(58px,var(--card-w,18vw),120px);cursor:pointer;transition:transform .2s;text-decoration:none;backdrop-filter:blur(8px)}
     .product-card:hover{transform:scale(1.05)}
     .product-card img{width:100%;height:clamp(30px,var(--card-img-h,10vw),80px);object-fit:cover;border-radius:clamp(4px,1vw,8px)}
+    /* The brand line truncates exactly like the product name. It never had a
+       base rule at all — only colour and font from the per-video block — so a
+       long brand ran the full width of the strip and three cards' worth of
+       "MATERIALIZED FASHION" collided into one another. */
+    .product-brand{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
     .product-name{font-size:clamp(7px,var(--card-name,2vw),11px);font-weight:600;margin-top:clamp(2px,0.5vw,4px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#333}
     .product-price{font-size:clamp(7px,var(--card-price,1.8vw),10px);color:#677A67;font-weight:700;margin-top:1px}
     .buy-btn{margin-top:3px;width:100%;border:0;border-radius:999px;background:#1351aa;color:#fff;font-size:clamp(7px,var(--card-buy,1.7vw),10px);font-weight:700;padding:3px 0;cursor:pointer;font-family:inherit}
@@ -6919,6 +6924,7 @@ ${embedCarouselCss(carousel)}
       p.style.setProperty("--card-img-h", (w * 0.24) + "px");
       p.style.setProperty("--card-name", (w * 0.032) + "px");
       p.style.setProperty("--card-price", (w * 0.028) + "px");
+      p.style.setProperty("--card-brand", (w * 0.024) + "px");
       p.style.setProperty("--card-buy", (w * 0.026) + "px");
     }
     (function(){
