@@ -6810,9 +6810,18 @@ Identify which products from the catalog are most likely to appear or be feature
   <title>${(video.title || "Materialized Video").replace(/[<>"'&]/g, "")}</title>
   <style>
     *{margin:0;padding:0;box-sizing:border-box}
-    body{background:#000;overflow:hidden;font-family:-apple-system,sans-serif}
-    #player{width:100vw;height:100vh;position:relative;display:flex;align-items:center;justify-content:center}
-    video{width:100%;height:100%;object-fit:contain}
+    /* The stage is the VIDEO, not the iframe.
+       #player used to fill the viewport with the video letterboxed inside it by
+       object-fit, and every overlay — carousel, checkout, end screen — anchored
+       to the iframe. On a 9:16 Reels clip in a 16:9 embed that is 474px of black
+       bar each side: a "left" carousel sat entirely on the bar, and even the
+       bottom strip was only 27% over the picture. Measured on the live embed.
+       So body does the centring and #player is sized to the video's own aspect
+       by fitPlayer() below, which puts every overlay back on the footage for any
+       shape of video. */
+    body{background:#000;overflow:hidden;font-family:-apple-system,sans-serif;width:100vw;height:100vh;display:flex;align-items:center;justify-content:center;margin:0}
+    #player{position:relative;display:flex;align-items:center;justify-content:center;max-width:100vw;max-height:100vh}
+    video{width:100%;height:100%;object-fit:contain;display:block}
     #loader{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:10}
     .spinner{width:40px;height:40px;border:3px solid rgba(255,255,255,0.2);border-top-color:#677A67;border-radius:50%;animation:spin 0.8s linear infinite}
     @keyframes spin{to{transform:rotate(360deg)}}
@@ -6878,6 +6887,29 @@ ${embedCarouselCss(carousel)}
       });
     });
     var products=${JSON.stringify(products)};
+    /**
+     * Fit the stage to the video's aspect ratio inside the iframe.
+     *
+     * Without this the overlays anchor to the iframe while the picture is
+     * letterboxed inside it, so their position means nothing on any video whose
+     * shape does not match the embed box — which is every phone video in a
+     * default 16:9 embed.
+     */
+    function fitPlayer(){
+      var p=document.getElementById("player"),v=document.getElementById("vid");
+      if(!v.videoWidth||!v.videoHeight)return;
+      var ar=v.videoWidth/v.videoHeight,W=window.innerWidth,H=window.innerHeight;
+      var w=W,h=W/ar;
+      if(h>H){h=H;w=H*ar;}
+      p.style.width=w+"px";p.style.height=h+"px";
+    }
+    (function(){
+      var v=document.getElementById("vid");
+      v.addEventListener("loadedmetadata",fitPlayer);
+      window.addEventListener("resize",fitPlayer);
+      if(v.videoWidth)fitPlayer();
+    })();
+
     var carousel=document.getElementById("carousel");
     products.forEach(function(p){
       var a=document.createElement("a");
