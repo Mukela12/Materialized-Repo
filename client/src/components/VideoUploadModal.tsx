@@ -423,6 +423,21 @@ export function VideoUploadModal({
         } catch {
           /* video still publishes even if overlay import fails */
         }
+        /**
+         * Refresh the lists before the modal closes.
+         *
+         * handleSaveDraft has always done this and publish never did, so with
+         * staleTime: Infinity and no refetch on focus, publishing showed
+         * "Video Published!" and left My Campaigns exactly as it was — usually
+         * empty. The video was in the database the whole time; the page it
+         * lands on simply never asked again. It looked like the upload had been
+         * silently thrown away.
+         *
+         * Publishing also puts the video in the global library, so that list is
+         * stale too.
+         */
+        queryClient.invalidateQueries({ queryKey: ["/api/videos"] });
+        queryClient.invalidateQueries({ queryKey: ["/api/videos/library"] });
         toast({ title: "Video Published!", description: "Your video with product carousel is now live." });
       } else {
         // Fallback if no video was created
