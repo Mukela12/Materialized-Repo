@@ -10,6 +10,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { Video } from "@shared/schema";
+import { videoPosterUrl } from "@shared/videoDelivery";
 
 const STATUS_COLORS: Record<string, string> = {
   draft:      "bg-muted text-muted-foreground border-border",
@@ -53,9 +54,14 @@ export function VideoCard({ video, onOpen, onEdit, onViewEmbed, onDelete }: Vide
     >
       {/* ── Thumbnail ─────────────────────────────────────────── */}
       <div className="relative aspect-video bg-muted">
-        {video.thumbnailUrl ? (
+        {video.thumbnailUrl || videoPosterUrl(video.videoUrl) ? (
           <img
-            src={video.thumbnailUrl}
+            /* A stored thumbnail if there is one, otherwise a frame cut from the
+               video itself. Uploads do not set thumbnailUrl, so every freshly
+               published video fell through to the grey placeholder below and a
+               creator's own campaign list showed a wall of identical grey cards
+               with no way to tell one video from another. */
+            src={video.thumbnailUrl || videoPosterUrl(video.videoUrl)}
             alt={video.title}
             className="w-full h-full object-cover"
           />

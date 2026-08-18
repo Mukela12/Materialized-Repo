@@ -41,6 +41,7 @@ import { useTableControls, type SortDir } from "@/hooks/useTableControls";
 import { exportToCsv } from "@/lib/exportCsv";
 import { TableToolbar } from "@/components/TableToolbar";
 import { ArrowDownUp } from "lucide-react";
+import { videoDeliveryUrl } from "@shared/videoDelivery";
 
 const PLATFORMS = [
   { id: "shopify",     label: "Shopify",      placeholder: "shpat_xxxxxxxxxxxxxxxxxxxx",        Icon: SiShopify,     color: "#96bf48", supported: true  },
@@ -273,7 +274,7 @@ function AddProductSheet({
               thumbPreview ? (
                 <div className="relative rounded-2xl overflow-hidden bg-muted/40 border border-border aspect-video">
                   {thumbFile?.type.startsWith("video/") ? (
-                    <video src={thumbPreview} className="w-full h-full object-cover" muted playsInline controls />
+                    <video src={videoDeliveryUrl(thumbPreview, "preview")} className="w-full h-full object-cover" muted playsInline controls />
                   ) : (
                     <img src={thumbPreview} alt="Preview" className="w-full h-full object-cover" />
                   )}

@@ -16,6 +16,7 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useUpload } from "@/hooks/use-upload";
 import { COUNTRIES } from "@shared/schema";
 import type { UserProfile, User } from "@shared/schema";
+import { videoDeliveryUrl } from "@shared/videoDelivery";
 
 const profileFormSchema = z.object({
   bio: z.string().max(100, "Bio must be 100 characters or less").optional(),
@@ -277,7 +278,12 @@ export default function ProfilePage() {
               <div className="relative rounded-xl overflow-hidden border border-border">
                 {mediaType === "video" ? (
                   <video
-                    src={mediaPreview}
+                    /* mediaPreview is a local blob: while a new file is staged,
+                       but is seeded from the stored profileMediaUrl on load —
+                       and a stored original can be HEVC, which Chrome will not
+                       play. videoDeliveryUrl passes blob: URLs through
+                       untouched, so one call covers both cases. */
+                    src={videoDeliveryUrl(mediaPreview, "preview")}
                     controls
                     className="w-full max-h-52 object-cover"
                     data-testid="preview-profile-video"
