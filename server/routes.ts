@@ -26,6 +26,7 @@ import { sanitisePlaylistStyle, styleFromPlaylist } from "@shared/playlistStyle"
 import { checkRedeemable, grantsOf, normaliseCode, generateVoucherCode, mintCodes, MAX_BATCH } from "./vouchers";
 import { isEntitled, hasFreeAccess } from "./entitlement";
 import { owesSetupFee, oweableRole, setupFeeAudience } from "./setupFee";
+import { planForRole, planAmountMajor, roleLabel, portalHome } from "./subscriptionPlan";
 import { videoDeliveryUrl } from "@shared/videoDelivery";
 import { feeInvoiceStripeAdapter } from "./feeInvoiceStripe";
 
@@ -5689,6 +5690,88 @@ Identify which products from the catalog are most likely to appear or be feature
    * date", and the client's rule is that only Creators get an entirely free
    * account.
    */
+  /**
+   * "Choose your plan" — the state where the only thing missing is money.
+   *
+   * A signup without a voucher gets no free period, so the account needs a
+   * subscription. Nothing said so: the user paid the $29, landed in the portal
+   * and found a working-looking product they were not entitled to use. The
+   * client found this within an hour of her first real brand signup.
+   *
+   * Deliberately NOT shown while the setup fee is outstanding. Two payment
+   * banners at once reads as two bills; the fee comes first and this appears
+   * once it clears.
+   */
+  app.get("/api/subscription/prompt", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ error: "Authentication required" });
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(401).json({ error: "Not authenticated" });
+
+      const sub = await storage.getBrandSubscription(userId);
+      const plan = planForRole(user.role);
+      const feeOutstanding = owesSetupFee(user);
+
+      res.json({
+        needed: !isEntitled(user, sub) && !feeOutstanding && !!plan,
+        blockedByFeeFirst: feeOutstanding,
+        role: user.role,
+        roleLabel: roleLabel(user.role),
+        plan,
+        amount: plan ? planAmountMajor(plan) : null,
+        freeUntil: user.freeAccessUntil ?? null,
+        hasSubscription: !!(sub && (sub.status === "active" || sub.status === "trialing")),
+      });
+    } catch (error) {
+      console.error("Subscription prompt error:", error);
+      res.status(500).json({ error: "Failed to read subscription status" });
+    }
+  });
+
+  /**
+   * Start the subscription for whatever this role must buy.
+   *
+   * Role-aware rather than plan-from-the-client: the per-portal endpoints each
+   * police their own allowlist, and a publisher had no endpoint at all. The
+   * plan is decided server-side from the role so it cannot be swapped for a
+   * cheaper tier in the request.
+   */
+  app.post("/api/subscription/checkout", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ error: "Authentication required" });
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(401).json({ error: "Not authenticated" });
+
+      const plan = planForRole(user.role);
+      if (!plan) return res.status(400).json({ error: "No plan is defined for this account type" });
+
+      let customerId = user.stripeCustomerId;
+      if (!customerId) {
+        const customer = await stripeService.createCustomer(user.email ?? "", userId, user.displayName ?? undefined);
+        customerId = customer.id;
+        await storage.updateUser(userId, { stripeCustomerId: customerId });
+      }
+
+      const origin = req.headers.origin ?? publicOrigin(req);
+      const home = portalHome(user.role);
+      /* createSubscriptionCheckout, not the setup-fee variant: the $29 is
+         collected separately now, and adding it here would bill it twice. */
+      const session = await stripeService.createSubscriptionCheckout(
+        customerId,
+        plan,
+        `${origin}${home}?subscription=success`,
+        `${origin}${home}?subscription=cancelled`,
+        { userId, plan },
+      );
+      res.json({ url: session.url, sessionId: session.id, plan });
+    } catch (e: any) {
+      console.error("Subscription checkout error:", e);
+      res.status(500).json({ error: e?.message ?? "Failed to create checkout session" });
+    }
+  });
+
   app.get("/api/setup-fee/status", async (req, res) => {
     try {
       const userId = (req.session as any)?.userId;
