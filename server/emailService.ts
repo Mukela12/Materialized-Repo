@@ -412,6 +412,8 @@ export async function sendCreatorInvitationEmail(opts: {
   category?: string | null;
   message?: string | null;
   acceptUrl: string;
+  /** The invitation's own voucher. Null only if minting failed. */
+  voucherCode?: string | null;
 }): Promise<void> {
   const firstName = opts.creatorName.split(" ")[0];
   const body = `
@@ -429,6 +431,14 @@ export async function sendCreatorInvitationEmail(opts: {
     <div class="cta-wrap">
       <a href="${opts.acceptUrl}" class="cta">Join Materialized</a>
     </div>
+    ${opts.voucherCode ? `
+    <!-- The code is in the link already. It is repeated in the open because mail
+         clients mangle long links, and a creator who cannot use their invitation
+         is a creator the brand has to chase by hand. -->
+    <div class="video-box" style="text-align:center;">
+      <p style="margin:0 0 6px;color:#444;">Your voucher code, if you need to enter it by hand:</p>
+      <p style="margin:0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:18px;font-weight:700;letter-spacing:.08em;color:#111;">${opts.voucherCode}</p>
+    </div>` : ""}
     <p class="note">If you weren't expecting this invitation, you can safely ignore this email.</p>
   `;
   await sendEmail(

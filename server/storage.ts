@@ -307,6 +307,8 @@ export interface IStorage {
    * fixing one entry or filling them in by hand.
    */
   setVoucherPartner(id: string, partner: string | null): Promise<boolean>;
+  /** How many vouchers belong to one batch. Used to cap invitation minting. */
+  countVouchersInBatch(batchId: string): Promise<number>;
   setVoucherWindow(
     target: { batchId?: string; assignedTo?: string },
     window: { activeFrom?: Date | null; expiresAt?: Date | null },
@@ -2157,6 +2159,10 @@ export class MemStorage implements IStorage {
     if (!v) return false;
     (v as any).partner = partner;
     return true;
+  }
+
+  async countVouchersInBatch(batchId: string): Promise<number> {
+    return Array.from(this.vouchersMap.values()).filter((v: any) => v.batchId === batchId).length;
   }
 
   async revokeVoucher(id: string): Promise<boolean> {
@@ -4093,6 +4099,12 @@ export class DatabaseStorage implements IStorage {
     const [row] = await db.update(vouchers)
       .set({ partner }).where(eq(vouchers.id, id)).returning({ id: vouchers.id });
     return !!row;
+  }
+
+  async countVouchersInBatch(batchId: string): Promise<number> {
+    const [row] = await db.select({ n: sql<number>`count(*)::int` })
+      .from(vouchers).where(eq(vouchers.batchId, batchId));
+    return row?.n ?? 0;
   }
 
   async revokeVoucher(id: string): Promise<boolean> {

@@ -27,6 +27,7 @@ import { checkRedeemable, grantsOf, normaliseCode, generateVoucherCode, mintCode
 import { isEntitled, hasFreeAccess } from "./entitlement";
 import { owesSetupFee, oweableRole, setupFeeAudience } from "./setupFee";
 import { planForRole, planAmountMajor, roleLabel, portalHome } from "./subscriptionPlan";
+import { inviteVoucherFields, inviteBatchId, inviteCapPerBrand } from "./inviteVoucher";
 import { videoDeliveryUrl } from "@shared/videoDelivery";
 import { feeInvoiceStripeAdapter } from "./feeInvoiceStripe";
 
@@ -2252,12 +2253,48 @@ export async function registerRoutes(
         message: message || null,
       });
 
-      // Notify the invited creator. There is no per-invite token/accept flow for
-      // creator invitations yet, so we link to the generic signup page.
+      /**
+       * Mint the voucher the invitation promises.
+       *
+       * The email says "subscription-free use until 31 October" and used to
+       * link to a bare /register — no code — so the creator met a $149 plan
+       * prompt instead. The code is minted here, carried in the link, and
+       * repeated in the email in case the link is mangled by a mail client.
+       *
+       * Minted BEFORE the email so a failure to mint means no misleading
+       * promise goes out; the invitation record is already saved either way.
+       */
+      const brandName = brands.find(b => b.id === useBrandId)?.name || "A brand";
+      let voucherCode: string | null = null;
+      try {
+        const batchId = inviteBatchId(useBrandId);
+        const minted = await storage.countVouchersInBatch(batchId);
+        if (minted >= inviteCapPerBrand()) {
+          return res.status(429).json({
+            error: `Invitation limit reached (${inviteCapPerBrand()}). Contact Materialized to raise it.`,
+            reason: "invite_cap",
+          });
+        }
+        const [code] = await mintCodes(1, async (c) => !!(await storage.getVoucherByCode(c)));
+        await storage.createVoucher(inviteVoucherFields({
+          code,
+          brandId: useBrandId,
+          brandName,
+          creatorEmail,
+          invitedByUserId: sessionUserId ?? null,
+        }) as any);
+        voucherCode = code;
+      } catch (voucherErr) {
+        // Recorded, not fatal: the invitation exists and can be re-sent. Sending
+        // an invitation with no code is the thing worth shouting about.
+        console.error("Invitation voucher mint failed:", voucherErr);
+      }
+
       if (isEmailConfigured()) {
         try {
-          const brandName = brands.find(b => b.id === useBrandId)?.name || "A brand";
-          const acceptUrl = `${publicOrigin(req)}/register`;
+          const acceptUrl = voucherCode
+            ? `${publicOrigin(req)}/register?code=${encodeURIComponent(voucherCode)}&role=creator`
+            : `${publicOrigin(req)}/register`;
           await sendCreatorInvitationEmail({
             creatorName,
             creatorEmail,
@@ -2265,6 +2302,7 @@ export async function registerRoutes(
             category: contentCategory || null,
             message: message || null,
             acceptUrl,
+            voucherCode,
           });
         } catch (emailErr) {
           console.error("Creator invitation email failed:", emailErr);

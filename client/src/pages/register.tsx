@@ -37,9 +37,28 @@ export default function Register() {
   const [verificationSent, setVerificationSent] = useState(false);
   const [registeredEmail, setRegisteredEmail] = useState("");
 
+  /**
+   * A code arriving in the link fills the form in.
+   *
+   * Brand invitations carry their voucher as ?code=, and a creator who has to
+   * find it in the email body and retype it is a creator who half the time
+   * does not — the invitation promised free access and the signup would have
+   * quietly charged them instead. `role` is honoured too so an invited creator
+   * does not land on the wrong account type and burn the code's role check.
+   */
+  const params = new URLSearchParams(typeof window === "undefined" ? "" : window.location.search);
+  const invitedCode = (params.get("code") ?? "").trim();
+  const invitedRole = params.get("role") ?? "";
+
   const form = useForm<FormData>({
     resolver: zodResolver(schema),
-    defaultValues: { email: "", password: "", displayName: "", role: "creator", accessCode: "" },
+    defaultValues: {
+      email: "",
+      password: "",
+      displayName: "",
+      role: ["creator", "brand", "affiliate"].includes(invitedRole) ? (invitedRole as FormData["role"]) : "creator",
+      accessCode: invitedCode,
+    },
   });
 
   const registerMutation = useMutation({
