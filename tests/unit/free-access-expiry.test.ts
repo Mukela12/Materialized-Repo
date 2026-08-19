@@ -88,8 +88,15 @@ describe("the gates actually call it", () => {
     expect(SRC).not.toMatch(/hasActiveSubscription\s*=\s*user\.isAdmin\s*\|\|\s*!!user\.freeAccess/);
   });
 
-  it("both gates go through isEntitled", () => {
+  /**
+   * Counts the CALLS, not an exact number of them. This asserted exactly two
+   * and broke the moment isEntitled was legitimately reused by the
+   * subscription prompt — a test that fails when the rule spreads to another
+   * caller is punishing the thing it wants to encourage. The load-bearing
+   * assertion is the one above: no gate reconstructs the rule inline.
+   */
+  it("the entitlement rule is called, never re-implemented", () => {
     const uses = SRC.match(/isEntitled\(user, sub\)/g) ?? [];
-    expect(uses.length).toBe(2);
+    expect(uses.length).toBeGreaterThanOrEqual(2);
   });
 });
