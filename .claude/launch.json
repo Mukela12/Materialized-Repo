@@ -6,7 +6,7 @@
       "runtimeExecutable": "sh",
       "runtimeArgs": [
         "-c",
-        "set -a; . /private/tmp/claude-501/-Users-mukelakatungu-Materialized-Repo/b5cdeaa6-6e41-473f-88e1-78cf935d8713/scratchpad/local.env; set +a; npm run dev"
+        "set -a; [ -f ./.env.local ] && . ./.env.local; set +a; npm run dev"
       ],
       "port": 5111,
       "autoPort": false

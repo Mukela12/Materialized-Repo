@@ -163,6 +163,7 @@ interface AdminUser {
   role: string;
   isAdmin: boolean;
   freeAccess: boolean;
+  freeAccessUntil: string | null;
   emailVerified: boolean;
   createdAt: string | null;
   commissionRateOverride?: string | null;
@@ -238,6 +239,7 @@ function AdminUsers() {
       { header: "Role", value: (u) => u.role },
       { header: "Admin", value: (u) => (u.isAdmin ? "yes" : "no") },
       { header: "Free Access", value: (u) => (u.freeAccess ? "yes" : "no") },
+      { header: "Free Until", value: (u) => (u.freeAccessUntil ? format(new Date(u.freeAccessUntil), "yyyy-MM-dd") : "") },
       { header: "Email Verified", value: (u) => (u.emailVerified ? "yes" : "no") },
     ]);
 
@@ -282,7 +284,15 @@ function AdminUsers() {
                 ) : (
                   <Badge className="bg-yellow-500/20 text-yellow-600 border-0">Unverified</Badge>
                 )}
-                {u.freeAccess && <Badge className="ml-1 bg-blue-500/20 text-blue-600 border-0">Free</Badge>}
+                {u.freeAccess && (
+                  <Badge className="ml-1 bg-blue-500/20 text-blue-600 border-0">
+                    {/* The date is the point: a comp has none, a festival
+                        account converts on it. */}
+                    {u.freeAccessUntil
+                      ? `Free until ${format(new Date(u.freeAccessUntil), "d MMM yyyy")}`
+                      : "Free"}
+                  </Badge>
+                )}
               </td>
               <td className="p-3">
                 <div className="flex gap-1">

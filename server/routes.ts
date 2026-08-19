@@ -24,6 +24,7 @@ import {
 } from "./playlistEmbed";
 import { sanitisePlaylistStyle, styleFromPlaylist } from "@shared/playlistStyle";
 import { checkRedeemable, grantsOf, normaliseCode, generateVoucherCode, mintCodes, MAX_BATCH } from "./vouchers";
+import { isEntitled, hasFreeAccess } from "./entitlement";
 import { videoDeliveryUrl } from "@shared/videoDelivery";
 import { feeInvoiceStripeAdapter } from "./feeInvoiceStripe";
 
@@ -149,7 +150,7 @@ export async function registerRoutes(
       if (!user) return res.status(401).json({ error: "Not authenticated" });
 
       const sub = await storage.getBrandSubscription(user.id);
-      const hasActiveSubscription = user.isAdmin || !!user.freeAccess || !!(sub && (sub.status === "active" || sub.status === "trialing"));
+      const hasActiveSubscription = isEntitled(user, sub);
       const videoCount = await storage.getVideoCountByUser(user.id);
 
       res.json({
@@ -544,7 +545,7 @@ export async function registerRoutes(
 
       // ─── Trial enforcement ─────────────────────────────────────────────────
       const sub = await storage.getBrandSubscription(user.id);
-      const hasActiveSubscription = user.isAdmin || !!user.freeAccess || !!(sub && (sub.status === "active" || sub.status === "trialing"));
+      const hasActiveSubscription = isEntitled(user, sub);
 
       if (!hasActiveSubscription) {
         const videoCount = await storage.getVideoCountByUser(user.id);
@@ -5009,6 +5010,10 @@ Identify which products from the catalog are most likely to appear or be feature
         role: users.role,
         isAdmin: users.isAdmin,
         freeAccess: users.freeAccess,
+        /* So the client can see at a glance who converts, and when. A free
+           account with no date is a permanent comp; one with a date is a
+           festival account that starts paying on it. */
+        freeAccessUntil: users.freeAccessUntil,
         emailVerified: users.emailVerified,
         createdAt: users.createdAt,
         commissionRateOverride: users.commissionRateOverride,

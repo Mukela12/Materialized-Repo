@@ -77,6 +77,13 @@ export const users = pgTable("users", {
   stripeConnectChargesEnabled: boolean("stripe_connect_charges_enabled").notNull().default(false),
   isAdmin: boolean("is_admin").default(false),
   freeAccess: boolean("free_access").default(false),
+  /**
+   * When free access lapses. NULL = never, which is what a manual comp from the
+   * admin Users tab means. Set from the voucher's expiry at redemption, so a
+   * festival account converts to a paid subscription on the date the client
+   * chose rather than being free for good.
+   */
+  freeAccessUntil: timestamp("free_access_until"),
   emailVerified: boolean("email_verified").default(false),
   emailVerificationToken: text("email_verification_token"),
   emailVerificationExpires: timestamp("email_verification_expires"),

@@ -126,6 +126,14 @@ export function registerAuthRoutes(app: Express) {
      */
     let voucherGrants = { freeAccess: false, waiveSetupFee: false };
     let voucherToRedeem: { id: string; maxRedemptions: number | null } | null = null;
+    /**
+     * When the free period ends.
+     *
+     * Taken from the voucher's own expiry, which is the date the client set per
+     * batch — Brooklyn and Liverpool convert on 31 Oct, Mozambique on 31 Dec.
+     * A voucher with no expiry grants open-ended free access, exactly as before.
+     */
+    let freeAccessUntil: Date | null = null;
 
     if (accessCode && accessCode.trim()) {
       const code = normaliseCode(accessCode);
@@ -142,6 +150,7 @@ export function registerAuthRoutes(app: Express) {
           return res.status(400).json({ error: check.message, reason: check.reason });
         }
         voucherGrants = grantsOf(check.voucher);
+        freeAccessUntil = check.voucher.expiresAt ?? null;
         voucherToRedeem = { id: check.voucher.id, maxRedemptions: check.voucher.maxRedemptions };
       }
     }
@@ -153,6 +162,7 @@ export function registerAuthRoutes(app: Express) {
       displayName,
       role,
       freeAccess: voucherGrants.freeAccess,
+      freeAccessUntil: voucherGrants.freeAccess ? freeAccessUntil : null,
       /**
        * A VOUCHER IS ALREADY AN INVITATION.
        *
@@ -182,7 +192,7 @@ export function registerAuthRoutes(app: Express) {
       // the grant — reported honestly rather than quietly handing out seat 21.
       const r = await storage.redeemVoucher(voucherToRedeem.id, user.id, voucherToRedeem.maxRedemptions);
       if (!r.redeemed) {
-        await storage.updateUser(user.id, { freeAccess: false } as any).catch(() => {});
+        await storage.updateUser(user.id, { freeAccess: false, freeAccessUntil: null } as any).catch(() => {});
         return res.status(409).json({
           error: r.reason === "exhausted"
             ? "That voucher was fully used moments ago. Your account was created, but without the voucher benefit."

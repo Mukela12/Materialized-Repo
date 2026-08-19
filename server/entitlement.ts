@@ -1,0 +1,56 @@
+/**
+ * Does this account currently have access without paying?
+ *
+ * ── Why this is one function ─────────────────────────────────────────────────
+ * The rule lived inline at two call sites as
+ *
+ *   user.isAdmin || !!user.freeAccess || (sub && (active || trialing))
+ *
+ * and `freeAccess` was permanent: a voucher set it true and nothing ever set it
+ * back. The client is handing out 216 free-access codes at four events, so that
+ * was 216 accounts that would never be billed — not a trial, a permanent comp.
+ *
+ * Her intent is a subscription-free period that ENDS on a fixed date, after
+ * which the account converts to the monthly fee. Expressing that inline in two
+ * places would have been two chances to forget the date comparison, and the
+ * failure mode is silent: forgetting it means free forever, and nobody
+ * complains about not being charged.
+ */
+
+export interface EntitlementUser {
+  isAdmin?: boolean | null;
+  freeAccess?: boolean | null;
+  freeAccessUntil?: Date | string | null;
+}
+
+export interface EntitlementSubscription {
+  status?: string | null;
+}
+
+/**
+ * Free access that has not lapsed.
+ *
+ * NULL `freeAccessUntil` means no end date — a manual comp from the admin Users
+ * tab, which is deliberately open-ended. A date in the past means the free
+ * period is over and the account needs a subscription like anyone else; the
+ * flag itself is left alone so the history of why they were free stays legible.
+ */
+export function hasFreeAccess(user: EntitlementUser, now: Date = new Date()): boolean {
+  if (!user?.freeAccess) return false;
+  const until = user.freeAccessUntil;
+  if (until == null) return true;
+  const end = until instanceof Date ? until : new Date(until);
+  if (Number.isNaN(end.getTime())) return true; // unparseable: fail open, never lock out a paying-free user
+  return end.getTime() > now.getTime();
+}
+
+/** The single entitlement rule: admin, unlapsed free access, or a live subscription. */
+export function isEntitled(
+  user: EntitlementUser,
+  sub: EntitlementSubscription | null | undefined,
+  now: Date = new Date(),
+): boolean {
+  if (user?.isAdmin) return true;
+  if (hasFreeAccess(user, now)) return true;
+  return !!(sub && (sub.status === "active" || sub.status === "trialing"));
+}
