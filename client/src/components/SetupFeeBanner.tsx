@@ -62,18 +62,25 @@ export function SetupFeeBanner() {
       <div>
         <p className="text-sm font-medium">One-time admin setup fee outstanding</p>
         <p className="text-xs text-muted-foreground mt-1">
-          Every {data.audience} account pays a one-off ${data.amount} setup fee. Your subscription is
-          covered by your voucher, but this is still to pay before your account is active.
+          Every {data.audience} account pays a one-off{" "}
+          <span className="font-semibold text-foreground">${data.amount}</span> setup fee. Your
+          subscription is covered by your voucher, but this is still to pay before your account is
+          active.
         </p>
       </div>
+      {/* The client: "PAY NOW capitals. Remove $29 as it is repetitive. This is
+          a call to action, and it should stand out more vibrantly." The amount
+          is already in the sentence above it, so the button carries the verb
+          alone and is sized and coloured to be the thing you look at. */}
       <Button
+        size="lg"
         onClick={() => pay.mutate()}
         disabled={pay.isPending}
-        className="gap-2 shrink-0"
+        className="gap-2 shrink-0 font-bold tracking-wide uppercase bg-amber-500 hover:bg-amber-600 text-black shadow-lg shadow-amber-500/30"
         data-testid="button-pay-setup-fee"
       >
-        {pay.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
-        Pay ${data.amount}
+        {pay.isPending ? <Loader2 className="h-5 w-5 animate-spin" /> : <CreditCard className="h-5 w-5" />}
+        Pay Now
       </Button>
     </div>
   );

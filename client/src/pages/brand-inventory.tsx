@@ -450,7 +450,10 @@ export default function BrandInventory() {
   const currentBrandId = brands[0]?.id;
 
   const { data: products = [], isLoading } = useQuery<Product[]>({
-    queryKey: ["/api/products"],
+    // Own inventory only — unscoped, this endpoint answers "whose products may
+    // I browse", which on a Brand's own catalogue page means the marketplace.
+    queryKey: ["/api/products", "mine"],
+    queryFn: () => fetch("/api/products?mine=true", { credentials: "include" }).then((r) => r.json()),
   });
 
   const { query, setQuery, sortKey, sortDir, toggleSort, rows: productRows } = useTableControls(products, {

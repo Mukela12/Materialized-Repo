@@ -26,6 +26,23 @@ import type { CreatorInvitation } from "@shared/schema";
 import { formatDistanceToNow } from "date-fns";
 import Papa from "papaparse";
 
+/**
+ * The invitation a brand sends a creator, supplied by the client verbatim.
+ *
+ * A DEFAULT, not a placeholder. It was a placeholder, which meant the field was
+ * submitted empty unless the brand wrote something themselves — so the copy the
+ * client wanted sent was precisely the copy that never got sent.
+ *
+ * Falls back to wording that still reads correctly when the brand name is not
+ * to hand.
+ */
+export const INVITE_MESSAGE = (brand?: string) =>
+  `As part of the digitalization of ${brand?.trim() || "our brand"}, we are working on a new ` +
+  `medium of digital entertainment. We're inviting you to join MTRLZD with a month of ` +
+  `subscription-free use, where you can upload your videos, tag our brand, and engage better ` +
+  `with video commerce!`;
+
+
 const inviteCreatorSchema = z.object({
   creatorName: z.string().min(1, "Creator name is required"),
   creatorEmail: z.string().email("Valid email is required"),
@@ -61,7 +78,7 @@ export default function BrandCreators() {
       creatorName: "",
       creatorEmail: "",
       contentCategory: "",
-      message: "",
+      message: INVITE_MESSAGE(),
     },
   });
 
@@ -349,7 +366,7 @@ export default function BrandCreators() {
                           <FormLabel>Personal Message (Optional)</FormLabel>
                           <FormControl>
                             <Textarea 
-                              placeholder="Hi! We love your content and think our products would be a great fit for your audience..."
+                              placeholder={INVITE_MESSAGE()}
                               className="resize-none min-h-[100px]"
                               {...field}
                               data-testid="input-invite-message"

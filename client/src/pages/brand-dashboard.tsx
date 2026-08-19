@@ -50,7 +50,10 @@ export default function BrandDashboard() {
   });
 
   const { data: products = [], isLoading: productsLoading } = useQuery<Product[]>({
-    queryKey: ["/api/products"],
+    // Own inventory only — unscoped, this endpoint answers "whose products may
+    // I browse", which on a Brand's own catalogue page means the marketplace.
+    queryKey: ["/api/products", "mine"],
+    queryFn: () => fetch("/api/products?mine=true", { credentials: "include" }).then((r) => r.json()),
   });
 
   const { data: brands = [] } = useQuery<Brand[]>({

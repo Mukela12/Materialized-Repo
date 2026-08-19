@@ -395,6 +395,35 @@ export async function registerRoutes(
 
       const sessionUserId = (req.session as any)?.userId;
       const actor = sessionUserId ? await storage.getUser(sessionUserId) : null;
+
+      /**
+       * `mine=true` means MY inventory, not everything I am allowed to see.
+       *
+       * A Brand's Product Inventory page is about the products they sell — it
+       * is where their store API key lives. Unscoped, this endpoint answers the
+       * discovery question instead ("whose inventory may I browse"), which is
+       * the right answer for a creator tagging a brand and the wrong one here:
+       * the client opened her own catalogue and found other brands' products in
+       * it. Admin is not exempt, or an admin-owned brand would see the whole
+       * marketplace as its own stock.
+       */
+      const mine = req.query.mine === "true";
+      if (mine) {
+        if (!sessionUserId) return res.status(401).json({ error: "Authentication required" });
+        const owned = new Map<string, boolean>();
+        const ownProducts: typeof products = [];
+        for (const p of products) {
+          const bid = p.brandId;
+          if (!bid) continue;
+          if (!owned.has(bid)) {
+            const brand = await storage.getBrand(bid);
+            owned.set(bid, brand?.ownerId === sessionUserId);
+          }
+          if (owned.get(bid)) ownProducts.push(p);
+        }
+        return res.json(ownProducts);
+      }
+
       if (actor?.isAdmin) return res.json(products);
 
       // Filter to brands whose inventory this caller may discover. Cached per
