@@ -682,6 +682,11 @@ export default function BrandInventory() {
             <>
               <div className="space-y-2">
                 <Label>Select your platform</Label>
+                {!selectedPlatform && (
+                  <p className="text-xs text-muted-foreground" data-testid="text-platform-required">
+                    Pick your store below to unlock the connection fields.
+                  </p>
+                )}
                 <div className="flex flex-wrap gap-3">
                   {PLATFORMS.map((p) => {
                     const isSelected = selectedPlatform === p.id;
@@ -745,6 +750,11 @@ export default function BrandInventory() {
                   disabled={!selectedPlatform}
                   data-testid="input-inventory-api-key"
                 />
+                {!selectedPlatform && (
+                  <p className="text-xs text-muted-foreground">
+                    Select a platform above to enter your key.
+                  </p>
+                )}
               </div>
               {selectedPlatform === "woocommerce" && (
                 <div className="space-y-2">

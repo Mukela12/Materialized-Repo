@@ -303,7 +303,32 @@ function AdminGuard({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+/**
+ * A dropped file that misses a drop zone must do nothing.
+ *
+ * The browser's default for a file dropped on a page is to NAVIGATE TO IT, so
+ * an image aimed at a cover-image target and landing an inch wide replaced the
+ * whole app with the raw picture. Every drop zone already prevents this for
+ * itself; nothing covered the rest of the window. The client hit it live in a
+ * demo, which is exactly where it looks worst.
+ *
+ * Zone handlers run first as the event bubbles, so this only ever catches the
+ * misses.
+ */
+function useDropGuard() {
+  useEffect(() => {
+    const swallow = (e: DragEvent) => e.preventDefault();
+    window.addEventListener("dragover", swallow);
+    window.addEventListener("drop", swallow);
+    return () => {
+      window.removeEventListener("dragover", swallow);
+      window.removeEventListener("drop", swallow);
+    };
+  }, []);
+}
+
 function AppContent() {
+  useDropGuard();
   const [location, navigate] = useLocation();
   const { data: user } = useCurrentUser();
   const logoutMutation = useLogout();
