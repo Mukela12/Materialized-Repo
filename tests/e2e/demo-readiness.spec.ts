@@ -159,6 +159,25 @@ test('demo readiness capture', async ({ page }) => {
     }
   }
 
+  // ── 6. The $29 setup fee: status endpoint and, if owed, the banner ────────
+  const feeStatus = await page.evaluate(async () => {
+    const r = await fetch('/api/setup-fee/status', { credentials: 'include' });
+    return { httpStatus: r.status, body: r.ok ? await r.json() : null };
+  });
+  note('setup-fee-status', feeStatus);
+
+  const banner = await page.getByTestId('banner-setup-fee').count();
+  const payBtn = await page.getByTestId('button-pay-setup-fee').count();
+  note('setup-fee-banner', {
+    shown: banner > 0,
+    payButton: payBtn > 0,
+    // A Creator or a settled account should see nothing — the banner appearing
+    // for someone who owes nothing is as wrong as it missing for someone who does.
+    expectedShown: !!feeStatus.body?.outstanding,
+    correct: (banner > 0) === !!feeStatus.body?.outstanding,
+  });
+  if (banner > 0) await page.screenshot({ path: `${DIR}/08-setup-fee-banner.png`, fullPage: true });
+
   note('console-errors', { count: errors.filter(realError).length, sample: errors.filter(realError).slice(0, 6) });
 });
 
