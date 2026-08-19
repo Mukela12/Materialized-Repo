@@ -317,7 +317,23 @@ export async function registerRoutes(
   });
 
   // Get single brand
-  app.get("/api/brands/:id", async (req, res) => {
+  /**
+   * NOT EVERY /api/brands/<word> IS AN ID.
+   *
+   * Express matches in declaration order, and three literal routes are declared
+   * later in this file: /stats, /creator-invites and /invite-offer. This handler
+   * swallowed all of them and answered "Brand not found", so the Brand
+   * dashboard's performance panel and the Sent Invitations list were not empty —
+   * they were 404ing, and showing zeros because a failed query has no rows.
+   *
+   * Handing them on rather than reordering keeps the diff small; the test in
+   * tests/unit/brand-route-shadowing.test.ts fails if a fourth literal route is
+   * ever added below without being listed here.
+   */
+  const BRAND_LITERAL_ROUTES = ["stats", "creator-invites", "invite-offer"];
+
+  app.get("/api/brands/:id", async (req, res, next) => {
+    if (BRAND_LITERAL_ROUTES.includes(req.params.id)) return next();
     try {
       const brand = await storage.getBrand(req.params.id);
       if (!brand) {
