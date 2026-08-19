@@ -36,10 +36,19 @@ import Papa from "papaparse";
  * Falls back to wording that still reads correctly when the brand name is not
  * to hand.
  */
+/**
+ * The end of the subscription-free offer, as one editable value.
+ *
+ * The copy said "a month", which is not what the offer is: the free period ends
+ * on a fixed date, so a creator invited in October would have got days rather
+ * than a month and been told otherwise in writing.
+ */
+export const OFFER_ENDS = "31 October";
+
 export const INVITE_MESSAGE = (brand?: string) =>
   `As part of the digitalization of ${brand?.trim() || "our brand"}, we are working on a new ` +
-  `medium of digital entertainment. We're inviting you to join MTRLZD with a month of ` +
-  `subscription-free use, where you can upload your videos, tag our brand, and engage better ` +
+  `medium of digital entertainment. We're inviting you to join MTRLZD with subscription-free ` +
+  `use until ${OFFER_ENDS}, where you can upload your videos, tag our brand, and engage better ` +
   `with video commerce!`;
 
 
