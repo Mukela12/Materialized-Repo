@@ -1,3 +1,5 @@
+import { owesSetupFee, type SetupFeeUser } from "./setupFee";
+
 /**
  * Does this account currently have access without paying?
  *
@@ -17,7 +19,7 @@
  * complains about not being charged.
  */
 
-export interface EntitlementUser {
+export interface EntitlementUser extends SetupFeeUser {
   isAdmin?: boolean | null;
   freeAccess?: boolean | null;
   freeAccessUntil?: Date | string | null;
@@ -44,13 +46,24 @@ export function hasFreeAccess(user: EntitlementUser, now: Date = new Date()): bo
   return end.getTime() > now.getTime();
 }
 
-/** The single entitlement rule: admin, unlapsed free access, or a live subscription. */
+/**
+ * The single entitlement rule.
+ *
+ * Admin, or (the setup fee settled AND either unlapsed free access or a live
+ * subscription).
+ *
+ * The fee is a PRECONDITION rather than an alternative: the client's rule is
+ * that no Brand or Publisher account is ever entirely free, so a voucher covers
+ * the subscription and never the fee. Creators are exempt from the fee, so for
+ * them this reduces to the old rule.
+ */
 export function isEntitled(
   user: EntitlementUser,
   sub: EntitlementSubscription | null | undefined,
   now: Date = new Date(),
 ): boolean {
   if (user?.isAdmin) return true;
+  if (owesSetupFee(user)) return false;
   if (hasFreeAccess(user, now)) return true;
   return !!(sub && (sub.status === "active" || sub.status === "trialing"));
 }

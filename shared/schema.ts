@@ -84,6 +84,13 @@ export const users = pgTable("users", {
    * chose rather than being free for good.
    */
   freeAccessUntil: timestamp("free_access_until"),
+  /**
+   * The one-time admin setup fee. Creators never owe it; Brands and Publishers
+   * always do, whether they arrive by subscription checkout (where it is a line
+   * item) or by voucher (where it is charged on its own).
+   */
+  setupFeePaid: boolean("setup_fee_paid").notNull().default(false),
+  setupFeePaidAt: timestamp("setup_fee_paid_at"),
   emailVerified: boolean("email_verified").default(false),
   emailVerificationToken: text("email_verification_token"),
   emailVerificationExpires: timestamp("email_verification_expires"),

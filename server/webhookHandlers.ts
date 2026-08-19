@@ -229,6 +229,29 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session): Promis
     console.log(`[Webhook] card on file set as default for customer ${customerId}`);
     return;
   }
+  /**
+   * The standalone admin setup fee.
+   *
+   * Keyed on metadata.purpose, not on mode alone — other one-time payments share
+   * `payment` mode, and marking an account fee-settled because it bought
+   * something else would hand out access nobody paid for.
+   */
+  if (session.mode === 'payment' && session.metadata?.purpose === 'setup_fee') {
+    if (session.payment_status !== 'paid') {
+      console.warn(`[Webhook] setup_fee session ${session.id} completed but payment_status=${session.payment_status}`);
+      return;
+    }
+    const feeUserId = session.metadata?.userId
+      ?? (await storage.getUserByStripeCustomerId(extractCustomerId(session.customer) ?? ''))?.id;
+    if (!feeUserId) {
+      console.warn('[Webhook] setup_fee: no user on session', session.id);
+      return;
+    }
+    await storage.updateUser(feeUserId, { setupFeePaid: true, setupFeePaidAt: new Date() } as any);
+    console.log(`[Webhook] setup fee settled for user ${feeUserId} (session ${session.id})`);
+    return;
+  }
+
   if (session.mode !== 'subscription') return;
 
   const customerId = extractCustomerId(session.customer);
@@ -250,6 +273,20 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session): Promis
   if (!userId) {
     console.warn('[Webhook] checkout.session.completed: no user found for customer', customerId);
     return;
+  }
+
+  /**
+   * A subscription checkout carries the setup fee as a line item unless it was
+   * explicitly waived, and a waiver is a decision not to collect it. Either way
+   * the obligation is closed, so the account must not be held behind it.
+   */
+  try {
+    await storage.updateUser(userId, { setupFeePaid: true, setupFeePaidAt: new Date() } as any);
+  } catch (err) {
+    // Never let the fee bookkeeping cost us the subscription record. A missing
+    // fee mark is recoverable by hand; a lost subscription upsert means an
+    // account that paid and has nothing to show for it.
+    console.warn('[Webhook] could not mark setup fee settled for', userId, err);
   }
 
   const stripe = await getUncachableStripeClient();

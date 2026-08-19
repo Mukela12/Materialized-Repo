@@ -25,6 +25,7 @@ import {
 import { sanitisePlaylistStyle, styleFromPlaylist } from "@shared/playlistStyle";
 import { checkRedeemable, grantsOf, normaliseCode, generateVoucherCode, mintCodes, MAX_BATCH } from "./vouchers";
 import { isEntitled, hasFreeAccess } from "./entitlement";
+import { owesSetupFee, oweableRole, setupFeeAudience } from "./setupFee";
 import { videoDeliveryUrl } from "@shared/videoDelivery";
 import { feeInvoiceStripeAdapter } from "./feeInvoiceStripe";
 
@@ -5651,6 +5652,72 @@ Identify which products from the catalog are most likely to appear or be feature
    * Deliberately says only whether it is usable and what it grants — never who
    * it belongs to or how it was issued, since anyone can call this.
    */
+  /**
+   * The one-time admin setup fee — status and checkout.
+   *
+   * Separate from subscription checkout because the accounts that most need it
+   * never reach one: a voucher holder's offer is "no subscription until the
+   * date", and the client's rule is that only Creators get an entirely free
+   * account.
+   */
+  app.get("/api/setup-fee/status", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ error: "Authentication required" });
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(401).json({ error: "Not authenticated" });
+      res.json({
+        required: oweableRole(user.role),
+        paid: !!user.setupFeePaid,
+        outstanding: owesSetupFee(user),
+        amount: setupFeeMajor(),
+        audience: setupFeeAudience(user.role),
+      });
+    } catch (error) {
+      console.error("Setup fee status error:", error);
+      res.status(500).json({ error: "Failed to read setup fee status" });
+    }
+  });
+
+  app.post("/api/setup-fee/checkout", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ error: "Authentication required" });
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(401).json({ error: "Not authenticated" });
+
+      if (!oweableRole(user.role)) {
+        return res.status(400).json({ error: "Creator accounts do not pay a setup fee" });
+      }
+      // Idempotent by design: a double click must not open a second charge.
+      if (user.setupFeePaid) return res.json({ alreadyPaid: true });
+
+      let customerId = user.stripeCustomerId;
+      if (!customerId) {
+        const customer = await stripeService.createCustomer(user.email ?? "", userId, user.displayName ?? undefined);
+        customerId = customer.id;
+        await storage.updateUser(userId, { stripeCustomerId: customerId });
+      }
+
+      const priceId = await stripeService.findOrCreateSetupFeePrice();
+      const base = req.headers.origin ?? publicOrigin(req);
+      const session = await stripeService.createCheckoutSession(
+        customerId,
+        priceId,
+        `${base}/${user.role === "brand" ? "brand" : "affiliate"}?setup_fee=paid`,
+        `${base}/${user.role === "brand" ? "brand" : "affiliate"}?setup_fee=cancelled`,
+        "payment",
+        // purpose is what the webhook keys off — mode alone is not enough,
+        // since other one-time payments share it.
+        { userId, purpose: "setup_fee" },
+      );
+      res.json({ url: session.url, sessionId: session.id });
+    } catch (error) {
+      console.error("Setup fee checkout error:", error);
+      res.status(500).json({ error: "Failed to start setup fee checkout" });
+    }
+  });
+
   app.post("/api/vouchers/check", async (req, res) => {
     try {
       const raw = typeof req.body?.code === "string" ? req.body.code : "";

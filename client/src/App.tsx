@@ -64,6 +64,7 @@ import { useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { ChevronDown, LogOut, User, Layers, Settings, Shield, LifeBuoy } from "lucide-react";
+import { SetupFeeBanner } from "@/components/SetupFeeBanner";
 
 function CreatorRouter() {
   return (
@@ -479,6 +480,10 @@ function AppContent() {
             </div>
           </header>
           <main className="flex-1 overflow-y-auto p-4 md:p-6 pb-24 md:pb-6 bg-background">
+            {/* Renders itself only when a Brand or Publisher still owes the
+                one-time fee. Above the router so it is the first thing on the
+                page — a blocked account with no explanation reads as broken. */}
+            <SetupFeeBanner />
             <Router />
           </main>
         </div>
