@@ -38,6 +38,34 @@ export function inviteOfferEnd(): Date {
   return new Date("2026-11-01T05:00:00Z");
 }
 
+/**
+ * The end date an invitation should carry, following the inviting brand.
+ *
+ * A Liverpool brand's own offer runs to 30 November and a Brooklyn brand's to
+ * 31 October, so one global date would tell half of them the wrong thing — in
+ * writing, to creators they are recruiting. The brand's own voucher is the
+ * source of truth; the default applies only to a brand that arrived without
+ * one, which is the case the constant was written for.
+ */
+export function inviteOfferEndFor(ownVoucherExpiry: Date | null | undefined): Date {
+  if (ownVoucherExpiry instanceof Date && !Number.isNaN(ownVoucherExpiry.getTime())) {
+    return ownVoucherExpiry;
+  }
+  return inviteOfferEnd();
+}
+
+/**
+ * That date, worded the way the invitation says it.
+ *
+ * The copy names a day — "until 31 October" — while the stored instant is
+ * 05:00 the following morning, so that the last day is whole in every
+ * timezone. Rendering the instant directly would advertise the wrong date.
+ */
+export function inviteOfferEndLabel(end: Date): string {
+  const shown = new Date(end.getTime() - 6 * 60 * 60 * 1000);
+  return shown.toLocaleDateString("en-GB", { day: "numeric", month: "long", timeZone: "UTC" });
+}
+
 /** How many invite vouchers one brand may mint. Generous, configurable, finite. */
 export function inviteCapPerBrand(): number {
   const raw = Number(process.env.INVITE_VOUCHER_CAP);
@@ -61,6 +89,8 @@ export function inviteVoucherFields(args: {
   brandName: string;
   creatorEmail: string;
   invitedByUserId: string | null;
+  /** The inviting brand's own offer end, when they came in on a voucher. */
+  offerEnd?: Date | null;
 }) {
   return {
     code: args.code,
@@ -70,7 +100,7 @@ export function inviteVoucherFields(args: {
     roleRestriction: "creator",
     maxRedemptions: 1,
     activeFrom: null,
-    expiresAt: inviteOfferEnd(),
+    expiresAt: inviteOfferEndFor(args.offerEnd),
     createdBy: args.invitedByUserId,
     batchId: inviteBatchId(args.brandId),
     assignedTo: args.creatorEmail.slice(0, 200),

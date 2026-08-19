@@ -27,7 +27,7 @@ import { checkRedeemable, grantsOf, normaliseCode, generateVoucherCode, mintCode
 import { isEntitled, hasFreeAccess } from "./entitlement";
 import { owesSetupFee, oweableRole, setupFeeAudience } from "./setupFee";
 import { planForRole, planAmountMajor, roleLabel, portalHome } from "./subscriptionPlan";
-import { inviteVoucherFields, inviteBatchId, inviteCapPerBrand } from "./inviteVoucher";
+import { inviteVoucherFields, inviteBatchId, inviteCapPerBrand, inviteOfferEndFor, inviteOfferEndLabel } from "./inviteVoucher";
 import { videoDeliveryUrl } from "@shared/videoDelivery";
 import { feeInvoiceStripeAdapter } from "./feeInvoiceStripe";
 
@@ -2275,6 +2275,9 @@ export async function registerRoutes(
             reason: "invite_cap",
           });
         }
+        // The inviting brand's own offer decides the date, so a Liverpool brand
+        // invites to 30 November and a Brooklyn brand to 31 October.
+        const ownVoucher = sessionUserId ? await storage.getRedeemedVoucherForUser(sessionUserId) : null;
         const [code] = await mintCodes(1, async (c) => !!(await storage.getVoucherByCode(c)));
         await storage.createVoucher(inviteVoucherFields({
           code,
@@ -2282,6 +2285,7 @@ export async function registerRoutes(
           brandName,
           creatorEmail,
           invitedByUserId: sessionUserId ?? null,
+          offerEnd: ownVoucher?.expiresAt ?? null,
         }) as any);
         voucherCode = code;
       } catch (voucherErr) {
@@ -5740,6 +5744,26 @@ Identify which products from the catalog are most likely to appear or be feature
    * banners at once reads as two bills; the fee comes first and this appears
    * once it clears.
    */
+  /**
+   * The offer date this brand's invitations carry.
+   *
+   * The default copy in the invite form names a day, and naming the wrong one
+   * is a promise in writing to somebody the brand is recruiting — so the screen
+   * asks rather than hard-coding a constant that is only right for one festival.
+   */
+  app.get("/api/brands/invite-offer", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ error: "Authentication required" });
+      const own = await storage.getRedeemedVoucherForUser(userId);
+      const end = inviteOfferEndFor(own?.expiresAt ?? null);
+      res.json({ endsAt: end.toISOString(), label: inviteOfferEndLabel(end) });
+    } catch (error) {
+      console.error("Invite offer error:", error);
+      res.status(500).json({ error: "Failed to read the invitation offer date" });
+    }
+  });
+
   app.get("/api/subscription/prompt", async (req, res) => {
     try {
       const userId = (req.session as any)?.userId;

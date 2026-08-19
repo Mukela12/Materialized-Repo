@@ -14,7 +14,8 @@ import { describe, it, expect, afterEach } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
-  inviteOfferEnd, inviteCapPerBrand, inviteBatchId, inviteVoucherFields,
+  inviteOfferEnd, inviteOfferEndFor, inviteOfferEndLabel,
+  inviteCapPerBrand, inviteBatchId, inviteVoucherFields,
 } from "../../server/inviteVoucher";
 
 const fields = () => inviteVoucherFields({
@@ -119,5 +120,41 @@ describe("the promise and the grant agree", () => {
     const copy = read("client/src/pages/brand-creators.tsx");
     expect(copy).toContain("OFFER_ENDS");
     expect(copy).not.toMatch(/a month of subscription-free/);
+  });
+});
+
+describe("the date follows the inviting brand", () => {
+  const BROOKLYN = new Date("2026-11-01T05:00:00Z"); // end of 31 Oct
+  const LIVERPOOL = new Date("2026-12-01T05:00:00Z"); // end of 30 Nov
+
+  it("uses the brand's own offer end", () => {
+    expect(inviteOfferEndFor(LIVERPOOL).toISOString()).toBe(LIVERPOOL.toISOString());
+    expect(inviteOfferEndFor(BROOKLYN).toISOString()).toBe(BROOKLYN.toISOString());
+  });
+
+  it("falls back only when the brand arrived without a voucher", () => {
+    expect(inviteOfferEndFor(null).toISOString()).toBe(inviteOfferEnd().toISOString());
+    expect(inviteOfferEndFor(undefined).toISOString()).toBe(inviteOfferEnd().toISOString());
+  });
+
+  it("ignores an unusable date rather than minting one that expires at NaN", () => {
+    expect(inviteOfferEndFor(new Date("nonsense")).toISOString()).toBe(inviteOfferEnd().toISOString());
+  });
+
+  it("mints the invitation against the brand's date", () => {
+    const v = inviteVoucherFields({
+      code: "MTZ-A", brandId: "b", brandName: "Liverpool Brand",
+      creatorEmail: "c@example.com", invitedByUserId: "u", offerEnd: LIVERPOOL,
+    });
+    expect(v.expiresAt!.toISOString()).toBe(LIVERPOOL.toISOString());
+  });
+
+  /**
+   * The stored instant is 05:00 the morning AFTER the last day, so the day is
+   * whole in every timezone. Rendered naively that advertises the wrong date.
+   */
+  it("names the last day, not the morning after it", () => {
+    expect(inviteOfferEndLabel(BROOKLYN)).toBe("31 October");
+    expect(inviteOfferEndLabel(LIVERPOOL)).toBe("30 November");
   });
 });

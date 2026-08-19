@@ -309,6 +309,14 @@ export interface IStorage {
   setVoucherPartner(id: string, partner: string | null): Promise<boolean>;
   /** How many vouchers belong to one batch. Used to cap invitation minting. */
   countVouchersInBatch(batchId: string): Promise<number>;
+  /**
+   * The voucher this account signed up with, if any.
+   *
+   * An invitation inherits the inviting brand's own offer end date, so a
+   * Liverpool brand invites creators to 30 November rather than to whatever
+   * one global constant happens to say.
+   */
+  getRedeemedVoucherForUser(userId: string): Promise<Voucher | null>;
   setVoucherWindow(
     target: { batchId?: string; assignedTo?: string },
     window: { activeFrom?: Date | null; expiresAt?: Date | null },
@@ -2163,6 +2171,11 @@ export class MemStorage implements IStorage {
 
   async countVouchersInBatch(batchId: string): Promise<number> {
     return Array.from(this.vouchersMap.values()).filter((v: any) => v.batchId === batchId).length;
+  }
+
+  async getRedeemedVoucherForUser(userId: string): Promise<Voucher | null> {
+    const r = this.voucherRedemptionsList.find((x: any) => x.userId === userId);
+    return r ? ((this.vouchersMap.get(r.voucherId) as Voucher) ?? null) : null;
   }
 
   async revokeVoucher(id: string): Promise<boolean> {
@@ -4105,6 +4118,16 @@ export class DatabaseStorage implements IStorage {
     const [row] = await db.select({ n: sql<number>`count(*)::int` })
       .from(vouchers).where(eq(vouchers.batchId, batchId));
     return row?.n ?? 0;
+  }
+
+  async getRedeemedVoucherForUser(userId: string): Promise<Voucher | null> {
+    const [row] = await db.select({ v: vouchers })
+      .from(voucherRedemptions)
+      .innerJoin(vouchers, eq(vouchers.id, voucherRedemptions.voucherId))
+      .where(eq(voucherRedemptions.userId, userId))
+      .orderBy(desc(voucherRedemptions.redeemedAt))
+      .limit(1);
+    return row?.v ?? null;
   }
 
   async revokeVoucher(id: string): Promise<boolean> {

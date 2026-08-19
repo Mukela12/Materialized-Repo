@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useEffect, useState, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -37,18 +37,17 @@ import Papa from "papaparse";
  * to hand.
  */
 /**
- * The end of the subscription-free offer, as one editable value.
- *
- * The copy said "a month", which is not what the offer is: the free period ends
- * on a fixed date, so a creator invited in October would have got days rather
- * than a month and been told otherwise in writing.
+ * Fallback only. The real date comes from /api/brands/invite-offer, which
+ * follows the inviting brand's own offer — Brooklyn ends 31 October, Liverpool
+ * 30 November — because naming one global date tells half of them the wrong
+ * thing in writing, to a creator they are recruiting.
  */
 export const OFFER_ENDS = "31 October";
 
-export const INVITE_MESSAGE = (brand?: string) =>
+export const INVITE_MESSAGE = (brand?: string, offerEnds: string = OFFER_ENDS) =>
   `As part of the digitalization of ${brand?.trim() || "our brand"}, we are working on a new ` +
   `medium of digital entertainment. We're inviting you to join MTRLZD with subscription-free ` +
-  `use until ${OFFER_ENDS}, where you can upload your videos, tag our brand, and engage better ` +
+  `use until ${offerEnds}, where you can upload your videos, tag our brand, and engage better ` +
   `with video commerce!`;
 
 
@@ -81,6 +80,12 @@ export default function BrandCreators() {
     queryKey: ["/api/brands/creator-invites"],
   });
 
+  const { data: offer } = useQuery<{ endsAt: string; label: string }>({
+    queryKey: ["/api/brands/invite-offer"],
+    queryFn: () => fetch("/api/brands/invite-offer", { credentials: "include" }).then((r) => r.json()),
+    retry: false,
+  });
+
   const form = useForm<InviteCreatorForm>({
     resolver: zodResolver(inviteCreatorSchema),
     defaultValues: {
@@ -90,6 +95,19 @@ export default function BrandCreators() {
       message: INVITE_MESSAGE(),
     },
   });
+
+  /**
+   * Swap in the brand's real date once it loads — but never over typing. A
+   * form that rewrites what someone has already written is worse than a
+   * default that is a few hundred milliseconds late.
+   */
+  useEffect(() => {
+    if (!offer?.label) return;
+    const current = form.getValues("message");
+    if (!current || current === INVITE_MESSAGE()) {
+      form.setValue("message", INVITE_MESSAGE(undefined, offer.label));
+    }
+  }, [offer?.label]);
 
   const inviteMutation = useMutation({
     mutationFn: async (data: InviteCreatorForm) => {
