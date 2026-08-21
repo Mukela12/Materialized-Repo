@@ -51,9 +51,17 @@ export function useUpload(options: UseUploadOptions = {}) {
         xhr.addEventListener("load", () => {
           if (xhr.status >= 200 && xhr.status < 300) {
             resolve(JSON.parse(xhr.responseText));
-          } else {
-            reject(new Error(`Upload failed with status ${xhr.status}`));
+            return;
           }
+          /**
+           * Keep the reason. Cloudinary answers a rejected upload with
+           * {"error":{"message":"File size too large. Got 469000000. Maximum is
+           * 104857600."}} — the one sentence that explains the failure — and
+           * this used to discard it in favour of a status code.
+           */
+          let detail = "";
+          try { detail = JSON.parse(xhr.responseText)?.error?.message ?? ""; } catch { /* not JSON */ }
+          reject(new Error(detail || `Upload failed with status ${xhr.status}`));
         });
 
         xhr.addEventListener("error", () => reject(new Error("Upload failed")));

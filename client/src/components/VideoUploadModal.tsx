@@ -51,6 +51,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { Brand } from "@shared/schema";
 import { OverlayComposer } from "@/components/OverlayComposer";
+import { videoTooLargeMessage, MAX_VIDEO_UPLOAD_LABEL } from "@shared/uploadLimits";
 
 const videoUploadSchema = z.object({
   title: z.string().min(1, "Title is required"),
@@ -183,6 +184,18 @@ export function VideoUploadModal({
       setVideoUrl(response.objectUrl);
       setStep("details");
     },
+    /**
+     * There was no onError. A rejected upload threw, nothing caught it, and the
+     * box quietly returned to "Drop your video here" — which is what the client
+     * saw as "nothing happens" after waiting on a 469MB file.
+     */
+    onError: (err) => {
+      toast({
+        title: "Upload failed",
+        description: err.message || "The video could not be uploaded. Please try again.",
+        variant: "destructive",
+      });
+    },
   });
 
   // Draft restore
@@ -260,6 +273,17 @@ export function VideoUploadModal({
     });
 
   const validateAndUpload = async (file: File) => {
+    /**
+     * Size first, before reading duration or starting a transfer. Cloudinary
+     * rejects an oversized video only after it has been sent, so without this
+     * the user waits out the whole upload to be told no.
+     */
+    const tooLarge = videoTooLargeMessage(file.size);
+    if (tooLarge) {
+      toast({ title: "Video too large", description: tooLarge, variant: "destructive" });
+      return;
+    }
+
     const duration = await getVideoDuration(file);
     setVideoDurationSeconds(Math.round(duration));
 
@@ -653,7 +677,7 @@ export function VideoUploadModal({
                       </div>
                       <div>
                         <p className="font-medium">Drop your video here or click to browse</p>
-                        <p className="text-sm text-muted-foreground mt-1">MP4, MOV, WebM up to 500MB</p>
+                        <p className="text-sm text-muted-foreground mt-1">MP4, MOV, WebM up to {MAX_VIDEO_UPLOAD_LABEL}</p>
                       </div>
                     </div>
                   )}
