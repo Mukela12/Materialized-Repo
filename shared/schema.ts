@@ -450,6 +450,11 @@ export const videoProductOverlays = pgTable("video_product_overlays", {
   priceCents: integer("price_cents"),
   currency: text("currency"),
   brandName: text("brand_name"),
+  /**
+   * This product's own call to action. NULL uses the video-wide setting, so an
+   * existing overlay behaves exactly as before until someone overrides it.
+   */
+  buttonLabel: text("button_label"),
   position: carouselPositionEnum("position").notNull().default("bottom"),
   startTime: decimal("start_time", { precision: 10, scale: 2 }).notNull().default("0"),
   endTime: decimal("end_time", { precision: 10, scale: 2 }),

@@ -3248,7 +3248,7 @@ Identify which products from the catalog are most likely to appear or be feature
     const overlayActor = await storage.getUser(uid);
     if (!overlayActor?.isAdmin && ownerVideo.creatorId !== uid) return res.status(403).json({ error: "Forbidden" });
     try {
-      const { name, productUrl, imageUrl, price, brandName, position, startTime, endTime, source, productId } = req.body;
+      const { name, productUrl, imageUrl, price, brandName, buttonLabel, position, startTime, endTime, source, productId } = req.body;
       if (!name) return res.status(400).json({ error: "name is required" });
       const overlay = await storage.createVideoProductOverlay({
         videoId: req.params.id,
@@ -3263,6 +3263,8 @@ Identify which products from the catalog are most likely to appear or be feature
         priceCents: parsePriceToCents(price),
         currency: getPlatformCurrency(),
         brandName: brandName ?? null,
+        // Blank means "use the video's setting", not an empty button.
+        buttonLabel: typeof buttonLabel === "string" && buttonLabel.trim() ? buttonLabel.trim().slice(0, 24) : null,
         position: position ?? "bottom",
         startTime: String(startTime ?? "0"),
         endTime: endTime != null ? String(endTime) : null,
@@ -3283,7 +3285,7 @@ Identify which products from the catalog are most likely to appear or be feature
     if (!overlayActor?.isAdmin && ownerVideo.creatorId !== uid) return res.status(403).json({ error: "Forbidden" });
     try {
       const id = parseInt(req.params.overlayId, 10);
-      const { position, startTime, endTime, name, productUrl, imageUrl, price, brandName } = req.body;
+      const { position, startTime, endTime, name, productUrl, imageUrl, price, brandName, buttonLabel } = req.body;
       const update: Record<string, unknown> = {};
       if (position !== undefined) update.position = position;
       if (startTime !== undefined) update.startTime = String(startTime);
@@ -3306,6 +3308,10 @@ Identify which products from the catalog are most likely to appear or be feature
         update.currency = getPlatformCurrency();
       }
       if (brandName !== undefined) update.brandName = brandName;
+      if (buttonLabel !== undefined) {
+        update.buttonLabel =
+          typeof buttonLabel === "string" && buttonLabel.trim() ? buttonLabel.trim().slice(0, 24) : null;
+      }
       const updated = await storage.updateVideoProductOverlay(id, update as any);
       if (!updated) return res.status(404).json({ error: "Overlay not found" });
       res.json(updated);
@@ -7040,8 +7046,17 @@ Identify which products from the catalog are most likely to appear or be feature
 
       const utm = (req.query.utm as string) || video.utmCode || "";
       const overlays = await storage.getVideoProductOverlays(video.id);
+      /**
+       * 25 characters, the client's number. Capped HERE rather than only in CSS:
+       * ellipsis-by-width depends on the card, which now varies with the stage
+       * size, so two viewers could see the same product truncated differently.
+       * A character count reads the same everywhere.
+       */
+      const NAME_LIMIT = 25;
+      const capName = (n: string) => (n.length > NAME_LIMIT ? n.slice(0, NAME_LIMIT - 1).trimEnd() + "…" : n);
+
       const products = overlays.map(o => ({
-        name: (o.name || "").replace(/[<>"'&]/g, ""),
+        name: capName((o.name || "").replace(/[<>"'&]/g, "")),
         imageUrl: o.imageUrl,
         price: o.price,
         productUrl: appendUtm(o.productUrl, utm),
@@ -7064,6 +7079,7 @@ Identify which products from the catalog are most likely to appear or be feature
          */
         startTime: Number(o.startTime ?? 0) || 0,
         endTime: o.endTime == null ? null : Number(o.endTime),
+        buttonLabel: (o.buttonLabel || "").replace(/[<>"'&]/g, "") || null,
       }));
 
       const apiBase = publicOrigin(req);
@@ -7129,9 +7145,12 @@ Identify which products from the catalog are most likely to appear or be feature
        long brand ran the full width of the strip and three cards' worth of
        "MATERIALIZED FASHION" collided into one another. */
     .product-brand{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
-    .product-name{font-size:clamp(7px,var(--card-name,2vw),11px);font-weight:600;margin-top:clamp(2px,0.5vw,4px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#333}
+    /* The client asked for 5px more air between the brand line and the title,
+       and again before the button. The card has no fixed height, so it grows to
+       take it rather than squeezing the text. */
+    .product-name{font-size:clamp(7px,var(--card-name,2vw),11px);font-weight:600;margin-top:calc(clamp(2px,0.5vw,4px) + 5px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#333}
     .product-price{font-size:clamp(7px,var(--card-price,1.8vw),10px);color:#677A67;font-weight:700;margin-top:1px}
-    .buy-btn{margin-top:3px;width:100%;border:0;border-radius:999px;background:#1351aa;color:#fff;font-size:clamp(7px,var(--card-buy,1.7vw),10px);font-weight:700;padding:3px 0;cursor:pointer;font-family:inherit}
+    .buy-btn{margin-top:8px;width:100%;border:0;border-radius:999px;background:#1351aa;color:#fff;font-size:clamp(7px,var(--card-buy,1.7vw),10px);font-weight:700;padding:3px 0;cursor:pointer;font-family:inherit}
     .buy-btn:hover{background:#0f4189}
     /* The checkout sits OVER the video, inside the same frame — the shopper
        never leaves the brand's page. */
@@ -7245,7 +7264,8 @@ ${embedCarouselCss(carousel)}
         var b=document.createElement("button");
         // The creator's chosen label, not the word "Buy" — this was hard-coded
         // here, so the Button Label setting changed the preview and nothing else.
-        b.className="buy-btn";b.type="button";b.textContent=BUY_LABEL;
+        // This product's own label when it has one; the video's setting otherwise.
+        b.className="buy-btn";b.type="button";b.textContent=p.buttonLabel||BUY_LABEL;
         b.addEventListener("click",function(ev){ev.preventDefault();ev.stopPropagation();openPay(p.overlayId);});
         a.appendChild(b);
       }

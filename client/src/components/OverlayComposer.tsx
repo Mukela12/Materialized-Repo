@@ -65,12 +65,15 @@ export function OverlayComposer({
   const [oImageUrl, setOImageUrl] = useState("");
   const [oPrice, setOPrice] = useState("");
   const [oBrandName, setOBrandName] = useState("");
+  /** Blank = use the video-wide label from the Editing Suite. */
+  const [oButtonLabel, setOButtonLabel] = useState("");
   const [oPosition, setOPosition] = useState("bottom");
   const [oStartTime, setOStartTime] = useState("0");
   const [oEndTime, setOEndTime] = useState("");
 
   const resetForm = () => {
     setOName(""); setOUrl(""); setOImageUrl(""); setOPrice(""); setOBrandName("");
+    setOButtonLabel("");
     setOPosition("bottom"); setOStartTime("0"); setOEndTime("");
     setEditingId(null);
   };
@@ -83,6 +86,7 @@ export function OverlayComposer({
     setOImageUrl(o.imageUrl ?? "");
     setOPrice(o.price ?? "");
     setOBrandName(o.brandName ?? "");
+    setOButtonLabel((o as any).buttonLabel ?? "");
     setOPosition(o.position ?? "bottom");
     setOStartTime(String(parseFloat(o.startTime ?? "0") || 0));
     setOEndTime(o.endTime == null ? "" : String(parseFloat(o.endTime)));
@@ -104,6 +108,7 @@ export function OverlayComposer({
     imageUrl: oImageUrl.trim() || null,
     price: oPrice.trim() || null,
     brandName: oBrandName.trim() || null,
+    buttonLabel: oButtonLabel.trim() || null,
     position: oPosition,
     startTime: parseFloat(oStartTime) || 0,
     endTime: oEndTime.trim() ? parseFloat(oEndTime) : null,
@@ -180,7 +185,17 @@ export function OverlayComposer({
         <div className="space-y-2 border border-border rounded-lg p-3 bg-background">
           <div className="space-y-1">
             <Label className="text-xs">Product Name *</Label>
-            <Input data-testid="input-overlay-name" placeholder="e.g. Summer Dress" value={oName} onChange={(e) => setOName(e.target.value)} className="h-8 text-sm" />
+            <Input
+              data-testid="input-overlay-name"
+              placeholder="e.g. Summer Dress"
+              value={oName}
+              onChange={(e) => setOName(e.target.value)}
+              maxLength={25}
+              className="h-8 text-sm"
+            />
+            {/* The carousel caps at 25 characters, so the limit is enforced
+                where it is typed rather than discovered as an ellipsis later. */}
+            <p className="text-xs text-muted-foreground">{oName.length}/25 characters</p>
           </div>
           <div className="space-y-1">
             <Label className="text-xs">Product URL</Label>
@@ -203,6 +218,20 @@ export function OverlayComposer({
           <div className="space-y-1">
             <Label className="text-xs">Brand Name</Label>
             <Input data-testid="input-overlay-brand" placeholder="e.g. Zara" value={oBrandName} onChange={(e) => setOBrandName(e.target.value)} className="h-8 text-sm" />
+          </div>
+          {/* Per-product call to action. The label used to be one setting for
+              the whole video, so a showroom listing and a pair of shoes had to
+              share it — the client's example was APPLY NOW against BUY NOW. */}
+          <div className="space-y-1">
+            <Label className="text-xs">Button Text</Label>
+            <Input
+              data-testid="input-overlay-button-label"
+              placeholder="Leave blank to use the video's setting"
+              value={oButtonLabel}
+              onChange={(e) => setOButtonLabel(e.target.value)}
+              maxLength={24}
+              className="h-8 text-sm"
+            />
           </div>
           <div className="space-y-1">
             <Label className="text-xs">Screen Position</Label>
