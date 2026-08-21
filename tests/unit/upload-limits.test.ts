@@ -61,6 +61,12 @@ describe("the screen agrees with the limit", () => {
     expect(modal).toContain("MAX_VIDEO_UPLOAD_LABEL");
   });
 
+  /** The client asked for the limit to be visible before a file is chosen. */
+  it("states the limit up front, not only in the failure", () => {
+    expect(modal).toContain('data-testid="notice-upload-limit"');
+    expect(modal).toContain("Maximum file size");
+  });
+
   it("checks the size before starting a transfer", () => {
     const fn = modal.slice(modal.indexOf("const validateAndUpload"));
     const check = fn.indexOf("videoTooLargeMessage");
@@ -82,5 +88,30 @@ describe("the reason survives", () => {
   it("keeps Cloudinary's message rather than only a status code", () => {
     expect(hook).toContain("error?.message");
     expect(hook).toMatch(/detail \|\| `Upload failed with status/);
+  });
+});
+
+describe("overlays appear only during their own seconds", () => {
+  const routes = readFileSync(join(__dirname, "../../server/routes.ts"), "utf8");
+
+  /**
+   * Two overlays on the client's Botnari interview, 5-20s and 22-40s, both
+   * rendered from the first frame side by side under one long panel. The times
+   * were stored, shown in the editor, and never sent to the player.
+   */
+  it("the embed payload carries the window", () => {
+    expect(routes).toMatch(/startTime: Number\(o\.startTime \?\? 0\)/);
+    expect(routes).toMatch(/endTime: o\.endTime == null \? null : Number\(o\.endTime\)/);
+  });
+
+  it("the player follows playback, and scrubbing", () => {
+    expect(routes).toContain('vid.addEventListener("timeupdate",syncOverlays)');
+    expect(routes).toContain('vid.addEventListener("seeked",syncOverlays)');
+  });
+
+  /** The panel carries the background, so an empty one is a smear on the video. */
+  it("hides the panel when nothing is due", () => {
+    const fn = routes.slice(routes.indexOf("function syncOverlays()"));
+    expect(fn.slice(0, 400)).toContain('carousel.style.display=any?"":"none"');
   });
 });

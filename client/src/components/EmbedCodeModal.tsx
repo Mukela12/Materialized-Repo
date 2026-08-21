@@ -24,6 +24,8 @@ interface EmbedCodeModalProps {
 export function EmbedCodeModal({ open, onOpenChange, video }: EmbedCodeModalProps) {
   const [copied, setCopied] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
+  /** Closed by default: the video is what people open this for. */
+  const [showCode, setShowCode] = useState(false);
   const { toast } = useToast();
 
   if (!video) return null;
@@ -124,15 +126,42 @@ export function EmbedCodeModal({ open, onOpenChange, video }: EmbedCodeModalProp
         </Card>
 
         {showPreview && (
-          <div className="relative rounded-lg overflow-hidden bg-black" style={{ aspectRatio: "16/9" }}>
+          /**
+           * A plain block at the embed's own height, in normal flow.
+           *
+           * This was an aspect-ratio box with the iframe absolutely positioned
+           * inside it, and the client reported the embed code sitting over the
+           * video three times. Absolute positioning is the only thing here that
+           * could put two elements in the same place, and it bought nothing: the
+           * standard embed is height="450", so the preview can simply be 450
+           * tall and stack like everything else.
+           */
+          <div className="rounded-lg overflow-hidden bg-black" data-testid="embed-preview-frame">
             <iframe
               src={embedUrl}
-              className="absolute inset-0 w-full h-full"
+              className="block w-full border-0"
+              style={{ height: 450 }}
               allow="autoplay; encrypted-media"
+              title="Embed preview"
             />
           </div>
         )}
 
+        {/* The client's reason: "Embed code blocking the user from screen
+            recording the product carousel." While the preview is open the code
+            is collapsed, so the video is the only thing on screen. */}
+        <Button
+          variant="outline"
+          size="sm"
+          className="gap-2 self-start"
+          onClick={() => setShowCode((v) => !v)}
+          data-testid="button-toggle-embed-code"
+        >
+          <Code className="h-4 w-4" />
+          {showCode ? "Hide embed code" : "Show embed code"}
+        </Button>
+
+        {showCode && (
         <Tabs defaultValue="standard" className="mt-2">
           <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="standard" className="gap-2">
@@ -191,6 +220,7 @@ export function EmbedCodeModal({ open, onOpenChange, video }: EmbedCodeModalProp
             </p>
           </TabsContent>
         </Tabs>
+        )}
 
         <div className="flex justify-end gap-3 mt-2">
           <Button variant="outline" onClick={() => onOpenChange(false)}>

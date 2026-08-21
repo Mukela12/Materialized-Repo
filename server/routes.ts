@@ -7039,6 +7039,18 @@ Identify which products from the catalog are most likely to appear or be feature
         // from the database, so nothing on this page can change what is charged.
         overlayId: o.id,
         buyable: o.priceCents != null && o.priceCents > 0,
+        /**
+         * WHEN this product is on screen.
+         *
+         * These were never sent. Every overlay was appended at load and left
+         * there, so two products with non-overlapping windows — 5-20s and
+         * 22-40s — both showed from the first frame, side by side, under one
+         * long panel. The editor stores the times, shows them, and the player
+         * ignored them: "Timeline Overlays control exact timing" had never been
+         * true at playback.
+         */
+        startTime: Number(o.startTime ?? 0) || 0,
+        endTime: o.endTime == null ? null : Number(o.endTime),
       }));
 
       const apiBase = publicOrigin(req);
@@ -7197,6 +7209,8 @@ ${embedCarouselCss(carousel)}
     })();
 
     var carousel=document.getElementById("carousel");
+    /** Each card with the window it belongs to. See syncOverlays below. */
+    var timedCards=[];
     products.forEach(function(p){
       var a=document.createElement("a");
       a.href=p.productUrl||"#";a.target="_blank";a.rel="noopener";a.className="product-card";
@@ -7209,6 +7223,8 @@ ${embedCarouselCss(carousel)}
       if(p.price){var priceDiv=document.createElement("div");priceDiv.className="product-price";priceDiv.textContent=CURRENCY_SYMBOL+p.price;a.appendChild(priceDiv);}
       a.addEventListener("click",function(){track("click")});
       carousel.appendChild(a);
+      // Remembered with its window so timeupdate can show and hide it.
+      timedCards.push({el:a,start:Number(p.startTime)||0,end:p.endTime==null?Infinity:Number(p.endTime)});
 
       // Buy in-video. Only rendered when the SERVER said this product has a
       // price; the amount itself is never sent from here.
@@ -7221,6 +7237,33 @@ ${embedCarouselCss(carousel)}
         a.appendChild(b);
       }
     });
+
+    /**
+     * Show each product only during its own seconds.
+     *
+     * The whole strip used to appear at the first frame and stay to the last.
+     * The panel is hidden outright when nothing is due, rather than left as an
+     * empty bar over the footage — the container carries the background, so an
+     * empty one is a smear across the picture.
+     *
+     * Driven by timeupdate, which fires roughly 4x a second: cheap for a
+     * handful of cards, and it follows scrubbing for free.
+     */
+    function syncOverlays(){
+      var t=vid.currentTime,any=false;
+      for(var i=0;i<timedCards.length;i++){
+        var c=timedCards[i],on=t>=c.start&&t<c.end;
+        c.el.style.display=on?"":"none";
+        if(on)any=true;
+      }
+      carousel.style.display=any?"":"none";
+    }
+    if(timedCards.length){
+      vid.addEventListener("timeupdate",syncOverlays);
+      vid.addEventListener("seeked",syncOverlays);
+      vid.addEventListener("loadedmetadata",syncOverlays);
+      syncOverlays();
+    }
 
     // ── In-video checkout ───────────────────────────────────────────────────
     // Stripe's embedded Checkout, mounted over the video. Stripe.js loads only

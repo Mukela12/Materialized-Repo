@@ -677,7 +677,21 @@ export function VideoUploadModal({
                       </div>
                       <div>
                         <p className="font-medium">Drop your video here or click to browse</p>
-                        <p className="text-sm text-muted-foreground mt-1">MP4, MOV, WebM up to {MAX_VIDEO_UPLOAD_LABEL}</p>
+                        <p className="text-sm text-muted-foreground mt-1">MP4, MOV, WebM</p>
+                        {/* The client asked for this outright: the limit belongs
+                            on screen BEFORE a file is chosen, not in an error
+                            after a 469MB wait. */}
+                        <div
+                          className="mt-3 mx-auto max-w-sm rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2"
+                          data-testid="notice-upload-limit"
+                        >
+                          <p className="text-xs font-medium text-amber-600 dark:text-amber-400">
+                            Maximum file size {MAX_VIDEO_UPLOAD_LABEL}
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            Larger videos are refused by our video host. Compress or trim before uploading.
+                          </p>
+                        </div>
                       </div>
                     </div>
                   )}
