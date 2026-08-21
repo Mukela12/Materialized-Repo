@@ -3291,7 +3291,20 @@ Identify which products from the catalog are most likely to appear or be feature
       if (name !== undefined) update.name = name;
       if (productUrl !== undefined) update.productUrl = productUrl;
       if (imageUrl !== undefined) update.imageUrl = imageUrl;
-      if (price !== undefined) update.price = price;
+      if (price !== undefined) {
+        update.price = price;
+        /**
+         * priceCents follows the label, exactly as it does on create.
+         *
+         * It did not, and priceCents is the only thing the Buy button and the
+         * in-video checkout read — the typed price is a display label. So
+         * editing an overlay to add a price updated what was written on the
+         * card and left it unbuyable, which looks identical to the feature
+         * being broken. Clearing the price clears both.
+         */
+        update.priceCents = parsePriceToCents(price);
+        update.currency = getPlatformCurrency();
+      }
       if (brandName !== undefined) update.brandName = brandName;
       const updated = await storage.updateVideoProductOverlay(id, update as any);
       if (!updated) return res.status(404).json({ error: "Overlay not found" });

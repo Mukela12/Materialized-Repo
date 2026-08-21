@@ -30,7 +30,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { ImageDropField } from "@/components/ImageDropField";
-import { Layers, Plus, Clock, Trash2, ExternalLink } from "lucide-react";
+import { Layers, Plus, Clock, Trash2, ExternalLink, Pencil } from "lucide-react";
 import type { VideoProductOverlay } from "@shared/schema";
 
 const POSITIONS = [
@@ -58,6 +58,8 @@ export function OverlayComposer({
   const queryClient = useQueryClient();
 
   const [showAdd, setShowAdd] = useState(startExpanded);
+  /** The overlay being edited, or null when adding a new one. */
+  const [editingId, setEditingId] = useState<number | null>(null);
   const [oName, setOName] = useState("");
   const [oUrl, setOUrl] = useState("");
   const [oImageUrl, setOImageUrl] = useState("");
@@ -67,6 +69,26 @@ export function OverlayComposer({
   const [oStartTime, setOStartTime] = useState("0");
   const [oEndTime, setOEndTime] = useState("");
 
+  const resetForm = () => {
+    setOName(""); setOUrl(""); setOImageUrl(""); setOPrice(""); setOBrandName("");
+    setOPosition("bottom"); setOStartTime("0"); setOEndTime("");
+    setEditingId(null);
+  };
+
+  /** Load an existing overlay into the form rather than making them retype it. */
+  const beginEdit = (o: VideoProductOverlay) => {
+    setEditingId(o.id as number);
+    setOName(o.name ?? "");
+    setOUrl(o.productUrl ?? "");
+    setOImageUrl(o.imageUrl ?? "");
+    setOPrice(o.price ?? "");
+    setOBrandName(o.brandName ?? "");
+    setOPosition(o.position ?? "bottom");
+    setOStartTime(String(parseFloat(o.startTime ?? "0") || 0));
+    setOEndTime(o.endTime == null ? "" : String(parseFloat(o.endTime)));
+    setShowAdd(true);
+  };
+
   const { data: overlays = [] } = useQuery<VideoProductOverlay[]>({
     queryKey: ["/api/videos", videoId, "overlays"],
     enabled: !!videoId && enabled,
@@ -75,28 +97,35 @@ export function OverlayComposer({
   const invalidate = () =>
     queryClient.invalidateQueries({ queryKey: ["/api/videos", videoId, "overlays"] });
 
-  const addOverlay = useMutation({
+  /** One payload for both create and update, so the two cannot drift. */
+  const overlayPayload = () => ({
+    name: oName.trim(),
+    productUrl: oUrl.trim() || null,
+    imageUrl: oImageUrl.trim() || null,
+    price: oPrice.trim() || null,
+    brandName: oBrandName.trim() || null,
+    position: oPosition,
+    startTime: parseFloat(oStartTime) || 0,
+    endTime: oEndTime.trim() ? parseFloat(oEndTime) : null,
+  });
+
+  const saveOverlay = useMutation({
     mutationFn: async () =>
-      apiRequest("POST", `/api/videos/${videoId}/overlays`, {
-        name: oName.trim(),
-        productUrl: oUrl.trim() || null,
-        imageUrl: oImageUrl.trim() || null,
-        price: oPrice.trim() || null,
-        brandName: oBrandName.trim() || null,
-        position: oPosition,
-        startTime: parseFloat(oStartTime) || 0,
-        endTime: oEndTime.trim() ? parseFloat(oEndTime) : null,
-        source: "manual",
-      }),
+      editingId == null
+        ? apiRequest("POST", `/api/videos/${videoId}/overlays`, { ...overlayPayload(), source: "manual" })
+        : apiRequest("PATCH", `/api/videos/${videoId}/overlays/${editingId}`, overlayPayload()),
     onSuccess: () => {
       invalidate();
-      toast({ title: "Overlay Added", description: "Product overlay added to timeline." });
-      setOName(""); setOUrl(""); setOImageUrl(""); setOPrice(""); setOBrandName("");
-      setOPosition("bottom"); setOStartTime("0"); setOEndTime("");
-      // Stay open when the point of being here is adding several.
-      setShowAdd(startExpanded);
+      toast({
+        title: editingId == null ? "Overlay added" : "Overlay updated",
+        description: editingId == null ? "Product overlay added to timeline." : "Your changes have been saved.",
+      });
+      const wasEditing = editingId != null;
+      resetForm();
+      // Stay open when adding several; close after an edit, which is one job done.
+      setShowAdd(wasEditing ? false : startExpanded);
     },
-    onError: () => toast({ title: "Error", description: "Failed to add overlay.", variant: "destructive" }),
+    onError: () => toast({ title: "Error", description: "Failed to save overlay.", variant: "destructive" }),
   });
 
   const removeOverlay = useMutation({
@@ -164,6 +193,12 @@ export function OverlayComposer({
           <div className="space-y-1">
             <Label className="text-xs">Price</Label>
             <Input data-testid="input-overlay-price" placeholder="49.99" value={oPrice} onChange={(e) => setOPrice(e.target.value)} className="h-8 text-sm" />
+            {/* The client asked for this in as many words. A missing Buy button
+                is indistinguishable from a broken one unless the rule is stated
+                where the decision is made. */}
+            <p className="text-xs text-muted-foreground" data-testid="text-price-required-note">
+              A price is required for the Buy button to appear. Prices can be hidden in the Editing Suite.
+            </p>
           </div>
           <div className="space-y-1">
             <Label className="text-xs">Brand Name</Label>
@@ -195,14 +230,20 @@ export function OverlayComposer({
           <div className="flex gap-2 pt-1">
             <Button
               size="sm" className="h-7 text-xs flex-1"
-              onClick={() => addOverlay.mutate()}
-              disabled={!oName.trim() || addOverlay.isPending}
+              onClick={() => saveOverlay.mutate()}
+              disabled={!oName.trim() || saveOverlay.isPending}
               data-testid="button-save-overlay"
             >
-              {addOverlay.isPending ? "Adding…" : "Add Overlay"}
+              {saveOverlay.isPending
+                ? "Saving…"
+                : editingId == null ? "Add Overlay" : "Save changes"}
             </Button>
-            {!startExpanded && (
-              <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => setShowAdd(false)}>
+            {(!startExpanded || editingId != null) && (
+              <Button
+                size="sm" variant="ghost" className="h-7 text-xs"
+                onClick={() => { resetForm(); setShowAdd(false); }}
+                data-testid="button-cancel-overlay"
+              >
                 Cancel
               </Button>
             )}
@@ -232,14 +273,33 @@ export function OverlayComposer({
                       <span className="truncate">{o.productUrl}</span>
                     </a>
                   )}
+                  {/* The absent Buy button, explained on the row it belongs to. */}
+                  {!o.price && (
+                    <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5" data-testid={`text-no-price-${o.id}`}>
+                      No price — no Buy button. Edit to add one.
+                    </p>
+                  )}
                 </div>
-                <button
-                  data-testid={`button-remove-overlay-${o.id}`}
-                  onClick={() => removeOverlay.mutate(o.id as number)}
-                  className="text-muted-foreground hover:text-destructive transition-colors shrink-0 mt-0.5"
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </button>
+                <div className="flex items-center gap-1 shrink-0 mt-0.5">
+                  {/* Edit, not delete-and-retype. The client had to recreate an
+                      overlay from scratch to change one field. */}
+                  <button
+                    data-testid={`button-edit-overlay-${o.id}`}
+                    onClick={() => beginEdit(o)}
+                    className="text-muted-foreground hover:text-primary transition-colors"
+                    title="Edit this overlay"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                  </button>
+                  <button
+                    data-testid={`button-remove-overlay-${o.id}`}
+                    onClick={() => removeOverlay.mutate(o.id as number)}
+                    className="text-muted-foreground hover:text-destructive transition-colors"
+                    title="Remove this overlay"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </button>
+                </div>
               </div>
             );
           })}
