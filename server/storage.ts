@@ -287,6 +287,8 @@ export interface IStorage {
     assignedTo: string | null;
     /** Not usable before this instant. Null means usable immediately. */
     activeFrom: Date | null;
+    /** Rolling free period in days from redemption. NULL = free until expiresAt. */
+    freeDays?: number | null;
   }): Promise<Voucher>;
   getVoucherByCode(code: string): Promise<VoucherRecord | null>;
   /**
@@ -3982,6 +3984,7 @@ export class DatabaseStorage implements IStorage {
       batchId: v.batchId ?? null,
       assignedTo: v.assignedTo ?? null,
       activeFrom: v.activeFrom ?? null,
+      freeDays: v.freeDays ?? null,
     }).returning();
     return row;
   }
@@ -4008,6 +4011,9 @@ export class DatabaseStorage implements IStorage {
       // Explicitly mapped, not spread: omitting this here is silent, because an
       // undefined activeFrom reads as "no start date" and the code redeems early.
       activeFrom: row.activeFrom, expiresAt: row.expiresAt, revokedAt: row.revokedAt,
+      // Omitting freeDays would silently revert a rolling code to fixed-date
+      // behaviour — everyone free until 31 Oct instead of 30 days each.
+      freeDays: row.freeDays ?? null,
     } : null;
   }
 

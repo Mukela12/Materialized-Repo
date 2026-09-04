@@ -5506,7 +5506,7 @@ Identify which products from the catalog are most likely to appear or be feature
   app.post("/api/admin/vouchers", requireAdmin, async (req, res) => {
     try {
       const {
-        code, label, grantType, brandUserId, roleRestriction, maxRedemptions, expiresAt,
+        code, label, grantType, brandUserId, roleRestriction, maxRedemptions, expiresAt, freeDays,
       } = req.body ?? {};
 
       // Who the whole batch is being handed to. Set once at mint time so 80
@@ -5533,6 +5533,11 @@ Identify which products from the catalog are most likely to appear or be feature
 
       // Festival codes are cut weeks before the doors open, so a mint needs to be
       // able to say when the batch starts working — not only when it stops.
+      const days = freeDays == null || freeDays === "" ? null : Number(freeDays);
+      if (days != null && (!Number.isInteger(days) || days < 1 || days > 365)) {
+        return res.status(400).json({ error: "freeDays must be a whole number of days between 1 and 365" });
+      }
+
       const activeFrom = req.body?.activeFrom ? new Date(req.body.activeFrom) : null;
       if (activeFrom && Number.isNaN(activeFrom.getTime())) {
         return res.status(400).json({ error: "activeFrom must be a valid date" });
@@ -5586,6 +5591,7 @@ Identify which products from the catalog are most likely to appear or be feature
           maxRedemptions: cap,
           activeFrom,
           expiresAt: expiry,
+          freeDays: days,
           createdBy: (req.session as any)?.userId ?? null,
           batchId,
           assignedTo,

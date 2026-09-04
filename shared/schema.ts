@@ -1649,6 +1649,11 @@ export const vouchers = pgTable("vouchers", {
    */
   activeFrom: timestamp("active_from"),
   expiresAt: timestamp("expires_at"),
+  /**
+   * Free period in days, counted from redemption. NULL keeps the festival
+   * behaviour: free until the voucher's own expiry date.
+   */
+  freeDays: integer("free_days"),
   /** Revocation is a timestamp, not a delete: redemptions already made stay valid. */
   revokedAt: timestamp("revoked_at"),
   createdBy: varchar("created_by").references(() => users.id),

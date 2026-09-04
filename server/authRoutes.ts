@@ -150,7 +150,16 @@ export function registerAuthRoutes(app: Express) {
           return res.status(400).json({ error: check.message, reason: check.reason });
         }
         voucherGrants = grantsOf(check.voucher);
-        freeAccessUntil = check.voucher.expiresAt ?? null;
+        /**
+         * Two shapes of free period. A rolling code gives each signup its own
+         * N days from this moment; a fixed code frees everyone until the
+         * voucher's expiry. The influencer mailout is the first rolling one —
+         * "30 days when they create the account" — while the code itself stays
+         * redeemable until 31 October.
+         */
+        freeAccessUntil = check.voucher.freeDays != null
+          ? new Date(Date.now() + check.voucher.freeDays * 24 * 60 * 60 * 1000)
+          : (check.voucher.expiresAt ?? null);
         voucherToRedeem = { id: check.voucher.id, maxRedemptions: check.voucher.maxRedemptions };
       }
     }
