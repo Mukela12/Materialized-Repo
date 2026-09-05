@@ -24,7 +24,7 @@ import {
 } from "./playlistEmbed";
 import { sanitisePlaylistStyle, styleFromPlaylist } from "@shared/playlistStyle";
 import { checkRedeemable, grantsOf, normaliseCode, generateVoucherCode, mintCodes, MAX_BATCH } from "./vouchers";
-import { isEntitled, hasFreeAccess } from "./entitlement";
+import { isEntitled, hasFreeAccess, owesCardOnFile } from "./entitlement";
 import { owesSetupFee, oweableRole, setupFeeAudience } from "./setupFee";
 import { planForRole, planAmountMajor, roleLabel, portalHome } from "./subscriptionPlan";
 import { inviteVoucherFields, inviteBatchId, inviteCapPerBrand, inviteOfferEndFor, inviteOfferEndLabel } from "./inviteVoucher";
@@ -5884,9 +5884,11 @@ Identify which products from the catalog are most likely to appear or be feature
       const plan = planForRole(user.role);
       const feeOutstanding = owesSetupFee(user);
 
+      const cardOutstanding = owesCardOnFile(user);
       res.json({
-        needed: !isEntitled(user, sub) && !feeOutstanding && !!plan,
+        needed: !isEntitled(user, sub) && !feeOutstanding && !cardOutstanding && !!plan,
         blockedByFeeFirst: feeOutstanding,
+        blockedByCardFirst: cardOutstanding,
         role: user.role,
         roleLabel: roleLabel(user.role),
         plan,
@@ -5940,6 +5942,59 @@ Identify which products from the catalog are most likely to appear or be feature
     } catch (e: any) {
       console.error("Subscription checkout error:", e);
       res.status(500).json({ error: e?.message ?? "Failed to create checkout session" });
+    }
+  });
+
+  /**
+   * Card on file — the price of voucher free access.
+   *
+   * Status suppresses itself while the $29 is outstanding, keeping the
+   * one-obligation-at-a-time rule: fee, then card, then (if applicable) plan.
+   */
+  app.get("/api/card/status", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ error: "Authentication required" });
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(401).json({ error: "Not authenticated" });
+      res.json({
+        required: !!user.overageCardRequired,
+        onFile: !!user.cardOnFile,
+        outstanding: owesCardOnFile(user) && !owesSetupFee(user),
+      });
+    } catch (error) {
+      console.error("Card status error:", error);
+      res.status(500).json({ error: "Failed to read card status" });
+    }
+  });
+
+  app.post("/api/card/checkout", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ error: "Authentication required" });
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(401).json({ error: "Not authenticated" });
+      if (user.cardOnFile) return res.json({ alreadyOnFile: true });
+
+      let customerId = user.stripeCustomerId;
+      if (!customerId) {
+        const customer = await stripeService.createCustomer(user.email ?? "", userId, user.displayName ?? undefined);
+        customerId = customer.id;
+        await storage.updateUser(userId, { stripeCustomerId: customerId });
+      }
+
+      const origin = req.headers.origin ?? publicOrigin(req);
+      const home = portalHome(user.role);
+      const session = await stripeService.createCardSetupSession({
+        customerId,
+        successUrl: `${origin}${home}?card=saved`,
+        cancelUrl: `${origin}${home}?card=cancelled`,
+        metadata: { userId, purpose: "card_on_file" },
+      });
+      res.json({ url: session.url, sessionId: session.id });
+    } catch (e: any) {
+      console.error("Card setup checkout error:", e);
+      res.status(500).json({ error: e?.message ?? "Failed to start card setup" });
     }
   });
 

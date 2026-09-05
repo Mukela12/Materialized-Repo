@@ -66,6 +66,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 import { ChevronDown, LogOut, User, Layers, Settings, Shield, LifeBuoy } from "lucide-react";
 import { SetupFeeBanner } from "@/components/SetupFeeBanner";
 import { SubscriptionPrompt } from "@/components/SubscriptionPrompt";
+import { CardOnFileBanner } from "@/components/CardOnFileBanner";
 
 function CreatorRouter() {
   return (
@@ -510,6 +511,8 @@ function AppContent() {
                 one-time fee. Above the router so it is the first thing on the
                 page — a blocked account with no explanation reads as broken. */}
             <SetupFeeBanner />
+            {/* Stands down server-side while the fee is owed — one ask at a time. */}
+            <CardOnFileBanner />
             {/* Only one of these ever renders: the server reports the plan as
                 "needed" solely once the setup fee is settled, so a new account
                 is asked for one thing at a time. */}

@@ -226,6 +226,17 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session): Promis
     if (!pm) return;
 
     await stripeService.setDefaultPaymentMethod(customerId, pm);
+    // The entitlement gate reads this flag; the vaulted card is what free
+    // access is conditional on, so the mark and the vault happen together.
+    const cardUserId = session.metadata?.userId
+      ?? (await storage.getUserByStripeCustomerId(customerId))?.id;
+    if (cardUserId) {
+      try {
+        await storage.updateUser(cardUserId, { cardOnFile: true, cardOnFileAt: new Date() } as any);
+      } catch (err) {
+        console.warn('[Webhook] could not mark card on file for', cardUserId, err);
+      }
+    }
     console.log(`[Webhook] card on file set as default for customer ${customerId}`);
     return;
   }
@@ -247,7 +258,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session): Promis
       console.warn('[Webhook] setup_fee: no user on session', session.id);
       return;
     }
-    await storage.updateUser(feeUserId, { setupFeePaid: true, setupFeePaidAt: new Date() } as any);
+    await storage.updateUser(feeUserId, { setupFeePaid: true, setupFeePaidAt: new Date(), cardOnFile: true, cardOnFileAt: new Date() } as any);
     console.log(`[Webhook] setup fee settled for user ${feeUserId} (session ${session.id})`);
     return;
   }
@@ -281,7 +292,7 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session): Promis
    * the obligation is closed, so the account must not be held behind it.
    */
   try {
-    await storage.updateUser(userId, { setupFeePaid: true, setupFeePaidAt: new Date() } as any);
+    await storage.updateUser(userId, { setupFeePaid: true, setupFeePaidAt: new Date(), cardOnFile: true, cardOnFileAt: new Date() } as any);
   } catch (err) {
     // Never let the fee bookkeeping cost us the subscription record. A missing
     // fee mark is recoverable by hand; a lost subscription upsert means an

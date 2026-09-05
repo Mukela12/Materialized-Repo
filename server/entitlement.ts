@@ -21,6 +21,8 @@ import { owesSetupFee, type SetupFeeUser } from "./setupFee";
 
 export interface EntitlementUser extends SetupFeeUser {
   isAdmin?: boolean | null;
+  overageCardRequired?: boolean | null;
+  cardOnFile?: boolean | null;
   freeAccess?: boolean | null;
   freeAccessUntil?: Date | string | null;
 }
@@ -57,6 +59,20 @@ export function hasFreeAccess(user: EntitlementUser, now: Date = new Date()): bo
  * the subscription and never the fee. Creators are exempt from the fee, so for
  * them this reduces to the old rule.
  */
+/**
+ * A voucher account that has not yet vaulted a card.
+ *
+ * The client's rule, verbatim: overage accountability "is the single
+ * requirement of having free access to our software." The requirement flag is
+ * stamped only at voucher redemption, so manual comps and every account that
+ * predates the rule pass through untouched. A live subscription also satisfies
+ * it — subscribing captured a card by definition.
+ */
+export function owesCardOnFile(user: EntitlementUser): boolean {
+  if (user?.isAdmin) return false;
+  return !!user?.overageCardRequired && !user?.cardOnFile;
+}
+
 export function isEntitled(
   user: EntitlementUser,
   sub: EntitlementSubscription | null | undefined,
@@ -64,6 +80,7 @@ export function isEntitled(
 ): boolean {
   if (user?.isAdmin) return true;
   if (owesSetupFee(user)) return false;
-  if (hasFreeAccess(user, now)) return true;
-  return !!(sub && (sub.status === "active" || sub.status === "trialing"));
+  if (sub && (sub.status === "active" || sub.status === "trialing")) return true;
+  if (hasFreeAccess(user, now)) return !owesCardOnFile(user);
+  return false;
 }

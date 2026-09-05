@@ -504,6 +504,32 @@ export class StripeService {
    * fee flow builds its own invoice and finalises it by hand, while overage
    * deliberately rides an invoice the subscription was creating anyway.
    */
+  /**
+   * Vault a card with no purchase: Checkout in `setup` mode.
+   *
+   * Used to satisfy the free-access card requirement. The SetupIntent stores
+   * the card; the checkout.session.completed handler promotes it to the
+   * customer's default and marks the account — nothing is charged, which is
+   * the point, and also why the consent language lives on the page that sends
+   * people here rather than on a receipt.
+   */
+  async createCardSetupSession(args: {
+    customerId: string;
+    successUrl: string;
+    cancelUrl: string;
+    metadata?: Record<string, string>;
+  }) {
+    const stripe = await getUncachableStripeClient();
+    return await stripe.checkout.sessions.create({
+      mode: 'setup',
+      customer: args.customerId,
+      payment_method_types: ['card'],
+      success_url: args.successUrl,
+      cancel_url: args.cancelUrl,
+      ...(args.metadata ? { metadata: args.metadata } : {}),
+    });
+  }
+
   async createSubscriptionOverageItem(args: {
     customerId: string;
     subscriptionId: string;

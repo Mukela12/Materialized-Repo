@@ -173,6 +173,12 @@ export function registerAuthRoutes(app: Express) {
       freeAccess: voucherGrants.freeAccess,
       freeAccessUntil: voucherGrants.freeAccess ? freeAccessUntil : null,
       /**
+       * The client's rule: free access is conditional on a card being on file
+       * for overage accountability. Stamped here so it binds voucher signups
+       * only — existing accounts and admin comps are never caught by it.
+       */
+      overageCardRequired: voucherGrants.freeAccess,
+      /**
        * A VOUCHER IS ALREADY AN INVITATION.
        *
        * Login is hard-blocked until an address is verified, so a voucher

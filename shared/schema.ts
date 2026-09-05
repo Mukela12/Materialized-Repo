@@ -91,6 +91,16 @@ export const users = pgTable("users", {
    */
   setupFeePaid: boolean("setup_fee_paid").notNull().default(false),
   setupFeePaidAt: timestamp("setup_fee_paid_at"),
+  /**
+   * Free access requires a card. Stamped at voucher redemption — the client's
+   * rule is that overage accountability is "the single requirement of having
+   * free access" — so it binds voucher signups only, never existing accounts
+   * or manual comps.
+   */
+  overageCardRequired: boolean("overage_card_required").notNull().default(false),
+  /** A default payment method exists on the Stripe customer. Set by webhook. */
+  cardOnFile: boolean("card_on_file").notNull().default(false),
+  cardOnFileAt: timestamp("card_on_file_at"),
   emailVerified: boolean("email_verified").default(false),
   emailVerificationToken: text("email_verification_token"),
   emailVerificationExpires: timestamp("email_verification_expires"),
