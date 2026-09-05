@@ -4,13 +4,16 @@
  * ── Why this exists ──────────────────────────────────────────────────────────
  * The previous overage path was deleted because the browser posted the amount —
  * "a route where the customer sets their own bill". This is the server-side
- * replacement, so the tests hold the two promises that make it safe:
+ * replacement, so the tests hold the promises that make it safe:
  *
  *   1. Amounts derive only from recorded usage and stored rates.
  *   2. Nothing is billed until a plan's billing_enabled is deliberately true —
  *      the first configured month is a dry run the client reviews.
+ *   3. Subscribers are billed on their own renewal invoice; free-access
+ *      accounts (card vaulted, no subscription) get a standalone auto-charged
+ *      invoice — and never the other way round.
  */
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect } from "vitest";
 import { computeOverage, allowanceIsMetered } from "../../server/overage";
 import { makeOverageJob } from "../../server/scheduledJobs";
 
@@ -63,6 +66,7 @@ describe("computeOverage", () => {
 function harness(opts: {
   allowances?: any[];
   subs?: any[];
+  free?: any[];
   usage?: Record<string, { videos: number; views: number }>;
   claimRejects?: boolean;
   stripeFails?: boolean;
@@ -71,6 +75,7 @@ function harness(opts: {
   const billed: Array<[string, string]> = [];
   const failed: Array<[string, string]> = [];
   const stripeCalls: any[] = [];
+  const standaloneCalls: any[] = [];
   const store = {
     getPlanAllowances: async () => opts.allowances ?? [{
       plan: "starter", includedVideos: 10, includedViews: 50_000,
@@ -79,11 +84,12 @@ function harness(opts: {
     getSubscriptionsForOverage: async () => opts.subs ?? [{
       userId: "u1", plan: "starter", stripeSubscriptionId: "sub_1", stripeCustomerId: "cus_1",
     }],
+    getFreeAccountsForOverage: async () => opts.free ?? [],
     countVideosInPeriod: async (uid: string) => opts.usage?.[uid]?.videos ?? 13,
     countBillableViewsInPeriod: async (uid: string) => opts.usage?.[uid]?.views ?? 0,
     claimOverageCharge: async (row: any) => {
       if (opts.claimRejects) return null;
-      const rec = { ...row, id: `oc_${claimed.length + 1}` };
+      const rec = { ...row, id: "oc_" + (claimed.length + 1) };
       claimed.push(rec);
       return rec;
     },
@@ -94,11 +100,16 @@ function harness(opts: {
     createSubscriptionOverageItem: async (args: any) => {
       stripeCalls.push(args);
       if (opts.stripeFails) throw new Error("card country unsupported");
-      return { id: `ii_${stripeCalls.length}` };
+      return { id: "ii_" + stripeCalls.length };
+    },
+    createStandaloneOverageInvoice: async (args: any) => {
+      standaloneCalls.push(args);
+      if (opts.stripeFails) throw new Error("card declined");
+      return { id: "in_" + standaloneCalls.length };
     },
   };
   const job = makeOverageJob(store as any, stripe as any, { now: () => new Date("2026-10-01T09:30:00Z") });
-  return { job, claimed, billed, failed, stripeCalls };
+  return { job, claimed, billed, failed, stripeCalls, standaloneCalls };
 }
 
 describe("the monthly job", () => {
@@ -161,5 +172,80 @@ describe("the monthly job", () => {
     const h = harness({ subs: [{ userId: "u2", plan: "pro", stripeSubscriptionId: "sub_2", stripeCustomerId: "cus_2" }] });
     const r = await h.job.run();
     expect(r.status).toBe("skipped");
+  });
+});
+
+describe("free accounts, billed standalone", () => {
+  /** A creator-role free account maps to the creator plan via planForRole. */
+  const CREATOR_ALLOWANCE = {
+    plan: "creator", includedVideos: 10, includedViews: 50_000,
+    overagePerVideoCents: 500, overagePer1000ViewsCents: 200, billingEnabled: true,
+  };
+
+  it("bills through a standalone invoice, never a subscription item", async () => {
+    const h = harness({
+      allowances: [CREATOR_ALLOWANCE],
+      subs: [],
+      free: [{ userId: "f1", role: "creator", stripeCustomerId: "cus_f1" }],
+      usage: { f1: { videos: 12, views: 0 } },
+    });
+    const r = await h.job.run();
+    expect(r.status).toBe("success");
+    expect(h.standaloneCalls).toHaveLength(1);
+    expect(h.stripeCalls).toHaveLength(0);
+    expect(h.standaloneCalls[0].customerId).toBe("cus_f1");
+    expect(h.standaloneCalls[0].amountCents).toBe(1000);
+    expect(h.standaloneCalls[0].idempotencyKey).toBe("overage:oc_1");
+    expect(h.billed).toEqual([["oc_1", "in_1"]]);
+    expect(r.detail).toContain("invoiced to card on file");
+  });
+
+  it("dry-runs like everyone else until billing_enabled", async () => {
+    const h = harness({
+      allowances: [{ ...CREATOR_ALLOWANCE, billingEnabled: false }],
+      subs: [],
+      free: [{ userId: "f1", role: "creator", stripeCustomerId: "cus_f1" }],
+      usage: { f1: { videos: 12, views: 0 } },
+    });
+    const r = await h.job.run();
+    expect(h.claimed).toHaveLength(1);
+    expect(h.standaloneCalls).toHaveLength(0);
+    expect(r.detail).toContain("dry run");
+  });
+
+  it("a subscriber still rides the subscription; the free path does not steal them", async () => {
+    const h = harness({
+      allowances: [{ plan: "starter", includedVideos: 10, includedViews: 50_000,
+        overagePerVideoCents: 500, overagePer1000ViewsCents: 200, billingEnabled: true }],
+      free: [],
+    });
+    await h.job.run();
+    expect(h.stripeCalls).toHaveLength(1);
+    expect(h.standaloneCalls).toHaveLength(0);
+  });
+
+  it("a declined card marks the row failed and the run failed", async () => {
+    const h = harness({
+      allowances: [CREATOR_ALLOWANCE],
+      subs: [],
+      free: [{ userId: "f1", role: "creator", stripeCustomerId: "cus_f1" }],
+      usage: { f1: { videos: 12, views: 0 } },
+      stripeFails: true,
+    });
+    const r = await h.job.run();
+    expect(r.status).toBe("failed");
+    expect(h.failed[0][1]).toContain("card declined");
+  });
+
+  it("an unknown role has no plan and is skipped, not billed against nothing", async () => {
+    const h = harness({
+      allowances: [CREATOR_ALLOWANCE],
+      subs: [],
+      free: [{ userId: "f2", role: "mystery", stripeCustomerId: "cus_f2" }],
+      usage: { f2: { videos: 999, views: 0 } },
+    });
+    const r = await h.job.run();
+    expect(r.status).toBe("skipped");
+    expect(h.claimed).toHaveLength(0);
   });
 });

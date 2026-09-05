@@ -513,6 +513,62 @@ export class StripeService {
    * the point, and also why the consent language lives on the page that sends
    * people here rather than on a receipt.
    */
+  /**
+   * Overage for an account with NO subscription: one standalone invoice,
+   * charged automatically to the card on file.
+   *
+   * This is the path the setup-mode webhook prepared for — it promotes the
+   * vaulted card to invoice_settings.default_payment_method precisely because
+   * a standalone charge_automatically invoice resolves its card from there and
+   * nowhere else. Free-access accounts have no renewal invoice to ride, so
+   * unlike subscription overage this cannot be a pending item; it has to be
+   * its own bill.
+   *
+   * Order matters and is the fee flow's hard lesson: invoice first, then the
+   * item NAMING the invoice, then finalise — and refuse a zero total, because
+   * a finalised empty invoice is auto-marked paid and reads as success while
+   * nobody was billed. Finalising a charge_automatically invoice is what
+   * triggers Stripe's payment attempt on the default card.
+   *
+   * Both creates carry idempotency keys derived from the caller's, so a crash
+   * and retry reuses the same Stripe objects instead of minting duplicates.
+   */
+  async createStandaloneOverageInvoice(args: {
+    customerId: string;
+    amountCents: number;
+    currency: string;
+    description: string;
+    idempotencyKey: string;
+  }) {
+    const stripe = await getUncachableStripeClient();
+    if (args.amountCents <= 0) {
+      throw new Error(`Refusing a standalone overage invoice for ${args.amountCents} cents`);
+    }
+
+    const invoice = await stripe.invoices.create({
+      customer: args.customerId,
+      currency: args.currency,
+      collection_method: 'charge_automatically',
+      auto_advance: false,
+      description: args.description,
+      metadata: { purpose: 'overage' },
+    }, { idempotencyKey: `${args.idempotencyKey}:inv` });
+
+    await stripe.invoiceItems.create({
+      customer: args.customerId,
+      invoice: invoice.id,
+      amount: args.amountCents,
+      currency: args.currency,
+      description: args.description,
+    }, { idempotencyKey: `${args.idempotencyKey}:item` });
+
+    const final = await stripe.invoices.finalizeInvoice(invoice.id);
+    if (!final.total) {
+      throw new Error(`Invoice ${final.id} finalised with a zero total — the line item did not attach`);
+    }
+    return { id: final.id, total: final.total };
+  }
+
   async createCardSetupSession(args: {
     customerId: string;
     successUrl: string;

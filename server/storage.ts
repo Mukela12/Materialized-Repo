@@ -338,6 +338,14 @@ export interface IStorage {
     userId: string; plan: string; stripeSubscriptionId: string | null; stripeCustomerId: string | null;
   }>>;
   /**
+   * Free-access accounts overage could bill standalone: card vaulted under the
+   * accountability rule, no active subscription to ride. Role stands in for
+   * plan — planForRole maps it. Admins excluded; they are never billed.
+   */
+  getFreeAccountsForOverage(): Promise<Array<{
+    userId: string; role: string; stripeCustomerId: string | null;
+  }>>;
+  /**
    * The idempotency claim. Insert wins exactly once per (user, period); a
    * re-run of the job gets null back and must not touch Stripe for this row.
    */
@@ -2250,6 +2258,17 @@ export class MemStorage implements IStorage {
         stripeSubscriptionId: sub.stripeSubscriptionId ?? null,
         stripeCustomerId: u?.stripeCustomerId ?? null,
       });
+    }
+    return out;
+  }
+
+  async getFreeAccountsForOverage(): Promise<Array<{ userId: string; role: string; stripeCustomerId: string | null }>> {
+    const out: any[] = [];
+    for (const u of Array.from(this.users.values()) as any[]) {
+      if (!u.cardOnFile || !u.overageCardRequired || u.isAdmin) continue;
+      const sub = this.brandSubscriptionsMap.get(u.id);
+      if (sub && sub.status === "active") continue; // billed via the subscription path
+      out.push({ userId: u.id, role: u.role, stripeCustomerId: u.stripeCustomerId ?? null });
     }
     return out;
   }
@@ -4291,6 +4310,24 @@ export class DatabaseStorage implements IStorage {
     }).from(brandSubscriptions)
       .innerJoin(users, eq(users.id, brandSubscriptions.userId))
       .where(eq(brandSubscriptions.status, "active"));
+    return rows;
+  }
+
+  async getFreeAccountsForOverage(): Promise<Array<{ userId: string; role: string; stripeCustomerId: string | null }>> {
+    // NOT EXISTS an active subscription: a subscriber's overage rides their
+    // renewal invoice instead, and the (user, period) claim would stop a
+    // double-bill anyway — this keeps the populations disjoint at the source.
+    const rows = await db.select({
+      userId: users.id,
+      role: users.role,
+      stripeCustomerId: users.stripeCustomerId,
+    }).from(users)
+      .where(and(
+        eq(users.cardOnFile, true),
+        eq(users.overageCardRequired, true),
+        sql`coalesce(${users.isAdmin}, false) = false`,
+        sql`not exists (select 1 from ${brandSubscriptions} bs where bs.user_id = ${users.id} and bs.status = 'active')`,
+      ));
     return rows;
   }
 

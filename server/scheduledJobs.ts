@@ -198,6 +198,9 @@ export interface OverageJobStore {
   getSubscriptionsForOverage(): Promise<Array<{
     userId: string; plan: string; stripeSubscriptionId: string | null; stripeCustomerId: string | null;
   }>>;
+  getFreeAccountsForOverage(): Promise<Array<{
+    userId: string; role: string; stripeCustomerId: string | null;
+  }>>;
   countVideosInPeriod(creatorId: string, from: Date, to: Date): Promise<number>;
   countBillableViewsInPeriod(creatorId: string, from: Date, to: Date): Promise<number>;
   claimOverageCharge(row: any): Promise<{ id: string } | null>;
@@ -208,6 +211,11 @@ export interface OverageJobStore {
 export interface OverageStripe {
   createSubscriptionOverageItem(args: {
     customerId: string; subscriptionId: string; amountCents: number;
+    currency: string; description: string; idempotencyKey: string;
+  }): Promise<{ id: string }>;
+  /** For accounts with no subscription to ride: one standalone auto-charged invoice. */
+  createStandaloneOverageInvoice(args: {
+    customerId: string; amountCents: number;
     currency: string; description: string; idempotencyKey: string;
   }): Promise<{ id: string }>;
 }
@@ -249,11 +257,31 @@ export function makeOverageJob(
         return { status: "skipped", items: 0, detail: "no plan allowances configured" };
       }
 
+      const { planForRole } = await import("./subscriptionPlan");
       const subs = await store.getSubscriptionsForOverage();
+      /**
+       * Free-access accounts join the same loop as ACCOUNTS, shaped alike. The
+       * two populations are disjoint at the query level (the free query
+       * excludes anyone with an active subscription), and the (user, period)
+       * claim would refuse a duplicate even if they were not. `standalone`
+       * marks which Stripe path bills them: no subscription means no renewal
+       * invoice to ride, so it has to be an invoice of its own.
+       */
+      const free = await store.getFreeAccountsForOverage();
+      const accounts = [
+        ...subs.map(x => ({ ...x, standalone: false })),
+        ...free.map(x => ({
+          userId: x.userId,
+          plan: planForRole(x.role) ?? "",
+          stripeSubscriptionId: null as string | null,
+          stripeCustomerId: x.stripeCustomerId,
+          standalone: true,
+        })),
+      ];
       const results: string[] = [];
       let recorded = 0, billed = 0, failed = 0;
 
-      for (const sub of subs) {
+      for (const sub of accounts) {
         const allowance = allowances.get(sub.plan);
         if (!allowanceIsMetered(allowance)) continue;
 
@@ -284,29 +312,39 @@ export function makeOverageJob(
         recorded++;
 
         const billable =
-          allowance!.billingEnabled && o.totalCents > 0 &&
-          !!sub.stripeSubscriptionId && !!sub.stripeCustomerId;
+          allowance!.billingEnabled && o.totalCents > 0 && !!sub.stripeCustomerId &&
+          (sub.standalone || !!sub.stripeSubscriptionId);
         if (!billable) {
           results.push(`${sub.userId}: ${money(o.totalCents)} recorded (dry run)`);
           continue;
         }
 
+        const description =
+          `Usage overage ${from.toISOString().slice(0, 7)}: ` +
+          (o.videosOver ? `${o.videosOver} extra video(s)` : "") +
+          (o.videosOver && o.viewsOver ? ", " : "") +
+          (o.viewsOver ? `${o.viewsOver} extra views` : "");
+
         try {
-          const item = await stripe.createSubscriptionOverageItem({
-            customerId: sub.stripeCustomerId!,
-            subscriptionId: sub.stripeSubscriptionId!,
-            amountCents: o.totalCents,
-            currency: getPlatformCurrency(),
-            description:
-              `Usage overage ${from.toISOString().slice(0, 7)}: ` +
-              (o.videosOver ? `${o.videosOver} extra video(s)` : "") +
-              (o.videosOver && o.viewsOver ? ", " : "") +
-              (o.viewsOver ? `${o.viewsOver} extra views` : ""),
-            idempotencyKey: `overage:${claim.id}`,
-          });
-          await store.markOverageBilled(claim.id, item.id);
+          const stripeRef = sub.standalone
+            ? await stripe.createStandaloneOverageInvoice({
+                customerId: sub.stripeCustomerId!,
+                amountCents: o.totalCents,
+                currency: getPlatformCurrency(),
+                description,
+                idempotencyKey: `overage:${claim.id}`,
+              })
+            : await stripe.createSubscriptionOverageItem({
+                customerId: sub.stripeCustomerId!,
+                subscriptionId: sub.stripeSubscriptionId!,
+                amountCents: o.totalCents,
+                currency: getPlatformCurrency(),
+                description,
+                idempotencyKey: `overage:${claim.id}`,
+              });
+          await store.markOverageBilled(claim.id, stripeRef.id);
           billed++;
-          results.push(`${sub.userId}: ${money(o.totalCents)} on next invoice`);
+          results.push(`${sub.userId}: ${money(o.totalCents)} ${sub.standalone ? "invoiced to card on file" : "on next invoice"}`);
         } catch (err) {
           // The row stays, marked failed, with the reason — money that is owed
           // and unbilled must be a loud line in the ledger, not a silent skip.
