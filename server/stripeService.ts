@@ -492,6 +492,36 @@ export class StripeService {
     }, { idempotencyKey: args.idempotencyKey });
   }
 
+  /**
+   * Overage as a line on the NEXT subscription invoice.
+   *
+   * Passing `subscription` is the whole mechanism: Stripe holds the item as
+   * pending against that subscription and sweeps it into the upcoming renewal
+   * invoice, which charges the card already on file. No standalone invoice, no
+   * separate charge for the customer to recognise — one bill, one extra line.
+   *
+   * Distinct from createFeeInvoiceItem, which names an explicit invoice: the
+   * fee flow builds its own invoice and finalises it by hand, while overage
+   * deliberately rides an invoice the subscription was creating anyway.
+   */
+  async createSubscriptionOverageItem(args: {
+    customerId: string;
+    subscriptionId: string;
+    amountCents: number;
+    currency: string;
+    description: string;
+    idempotencyKey: string;
+  }) {
+    const stripe = await getUncachableStripeClient();
+    return await stripe.invoiceItems.create({
+      customer: args.customerId,
+      subscription: args.subscriptionId,
+      amount: args.amountCents,
+      currency: args.currency,
+      description: args.description,
+    }, { idempotencyKey: args.idempotencyKey });
+  }
+
   async createFeeInvoiceItem(args: {
     customerId: string;
     invoiceId: string;

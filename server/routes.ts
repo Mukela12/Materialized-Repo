@@ -5254,6 +5254,74 @@ Identify which products from the catalog are most likely to appear or be feature
    * Results are grouped per currency as well as per brand — summing cents
    * across currencies would be meaningless.
    */
+  /**
+   * Plan allowances — the numbers the overage job prices from.
+   *
+   * These ARE the product decision the client owes ("how many videos and views
+   * each tier includes"): once a row exists the monthly job measures against
+   * it, recording only, until billing_enabled is flipped after a reviewed
+   * dry-run month. Bounds are sanity rails, not policy.
+   */
+  app.get("/api/admin/allowances", requireAdmin, async (_req, res) => {
+    try {
+      res.json(await storage.getPlanAllowances());
+    } catch (error) {
+      console.error("Allowances read error:", error);
+      res.status(500).json({ error: "Failed to load allowances" });
+    }
+  });
+
+  app.patch("/api/admin/allowances/:plan", requireAdmin, async (req, res) => {
+    try {
+      const plan = req.params.plan;
+      if (!isPlanKey(plan)) {
+        return res.status(400).json({ error: `plan must be one of: ${PLAN_KEYS.join(", ")}` });
+      }
+      const intOrNull = (v: unknown, name: string, max: number): number | null => {
+        if (v == null || v === "") return null;
+        const n = Number(v);
+        if (!Number.isInteger(n) || n < 0 || n > max) {
+          throw new Error(`${name} must be a whole number between 0 and ${max}`);
+        }
+        return n;
+      };
+      let a;
+      try {
+        a = {
+          plan,
+          includedVideos: intOrNull(req.body?.includedVideos, "includedVideos", 100000),
+          includedViews: intOrNull(req.body?.includedViews, "includedViews", 1000000000),
+          overagePerVideoCents: intOrNull(req.body?.overagePerVideoCents, "overagePerVideoCents", 100000),
+          overagePer1000ViewsCents: intOrNull(req.body?.overagePer1000ViewsCents, "overagePer1000ViewsCents", 100000),
+          billingEnabled: req.body?.billingEnabled === true,
+        };
+      } catch (e: any) {
+        return res.status(400).json({ error: e.message });
+      }
+      res.json(await storage.upsertPlanAllowance(a));
+    } catch (error) {
+      console.error("Allowances update error:", error);
+      res.status(500).json({ error: "Failed to save allowance" });
+    }
+  });
+
+  /** Admin: recorded overage, newest first — the dry-run review and the billing ledger. */
+  app.get("/api/admin/overage", requireAdmin, async (_req, res) => {
+    try {
+      const rows = await storage.listOverageCharges();
+      const ids = Array.from(new Set(rows.map(r => r.userId)));
+      const names = new Map<string, string>();
+      await Promise.all(ids.map(async (id) => {
+        const u = await storage.getUser(id);
+        if (u) names.set(id, u.displayName ?? u.email);
+      }));
+      res.json(rows.map(r => ({ ...r, userName: names.get(r.userId) ?? "Unknown" })));
+    } catch (error) {
+      console.error("Overage list error:", error);
+      res.status(500).json({ error: "Failed to load overage" });
+    }
+  });
+
   app.get("/api/admin/fee-accruals/summary", requireAdmin, async (req, res) => {
     try {
       const parseDate = (v: unknown): Date | undefined => {

@@ -7,6 +7,7 @@ import { useTableControls, type SortDir } from "@/hooks/useTableControls";
 import { exportToCsv } from "@/lib/exportCsv";
 import { TableToolbar } from "@/components/TableToolbar";
 import { VoucherManager } from "@/components/VoucherManager";
+import { AllowancesEditor } from "@/components/AllowancesEditor";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -1488,6 +1489,9 @@ function MoneyRates() {
           )}
         </div>
       </div>
+
+      {/* Allowances live with the other money knobs; see AllowancesEditor. */}
+      <AllowancesEditor />
     </div>
   );
 }

@@ -25,6 +25,9 @@ export const FEE_INVOICE_JOB = "fee-invoices";
 
 export const DEFAULT_PAYOUT_CRON = "0 9 * * 1";   // Mondays 09:00 UTC
 export const DEFAULT_FEE_INVOICE_CRON = "0 9 1 * *"; // 1st of the month, 09:00 UTC
+export const OVERAGE_JOB = "subscription-overage";
+// After fee invoices, same morning: the two monthly money jobs stay adjacent in the ledger.
+export const DEFAULT_OVERAGE_CRON = "30 9 1 * *";
 
 function money(cents: number) {
   return `$${(cents / 100).toFixed(2)}`;
@@ -181,6 +184,145 @@ export function makeFeeInvoiceJob(
         items: invoiced,
         detail: `${invoiced} draft invoice(s), billing to ${to.toISOString().slice(0, 7)}` +
           (failed ? `, ${failed} failed` : "") + unbillable + ` — ${results.join("; ")}`,
+      };
+    },
+  };
+}
+
+export interface OverageJobStore {
+  getPlanAllowances(): Promise<Array<{
+    plan: string; includedVideos: number | null; includedViews: number | null;
+    overagePerVideoCents: number | null; overagePer1000ViewsCents: number | null;
+    billingEnabled: boolean;
+  }>>;
+  getSubscriptionsForOverage(): Promise<Array<{
+    userId: string; plan: string; stripeSubscriptionId: string | null; stripeCustomerId: string | null;
+  }>>;
+  countVideosInPeriod(creatorId: string, from: Date, to: Date): Promise<number>;
+  countBillableViewsInPeriod(creatorId: string, from: Date, to: Date): Promise<number>;
+  claimOverageCharge(row: any): Promise<{ id: string } | null>;
+  markOverageBilled(id: string, itemId: string): Promise<void>;
+  markOverageFailed(id: string, error: string): Promise<void>;
+}
+
+export interface OverageStripe {
+  createSubscriptionOverageItem(args: {
+    customerId: string; subscriptionId: string; amountCents: number;
+    currency: string; description: string; idempotencyKey: string;
+  }): Promise<{ id: string }>;
+}
+
+/**
+ * Monthly overage: measure last month, record it, and bill it only where the
+ * plan's billing_enabled says so.
+ *
+ * ── The record/bill split is the safety model ────────────────────────────────
+ * billing_enabled defaults false, so a newly configured plan's first month is a
+ * DRY RUN: rows land in overage_charges as 'recorded' and the client reviews
+ * real numbers in the admin before any card is touched — the same "an
+ * unattended job must not be the thing that first bills a customer" rule the
+ * fee-invoice job established. Flipping billing_enabled is the deliberate act.
+ *
+ * ── Idempotency ──────────────────────────────────────────────────────────────
+ * claimOverageCharge wins exactly once per (user, month); a catch-up or
+ * double-fired run gets null and must not touch Stripe. The Stripe call itself
+ * carries an idempotency key derived from the claim, so a crash between claim
+ * and mark cannot double-bill either.
+ */
+export function makeOverageJob(
+  store: OverageJobStore,
+  stripe: OverageStripe,
+  opts: { cron?: string; now?: () => Date } = {},
+): ScheduledJob {
+  const cron = opts.cron || process.env.OVERAGE_CRON || DEFAULT_OVERAGE_CRON;
+  return {
+    name: OVERAGE_JOB,
+    schedule: cron,
+    run: async (): Promise<JobResult> => {
+      // Lazy import keeps this file free of a compile-time cycle with overage.ts consumers.
+      const { computeOverage, allowanceIsMetered } = await import("./overage");
+      const now = (opts.now ?? (() => new Date()))();
+      const { from, to } = previousMonthWindow(now);
+
+      const allowances = new Map((await store.getPlanAllowances()).map(a => [a.plan, a]));
+      if (allowances.size === 0) {
+        return { status: "skipped", items: 0, detail: "no plan allowances configured" };
+      }
+
+      const subs = await store.getSubscriptionsForOverage();
+      const results: string[] = [];
+      let recorded = 0, billed = 0, failed = 0;
+
+      for (const sub of subs) {
+        const allowance = allowances.get(sub.plan);
+        if (!allowanceIsMetered(allowance)) continue;
+
+        const [videos, views] = await Promise.all([
+          store.countVideosInPeriod(sub.userId, from, to),
+          store.countBillableViewsInPeriod(sub.userId, from, to),
+        ]);
+        const o = computeOverage({ videos, views }, allowance!);
+        if (o.totalCents <= 0 && o.videosOver === 0 && o.viewsOver === 0) continue;
+
+        const claim = await store.claimOverageCharge({
+          userId: sub.userId,
+          plan: sub.plan,
+          periodStart: from,
+          periodEnd: to,
+          videosUsed: videos,
+          viewsUsed: views,
+          includedVideos: allowance!.includedVideos,
+          includedViews: allowance!.includedViews,
+          videoOverageCents: o.videoOverageCents,
+          viewOverageCents: o.viewOverageCents,
+          totalCents: o.totalCents,
+          currency: getPlatformCurrency(),
+          status: "recorded",
+        });
+        if (!claim) continue; // already handled by an earlier run
+
+        recorded++;
+
+        const billable =
+          allowance!.billingEnabled && o.totalCents > 0 &&
+          !!sub.stripeSubscriptionId && !!sub.stripeCustomerId;
+        if (!billable) {
+          results.push(`${sub.userId}: ${money(o.totalCents)} recorded (dry run)`);
+          continue;
+        }
+
+        try {
+          const item = await stripe.createSubscriptionOverageItem({
+            customerId: sub.stripeCustomerId!,
+            subscriptionId: sub.stripeSubscriptionId!,
+            amountCents: o.totalCents,
+            currency: getPlatformCurrency(),
+            description:
+              `Usage overage ${from.toISOString().slice(0, 7)}: ` +
+              (o.videosOver ? `${o.videosOver} extra video(s)` : "") +
+              (o.videosOver && o.viewsOver ? ", " : "") +
+              (o.viewsOver ? `${o.viewsOver} extra views` : ""),
+            idempotencyKey: `overage:${claim.id}`,
+          });
+          await store.markOverageBilled(claim.id, item.id);
+          billed++;
+          results.push(`${sub.userId}: ${money(o.totalCents)} on next invoice`);
+        } catch (err) {
+          // The row stays, marked failed, with the reason — money that is owed
+          // and unbilled must be a loud line in the ledger, not a silent skip.
+          failed++;
+          await store.markOverageFailed(claim.id, err instanceof Error ? err.message : String(err));
+          results.push(`${sub.userId}: FAILED ${err instanceof Error ? err.message : err}`);
+        }
+      }
+
+      if (recorded === 0) {
+        return { status: "skipped", items: 0, detail: `no overage in ${from.toISOString().slice(0, 7)}` };
+      }
+      return {
+        status: failed ? "failed" : "success",
+        items: billed,
+        detail: `${recorded} recorded, ${billed} billed, ${failed} failed — ${results.join("; ")}`,
       };
     },
   };

@@ -8,6 +8,7 @@ import { LICENSE_FEE_DECIMAL } from "@shared/pricing";
 import type { AccrualRow } from "./feeAccruals";
 import type { InvoiceClaim, FeeInvoiceRecord } from "./feeInvoicing";
 import type { VoucherRecord } from "./vouchers";
+import type { PlanAllowance, OverageCharge } from "@shared/schema";
 
 /** One brand's outstanding marketplace fee over a period. */
 export interface FeeAccrualSummaryRow {
@@ -66,6 +67,8 @@ import {
   videoProducts,
   brandReferrals,
   analyticsEvents,
+  planAllowances,
+  overageCharges,
   affiliatePayouts,
   brandKits,
   campaigns,
@@ -311,6 +314,37 @@ export interface IStorage {
   setVoucherPartner(id: string, partner: string | null): Promise<boolean>;
   /** How many vouchers belong to one batch. Used to cap invitation minting. */
   countVouchersInBatch(batchId: string): Promise<number>;
+
+  // ── Overage — see server/overage.ts for the policy ─────────────────────────
+  getPlanAllowances(): Promise<PlanAllowance[]>;
+  upsertPlanAllowance(a: {
+    plan: string;
+    includedVideos: number | null;
+    includedViews: number | null;
+    overagePerVideoCents: number | null;
+    overagePer1000ViewsCents: number | null;
+    billingEnabled: boolean;
+  }): Promise<PlanAllowance>;
+  /** Uploads created inside the window, attributed to this creator. */
+  countVideosInPeriod(creatorId: string, from: Date, to: Date): Promise<number>;
+  /**
+   * BILLABLE views only: rows carrying a viewerHash, which the partial unique
+   * index has already deduplicated to one per viewer per video per day.
+   * Undercounts pre-hash history on purpose — in the customer's favour.
+   */
+  countBillableViewsInPeriod(creatorId: string, from: Date, to: Date): Promise<number>;
+  /** Every subscription overage could bill: active, with its user's Stripe ids. */
+  getSubscriptionsForOverage(): Promise<Array<{
+    userId: string; plan: string; stripeSubscriptionId: string | null; stripeCustomerId: string | null;
+  }>>;
+  /**
+   * The idempotency claim. Insert wins exactly once per (user, period); a
+   * re-run of the job gets null back and must not touch Stripe for this row.
+   */
+  claimOverageCharge(row: Omit<OverageCharge, "id" | "createdAt" | "stripeInvoiceItemId" | "error">): Promise<OverageCharge | null>;
+  markOverageBilled(id: string, stripeInvoiceItemId: string): Promise<void>;
+  markOverageFailed(id: string, error: string): Promise<void>;
+  listOverageCharges(): Promise<OverageCharge[]>;
   /**
    * The voucher this account signed up with, if any.
    *
@@ -2173,6 +2207,75 @@ export class MemStorage implements IStorage {
 
   async countVouchersInBatch(batchId: string): Promise<number> {
     return Array.from(this.vouchersMap.values()).filter((v: any) => v.batchId === batchId).length;
+  }
+
+  // ── Overage ────────────────────────────────────────────────────────────────
+  private planAllowancesMap: Map<string, any> = new Map();
+  private overageChargesList: any[] = [];
+
+  async getPlanAllowances(): Promise<any[]> {
+    return Array.from(this.planAllowancesMap.values());
+  }
+
+  async upsertPlanAllowance(a: any): Promise<any> {
+    const row = { ...a, updatedAt: new Date() };
+    this.planAllowancesMap.set(a.plan, row);
+    return row;
+  }
+
+  async countVideosInPeriod(creatorId: string, from: Date, to: Date): Promise<number> {
+    return Array.from(this.videos.values()).filter(v =>
+      v.creatorId === creatorId && v.createdAt != null && v.createdAt >= from && v.createdAt < to,
+    ).length;
+  }
+
+  async countBillableViewsInPeriod(creatorId: string, from: Date, to: Date): Promise<number> {
+    // Same billable definition as DatabaseStorage: view events with a
+    // viewerHash inside the window. The fake must not count more generously
+    // than the real thing — that is the "fake more capable than reality" trap
+    // voucher-insert-columns.test.ts documents.
+    return Array.from(this.analyticsEvents.values()).filter((e: any) =>
+      e.creatorId === creatorId && e.eventType === "view" && e.viewerHash != null &&
+      e.createdAt != null && e.createdAt >= from && e.createdAt < to,
+    ).length;
+  }
+
+  async getSubscriptionsForOverage(): Promise<Array<{ userId: string; plan: string; stripeSubscriptionId: string | null; stripeCustomerId: string | null }>> {
+    const out: any[] = [];
+    for (const sub of Array.from(this.brandSubscriptionsMap.values())) {
+      if (sub.status !== "active") continue;
+      const u = this.users.get(sub.userId);
+      out.push({
+        userId: sub.userId, plan: sub.plan,
+        stripeSubscriptionId: sub.stripeSubscriptionId ?? null,
+        stripeCustomerId: u?.stripeCustomerId ?? null,
+      });
+    }
+    return out;
+  }
+
+  async claimOverageCharge(row: any): Promise<any | null> {
+    const dup = this.overageChargesList.find(r =>
+      r.userId === row.userId && r.periodStart.getTime() === row.periodStart.getTime(),
+    );
+    if (dup) return null;
+    const rec = { ...row, id: randomUUID(), createdAt: new Date(), stripeInvoiceItemId: null, error: null };
+    this.overageChargesList.push(rec);
+    return rec;
+  }
+
+  async markOverageBilled(id: string, stripeInvoiceItemId: string): Promise<void> {
+    const r = this.overageChargesList.find(x => x.id === id);
+    if (r) { r.status = "billed"; r.stripeInvoiceItemId = stripeInvoiceItemId; }
+  }
+
+  async markOverageFailed(id: string, error: string): Promise<void> {
+    const r = this.overageChargesList.find(x => x.id === id);
+    if (r) { r.status = "failed"; r.error = error; }
+  }
+
+  async listOverageCharges(): Promise<any[]> {
+    return [...this.overageChargesList];
   }
 
   async getRedeemedVoucherForUser(userId: string): Promise<Voucher | null> {
@@ -4124,6 +4227,95 @@ export class DatabaseStorage implements IStorage {
     const [row] = await db.select({ n: sql<number>`count(*)::int` })
       .from(vouchers).where(eq(vouchers.batchId, batchId));
     return row?.n ?? 0;
+  }
+
+  // ── Overage ────────────────────────────────────────────────────────────────
+
+  async getPlanAllowances(): Promise<PlanAllowance[]> {
+    return db.select().from(planAllowances);
+  }
+
+  async upsertPlanAllowance(a: {
+    plan: string;
+    includedVideos: number | null;
+    includedViews: number | null;
+    overagePerVideoCents: number | null;
+    overagePer1000ViewsCents: number | null;
+    billingEnabled: boolean;
+  }): Promise<PlanAllowance> {
+    const [row] = await db.insert(planAllowances)
+      .values({ ...a, updatedAt: new Date() })
+      .onConflictDoUpdate({
+        target: planAllowances.plan,
+        set: {
+          includedVideos: a.includedVideos,
+          includedViews: a.includedViews,
+          overagePerVideoCents: a.overagePerVideoCents,
+          overagePer1000ViewsCents: a.overagePer1000ViewsCents,
+          billingEnabled: a.billingEnabled,
+          updatedAt: new Date(),
+        },
+      })
+      .returning();
+    return row;
+  }
+
+  async countVideosInPeriod(creatorId: string, from: Date, to: Date): Promise<number> {
+    const [row] = await db.select({ n: sql<number>`count(*)::int` }).from(videos)
+      .where(and(eq(videos.creatorId, creatorId), gte(videos.createdAt, from), lt(videos.createdAt, to)));
+    return row?.n ?? 0;
+  }
+
+  async countBillableViewsInPeriod(creatorId: string, from: Date, to: Date): Promise<number> {
+    // viewerHash IS NOT NULL is what makes this the deduplicated billable count
+    // — the partial unique index guarantees one such row per viewer/video/day.
+    // Runs on analytics_events_creator_period_idx, which exists for exactly
+    // this query shape.
+    const [row] = await db.select({ n: sql<number>`count(*)::int` }).from(analyticsEvents)
+      .where(and(
+        eq(analyticsEvents.creatorId, creatorId),
+        eq(analyticsEvents.eventType, "view"),
+        sql`${analyticsEvents.viewerHash} is not null`,
+        gte(analyticsEvents.createdAt, from),
+        lt(analyticsEvents.createdAt, to),
+      ));
+    return row?.n ?? 0;
+  }
+
+  async getSubscriptionsForOverage(): Promise<Array<{ userId: string; plan: string; stripeSubscriptionId: string | null; stripeCustomerId: string | null }>> {
+    const rows = await db.select({
+      userId: brandSubscriptions.userId,
+      plan: brandSubscriptions.plan,
+      stripeSubscriptionId: brandSubscriptions.stripeSubscriptionId,
+      stripeCustomerId: users.stripeCustomerId,
+    }).from(brandSubscriptions)
+      .innerJoin(users, eq(users.id, brandSubscriptions.userId))
+      .where(eq(brandSubscriptions.status, "active"));
+    return rows;
+  }
+
+  async claimOverageCharge(row: Omit<OverageCharge, "id" | "createdAt" | "stripeInvoiceItemId" | "error">): Promise<OverageCharge | null> {
+    // onConflictDoNothing + returning: exactly one caller per (user, period)
+    // gets the row back. The loser gets null and must not touch Stripe.
+    const [rec] = await db.insert(overageCharges).values(row as any)
+      .onConflictDoNothing().returning();
+    return rec ?? null;
+  }
+
+  async markOverageBilled(id: string, stripeInvoiceItemId: string): Promise<void> {
+    await db.update(overageCharges)
+      .set({ status: "billed", stripeInvoiceItemId })
+      .where(eq(overageCharges.id, id));
+  }
+
+  async markOverageFailed(id: string, error: string): Promise<void> {
+    await db.update(overageCharges)
+      .set({ status: "failed", error: error.slice(0, 500) })
+      .where(eq(overageCharges.id, id));
+  }
+
+  async listOverageCharges(): Promise<OverageCharge[]> {
+    return db.select().from(overageCharges).orderBy(desc(overageCharges.createdAt)).limit(500);
   }
 
   async getRedeemedVoucherForUser(userId: string): Promise<Voucher | null> {

@@ -823,6 +823,48 @@ export type InsertBrandFont = typeof brandFonts.$inferInsert;
 
 // Admin-editable platform fee/commission defaults (single "singleton" row).
 // Null columns fall back to the env/code defaults (15 / 8 / 2).
+/**
+ * What each plan includes before overage, and what extras cost.
+ *
+ * NULL on an allowance means that meter is unlimited. billing_enabled false
+ * means overage is recorded but never billed — the first month runs as a dry
+ * run the client reviews before any card is touched.
+ */
+export const planAllowances = pgTable("plan_allowances", {
+  plan: text("plan").primaryKey(),
+  includedVideos: integer("included_videos"),
+  includedViews: integer("included_views"),
+  overagePerVideoCents: integer("overage_per_video_cents"),
+  overagePer1000ViewsCents: integer("overage_per_1000_views_cents"),
+  billingEnabled: boolean("billing_enabled").notNull().default(false),
+  updatedAt: timestamp("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+});
+export type PlanAllowance = typeof planAllowances.$inferSelect;
+
+/** One subscriber's overage for one billing month. (user, period_start) is the idempotency claim. */
+export const overageCharges = pgTable("overage_charges", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => users.id),
+  plan: text("plan").notNull(),
+  periodStart: timestamp("period_start").notNull(),
+  periodEnd: timestamp("period_end").notNull(),
+  videosUsed: integer("videos_used").notNull(),
+  viewsUsed: integer("views_used").notNull(),
+  includedVideos: integer("included_videos"),
+  includedViews: integer("included_views"),
+  videoOverageCents: integer("video_overage_cents").notNull().default(0),
+  viewOverageCents: integer("view_overage_cents").notNull().default(0),
+  totalCents: integer("total_cents").notNull(),
+  currency: text("currency").notNull(),
+  status: text("status").notNull().default("recorded"),
+  stripeInvoiceItemId: text("stripe_invoice_item_id"),
+  error: text("error"),
+  createdAt: timestamp("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+}, (t) => ({
+  overageOncePerPeriod: uniqueIndex("overage_once_per_period_idx").on(t.userId, t.periodStart),
+}));
+export type OverageCharge = typeof overageCharges.$inferSelect;
+
 export const platformSettings = pgTable("platform_settings", {
   id: varchar("id").primaryKey().default("singleton"),
   marketplaceFeePct: decimal("marketplace_fee_pct", { precision: 5, scale: 2 }),

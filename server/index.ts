@@ -13,7 +13,8 @@ import { getUncachableStripeClient } from "./stripeClient";
 import { dispatchStripeEvent } from "./webhookHandlers";
 import Stripe from 'stripe';
 import { Scheduler } from "./scheduler";
-import { makePayoutJob, makeFeeInvoiceJob, schedulerEnabled } from "./scheduledJobs";
+import { makePayoutJob, makeFeeInvoiceJob, makeOverageJob, schedulerEnabled } from "./scheduledJobs";
+import { stripeService } from "./stripeService";
 import { runPayouts } from "./payoutRunner";
 import { feeInvoiceStripeAdapter } from "./feeInvoiceStripe";
 import { storage } from "./storage";
@@ -487,6 +488,9 @@ function startScheduler() {
     const scheduler = new Scheduler(storage, [
       makePayoutJob({ runPayouts }),
       makeFeeInvoiceJob(storage as any, feeInvoiceStripeAdapter),
+      // Records always; bills only plans whose billing_enabled says so. With no
+      // allowances configured it is a no-op, so wiring it is safe today.
+      makeOverageJob(storage as any, stripeService),
     ], (m) => log(m));
     scheduler.start();
   } catch (err) {
