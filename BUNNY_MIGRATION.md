@@ -38,12 +38,27 @@ analysis, not Bunny's quote):
   - NEVER delete a video with a live embed/campaign attached — check first.
   - dry-run mode first, same pattern as overage billing.
 
-## Phase 3 — detection frame sampling (~0.5–1 day, the one open design)
+## Phase 3 — detection frame sampling (SPIKED 2026-09-06: viable)
 `server/frameSampler.ts` extracts arbitrary-timestamp JPEGs via Cloudinary URL
 transforms; AI detection depends on it. Bunny has no arbitrary-frame URL API.
-Plan: server-side ffmpeg against the Bunny MP4 rendition (`-ss T -i <url>
--frames:v 1`), which range-requests only the needed bytes. Needs ffmpeg in the
-Railway image. Spike this FIRST — it is the only piece with real unknowns.
+
+**Spike result** — `ffmpeg -ss T -i <https url> -frames:v 1` against a real
+104MB production original served with `Accept-Ranges: bytes`:
+- one frame: **~3.9s**, valid JPEG; three frames (the frameSampler pattern):
+  ~11s total, one short-lived process each.
+- trace confirms genuine range seeking: ffmpeg jumped straight to
+  `Range: bytes=103651647-` (the tail index) rather than streaming the file.
+- control with ranges forbidden (`-seekable 0`): **50.6s and "partial file"** —
+  so range support on the source is the load-bearing requirement.
+
+Implementation notes:
+- Enable **MP4 Fallback** on the Bunny library — the renditions are the static,
+  range-served, faststart files this depends on (moov up front, so seeks will
+  beat the .mov test case, which had its index at the tail).
+- ffmpeg on Railway: prefer the nixpacks package over the ~75MB `ffmpeg-static`
+  npm binary. Verify presence at boot and fail loud, not at first detection.
+- Frame extraction becomes host-aware in frameSampler: Cloudinary URLs keep the
+  URL-transform path; Bunny URLs go through the ffmpeg extractor.
 
 ## Explicitly out of scope
 Profile/product images, brand fonts (stay on Cloudinary free tier); the app
