@@ -99,6 +99,65 @@ function harness(opts: { candidates?: any[]; enabled?: boolean; hostFails?: bool
   return { job, deletedFromHost, stamped };
 }
 
+/**
+ * The tests above run the job against a hand-written fake store, which is the
+ * right shape for policy but proves nothing about the query that feeds it.
+ *
+ * It hid a real bug. Both the SQL and the MemStorage mirror counted licences by
+ * `video_id` — a column video_license_purchases does not have. Postgres threw;
+ * MemStorage silently matched nothing and returned zero, and zero licences is
+ * the answer that PERMITS deletion. A licence is bought against a global-library
+ * listing, so the count has to travel through that listing.
+ */
+describe("counting protection against real storage", () => {
+  async function seed() {
+    const { MemStorage } = await import("../../server/storage");
+    const s: any = new MemStorage();
+    const user = await s.createUser({
+      username: "lapsed", email: "lapsed@example.com", password: "x", role: "creator",
+    } as any);
+    // Lapsed long ago and unpaid: eligible unless something protects it.
+    await s.updateUser(user.id, { freeAccessUntil: LONG_LAPSED } as any);
+    const video = await s.createVideo({
+      creatorId: user.id, title: "Lookbook", videoUrl: "https://cdn.example/v.mp4",
+    } as any);
+    return { s, user, video };
+  }
+
+  it("a licensed video is protected, counted through its listing", async () => {
+    const { s, user, video } = await seed();
+    const listing = await s.createGlobalVideoListing({
+      videoId: video.id, creatorId: user.id, licenseFee: "10.00",
+    } as any);
+    await s.createVideoLicensePurchase({
+      globalListingId: listing.id, affiliateId: user.id, licenseFee: "10.00", commissionRate: "10.00",
+    } as any);
+
+    const [c] = await s.getRetentionCandidates();
+    expect(c.licenseCount).toBe(1);
+    expect(judgeRetention(c, NOW).delete).toBe(false);
+  });
+
+  it("an embedded video is protected", async () => {
+    const { s, user, video } = await seed();
+    await s.createEmbedDeployment({
+      affiliateId: user.id, videoId: video.id, utmCode: "u", referrerDomain: "vogue.com",
+    } as any);
+
+    const [c] = await s.getRetentionCandidates();
+    expect(c.embedCount).toBe(1);
+    expect(judgeRetention(c, NOW).delete).toBe(false);
+  });
+
+  it("with neither, the same video is eligible — so the protections above are load-bearing", async () => {
+    const { s } = await seed();
+    const [c] = await s.getRetentionCandidates();
+    expect(c.embedCount).toBe(0);
+    expect(c.licenseCount).toBe(0);
+    expect(judgeRetention(c, NOW).delete).toBe(true);
+  });
+});
+
 describe("the daily sweep", () => {
   it("deletes nothing in a dry run, but names what it would take", async () => {
     const h = harness({ enabled: false });

@@ -2302,7 +2302,16 @@ export class MemStorage implements IStorage {
         videoUrl: v.videoUrl,
         freeAccessEndedAt: u.freeAccessUntil ?? null,
         embedCount: Array.from(this.embedDeploymentsMap.values()).filter((e: any) => e.videoId === v.id).length,
-        licenseCount: Array.from(this.videoLicensePurchases.values()).filter((l: any) => l.videoId === v.id).length,
+        // Through the global listing, exactly as the SQL does — a licence
+        // purchase has no videoId of its own.
+        licenseCount: (() => {
+          const listingIds = new Set(
+            Array.from(this.globalVideoLibrary.values())
+              .filter((g: any) => g.videoId === v.id).map((g: any) => g.id),
+          );
+          return Array.from(this.videoLicensePurchases.values())
+            .filter((l: any) => listingIds.has(l.globalListingId)).length;
+        })(),
       });
     }
     return out;
@@ -4384,7 +4393,15 @@ export class DatabaseStorage implements IStorage {
       videoUrl: videos.videoUrl,
       freeAccessEndedAt: users.freeAccessUntil,
       embedCount: sql<number>`(select count(*)::int from ${embedDeployments} e where e.video_id = ${videos.id})`,
-      licenseCount: sql<number>`(select count(*)::int from ${videoLicensePurchases} l where l.video_id = ${videos.id})`,
+      // A licence is bought against a global-library LISTING, not a video, so
+      // the count goes through that listing. Getting this wrong reads as zero
+      // licences, which is the answer that permits deletion.
+      licenseCount: sql<number>`(
+        select count(*)::int
+        from ${videoLicensePurchases} l
+        join ${globalVideoLibrary} g on g.id = l.global_listing_id
+        where g.video_id = ${videos.id}
+      )`,
     }).from(videos)
       .innerJoin(users, eq(users.id, videos.creatorId))
       .where(and(
