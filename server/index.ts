@@ -13,7 +13,27 @@ import { getUncachableStripeClient } from "./stripeClient";
 import { dispatchStripeEvent } from "./webhookHandlers";
 import Stripe from 'stripe';
 import { Scheduler } from "./scheduler";
-import { makePayoutJob, makeFeeInvoiceJob, makeOverageJob, schedulerEnabled } from "./scheduledJobs";
+import { makePayoutJob, makeFeeInvoiceJob, makeOverageJob, makeRetentionJob, schedulerEnabled } from "./scheduledJobs";
+
+/**
+ * Where stored video actually lives today. After the Bunny migration this
+ * becomes host-aware — a Bunny URL deletes through Bunny's API, a legacy
+ * Cloudinary URL still deletes through Cloudinary.
+ */
+const cloudinaryRetentionHost = {
+  async deleteVideo(videoUrl: string): Promise<void> {
+    const [{ parseCloudinaryVideoUrl }, { deleteResource }] = await Promise.all([
+      import("./frameSampler"),
+      import("./cloudinaryService"),
+    ]);
+    const parsed = parseCloudinaryVideoUrl(videoUrl);
+    // A URL this host does not own is not silently "deleted": throwing leaves
+    // the row unstamped and visible in the failure list, rather than marking a
+    // file reclaimed while it sits on some other host costing money.
+    if (!parsed) throw new Error(`not a Cloudinary video URL: ${videoUrl}`);
+    await deleteResource(parsed.publicId, "video");
+  },
+};
 import { stripeService } from "./stripeService";
 import { runPayouts } from "./payoutRunner";
 import { feeInvoiceStripeAdapter } from "./feeInvoiceStripe";
@@ -491,6 +511,9 @@ function startScheduler() {
       // Records always; bills only plans whose billing_enabled says so. With no
       // allowances configured it is a no-op, so wiring it is safe today.
       makeOverageJob(storage as any, stripeService),
+      // Reports what it would reclaim; deletes nothing until
+      // RETENTION_DELETE_ENABLED=true. Safe to wire while that is unset.
+      makeRetentionJob(storage as any, cloudinaryRetentionHost),
     ], (m) => log(m));
     scheduler.start();
   } catch (err) {

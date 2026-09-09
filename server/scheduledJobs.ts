@@ -28,6 +28,13 @@ export const DEFAULT_FEE_INVOICE_CRON = "0 9 1 * *"; // 1st of the month, 09:00 
 export const OVERAGE_JOB = "subscription-overage";
 // After fee invoices, same morning: the two monthly money jobs stay adjacent in the ledger.
 export const DEFAULT_OVERAGE_CRON = "30 9 1 * *";
+export const RETENTION_JOB = "video-retention";
+/**
+ * Daily, well clear of the monthly money jobs. Daily rather than monthly
+ * because the grace period is measured in days: a video becomes eligible on a
+ * particular date, and a monthly sweep would keep it up to 30 days past it.
+ */
+export const DEFAULT_RETENTION_CRON = "0 4 * * *";
 
 function money(cents: number) {
   return `$${(cents / 100).toFixed(2)}`;
@@ -361,6 +368,91 @@ export function makeOverageJob(
         status: failed ? "failed" : "success",
         items: billed,
         detail: `${recorded} recorded, ${billed} billed, ${failed} failed — ${results.join("; ")}`,
+      };
+    },
+  };
+}
+
+export interface RetentionJobStore {
+  getRetentionCandidates(): Promise<Array<{
+    videoId: string; userId: string; videoUrl: string;
+    freeAccessEndedAt: Date | null; embedCount: number; licenseCount: number;
+  }>>;
+  markVideoMediaDeleted(videoId: string, at: Date): Promise<void>;
+}
+
+/** Whatever stores the file. Cloudinary today, Bunny after the migration. */
+export interface RetentionHost {
+  deleteVideo(videoUrl: string): Promise<void>;
+}
+
+/**
+ * Reclaim storage from accounts that took a free window and never came back.
+ *
+ * ── Delete the file, keep the video ──────────────────────────────────────────
+ * The record survives with its title, products and analytics; only the bytes
+ * go. A returning account sees what it had and re-uploads, rather than finding
+ * an empty profile and no reason to pay.
+ *
+ * ── Order of operations: host first, then the stamp ──────────────────────────
+ * If the host delete throws, the row is left untouched and the next run tries
+ * again — the file is still there, so the record still telling the truth is
+ * correct. Stamping first would strand a real file with no row that admits it
+ * exists, which is a cost nobody can find. The reverse failure (file gone,
+ * stamp not written) re-runs into a delete of something already deleted, which
+ * every host treats as a no-op.
+ */
+export function makeRetentionJob(
+  store: RetentionJobStore,
+  host: RetentionHost,
+  opts: { cron?: string; now?: () => Date; graceDays?: number; enabled?: () => boolean } = {},
+): ScheduledJob {
+  const cron = opts.cron || process.env.RETENTION_CRON || DEFAULT_RETENTION_CRON;
+  return {
+    name: RETENTION_JOB,
+    schedule: cron,
+    run: async (): Promise<JobResult> => {
+      const { judgeRetention, deletionEnabled, DEFAULT_GRACE_DAYS } = await import("./retention");
+      const now = (opts.now ?? (() => new Date()))();
+      const graceDays = opts.graceDays ?? DEFAULT_GRACE_DAYS;
+      const live = (opts.enabled ?? deletionEnabled)();
+
+      const candidates = await store.getRetentionCandidates();
+      const doomed = candidates.filter(c => judgeRetention(c, now, graceDays).delete);
+
+      if (doomed.length === 0) {
+        return { status: "skipped", items: 0, detail: `nothing eligible of ${candidates.length} considered` };
+      }
+
+      // Dry run: say precisely what would go, change nothing. Deletion is
+      // irreversible, so the first month is always a report the client reads.
+      if (!live) {
+        return {
+          status: "success",
+          items: 0,
+          detail: `DRY RUN — would delete ${doomed.length} of ${candidates.length}: ` +
+            doomed.map(d => d.videoId).join(", ") +
+            ". Set RETENTION_DELETE_ENABLED=true to act on this.",
+        };
+      }
+
+      let deleted = 0;
+      const failures: string[] = [];
+      for (const c of doomed) {
+        try {
+          await host.deleteVideo(c.videoUrl);
+          await store.markVideoMediaDeleted(c.videoId, now);
+          deleted++;
+        } catch (err) {
+          failures.push(`${c.videoId}: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
+
+      return {
+        status: failures.length ? "failed" : "success",
+        items: deleted,
+        detail: `${deleted} reclaimed of ${candidates.length} considered` +
+          (failures.length ? `; ${failures.length} failed — ${failures.join("; ")}` : ""),
       };
     },
   };

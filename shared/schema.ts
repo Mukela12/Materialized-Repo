@@ -174,6 +174,12 @@ export const videos = pgTable("videos", {
   categories: text("categories"), // JSON array of up to 3 categories
   durationSeconds: integer("duration_seconds"),
   isTrial: boolean("is_trial").default(false),
+  /**
+   * When the stored file was reclaimed by the retention sweep. The row stays —
+   * title, products and analytics survive so a returning account sees what it
+   * had — but nothing may serve the URL once this is set.
+   */
+  mediaDeletedAt: timestamp("media_deleted_at"),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
 }, (t) => ({
   /**

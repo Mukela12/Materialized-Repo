@@ -354,6 +354,18 @@ export interface IStorage {
   markOverageFailed(id: string, error: string): Promise<void>;
   listOverageCharges(): Promise<OverageCharge[]>;
   /**
+   * Videos the retention sweep must consider: media still present, owner has no
+   * active subscription and is not an admin. Carries the two protection counts
+   * with it so judgeRetention decides on one row rather than the job issuing a
+   * follow-up query per video (and forgetting to, one day).
+   */
+  getRetentionCandidates(): Promise<Array<{
+    videoId: string; userId: string; videoUrl: string;
+    freeAccessEndedAt: Date | null; embedCount: number; licenseCount: number;
+  }>>;
+  /** Stamp the file as reclaimed and take the video out of circulation. */
+  markVideoMediaDeleted(videoId: string, at: Date): Promise<void>;
+  /**
    * The voucher this account signed up with, if any.
    *
    * An invitation inherits the inviting brand's own offer end date, so a
@@ -2271,6 +2283,34 @@ export class MemStorage implements IStorage {
       out.push({ userId: u.id, role: u.role, stripeCustomerId: u.stripeCustomerId ?? null });
     }
     return out;
+  }
+
+  async getRetentionCandidates(): Promise<Array<{
+    videoId: string; userId: string; videoUrl: string;
+    freeAccessEndedAt: Date | null; embedCount: number; licenseCount: number;
+  }>> {
+    const out: any[] = [];
+    for (const v of Array.from(this.videos.values()) as any[]) {
+      if (v.mediaDeletedAt) continue;
+      const u: any = this.users.get(v.creatorId);
+      if (!u || u.isAdmin) continue;
+      const sub = this.brandSubscriptionsMap.get(u.id);
+      if (sub && sub.status === "active") continue; // a paying account never expires
+      out.push({
+        videoId: v.id,
+        userId: u.id,
+        videoUrl: v.videoUrl,
+        freeAccessEndedAt: u.freeAccessUntil ?? null,
+        embedCount: Array.from(this.embedDeploymentsMap.values()).filter((e: any) => e.videoId === v.id).length,
+        licenseCount: Array.from(this.videoLicensePurchases.values()).filter((l: any) => l.videoId === v.id).length,
+      });
+    }
+    return out;
+  }
+
+  async markVideoMediaDeleted(videoId: string, at: Date): Promise<void> {
+    const v: any = this.videos.get(videoId);
+    if (v) { v.mediaDeletedAt = at; v.status = "archived"; }
   }
 
   async claimOverageCharge(row: any): Promise<any | null> {
@@ -4329,6 +4369,40 @@ export class DatabaseStorage implements IStorage {
         sql`not exists (select 1 from ${brandSubscriptions} bs where bs.user_id = ${users.id} and bs.status = 'active')`,
       ));
     return rows;
+  }
+
+  async getRetentionCandidates(): Promise<Array<{
+    videoId: string; userId: string; videoUrl: string;
+    freeAccessEndedAt: Date | null; embedCount: number; licenseCount: number;
+  }>> {
+    // The protection counts travel WITH the row rather than as a follow-up
+    // query per video: judgeRetention then decides from one object, and there
+    // is no code path where the job forgets to ask.
+    const rows = await db.select({
+      videoId: videos.id,
+      userId: users.id,
+      videoUrl: videos.videoUrl,
+      freeAccessEndedAt: users.freeAccessUntil,
+      embedCount: sql<number>`(select count(*)::int from ${embedDeployments} e where e.video_id = ${videos.id})`,
+      licenseCount: sql<number>`(select count(*)::int from ${videoLicensePurchases} l where l.video_id = ${videos.id})`,
+    }).from(videos)
+      .innerJoin(users, eq(users.id, videos.creatorId))
+      .where(and(
+        isNull(videos.mediaDeletedAt),
+        sql`coalesce(${users.isAdmin}, false) = false`,
+        // A paying account's videos never expire — excluded at the source, so
+        // no later rule change can accidentally make them eligible.
+        sql`not exists (select 1 from ${brandSubscriptions} bs where bs.user_id = ${users.id} and bs.status = 'active')`,
+      ));
+    return rows.map(r => ({ ...r, freeAccessEndedAt: r.freeAccessEndedAt ?? null }));
+  }
+
+  async markVideoMediaDeleted(videoId: string, at: Date): Promise<void> {
+    // Archived in the same statement as the stamp: a row that says the file is
+    // gone must never also say it is published.
+    await db.update(videos)
+      .set({ mediaDeletedAt: at, status: "archived" })
+      .where(eq(videos.id, videoId));
   }
 
   async claimOverageCharge(row: Omit<OverageCharge, "id" | "createdAt" | "stripeInvoiceItemId" | "error">): Promise<OverageCharge | null> {
