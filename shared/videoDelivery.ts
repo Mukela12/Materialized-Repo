@@ -69,6 +69,28 @@ function isCloudinaryVideoUrl(url: string): boolean {
 }
 
 /**
+ * Bunny Stream delivery: https://vz-*.b-cdn.net/<guid>/play_<res>.mp4 (and
+ * thumbnail.jpg alongside). Matched by URL shape rather than an env var
+ * because this file is shared with the browser, which has no env.
+ */
+const BUNNY_URL = /^(https?:\/\/vz-[^/]+\.b-cdn\.net\/[0-9a-f-]{36})\/(play_(\d+p)\.mp4|thumbnail[^/]*\.jpg|original)$/i;
+
+/**
+ * Context mapping for a Bunny URL. The stored URL is the BEST rendition that
+ * exists (webhookHandlers picked it from availableResolutions), so this only
+ * ever steps DOWN the ladder — renditions below the stored one always exist,
+ * renditions above it may not.
+ */
+function bunnyDeliveryUrl(url: string, context: DeliveryContext): string {
+  const m = url.match(BUNNY_URL);
+  if (!m) return url;
+  const [, base, , res] = m;
+  if (context === "thumbnail") return `${base}/thumbnail.jpg`;
+  if (context === "preview" && res && parseInt(res) > 480) return `${base}/play_480p.mp4`;
+  return url; // player/embed: the stored (best available) rendition
+}
+
+/**
  * Return a delivery URL for `context`.
  *
  * Anything that is not a Cloudinary video URL — a blob: preview, an external
@@ -81,6 +103,7 @@ export function videoDeliveryUrl(
   context: DeliveryContext = "player",
 ): string {
   if (!url || typeof url !== "string") return url ?? "";
+  if (BUNNY_URL.test(url)) return bunnyDeliveryUrl(url, context);
   if (!isCloudinaryVideoUrl(url)) return url;
 
   const marker = "/video/upload/";
@@ -105,6 +128,7 @@ export function videoDeliveryUrl(
  * callers can pass a stored thumbnail through without checking.
  */
 export function videoPosterUrl(url: string | null | undefined): string {
+  if (url && BUNNY_URL.test(url)) return bunnyDeliveryUrl(url, "thumbnail");
   if (!url || !isCloudinaryVideoUrl(url)) return url ?? "";
   const marker = "/video/upload/";
   const at = url.indexOf(marker);

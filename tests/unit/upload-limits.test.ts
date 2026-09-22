@@ -23,21 +23,21 @@ import {
 const MB = 1024 * 1024;
 
 describe("the limit matches the plan", () => {
-  it("is 100 MiB, the Free plan's video ceiling", () => {
-    expect(MAX_VIDEO_UPLOAD_BYTES).toBe(100 * MB);
-    expect(MAX_VIDEO_UPLOAD_LABEL).toBe("100MB");
+  it("is 2 GiB — Bunny Stream replaced the 100 MiB Cloudinary ceiling", () => {
+    expect(MAX_VIDEO_UPLOAD_BYTES).toBe(2 * 1024 * MB);
+    expect(MAX_VIDEO_UPLOAD_LABEL).toBe("2GB");
   });
 
-  it("accepts the size that actually worked in production", () => {
-    // Her 18 Aug upload, measured off the CDN.
-    expect(videoTooLargeMessage(103_698_819)).toBeNull();
+  it("accepts the 469MB editorial the old ceiling refused — the migration's whole point", () => {
+    // The file the client dragged in twice and watched nothing happen.
+    expect(videoTooLargeMessage(469 * MB)).toBeNull();
   });
 
-  it("refuses the size that did not", () => {
-    const msg = videoTooLargeMessage(469 * MB);
+  it("still refuses a runaway file, naming both sizes", () => {
+    const msg = videoTooLargeMessage(3 * 1024 * MB);
     expect(msg).toBeTruthy();
-    expect(msg).toContain("469MB");
-    expect(msg).toContain("100MB");
+    expect(msg).toContain("3.0GB");
+    expect(msg).toContain("2GB");
   });
 
   it("accepts a file exactly on the line", () => {

@@ -696,6 +696,13 @@ export async function registerRoutes(
         return res.status(400).json({ error: "No updatable fields supplied" });
       }
 
+      // A Bunny video still transcoding publishes as "processing"; the
+      // webhook finishes the promotion when the renditions exist.
+      if (patch.status === "published") {
+        const { bunnyPublishGate } = await import("./bunnyService");
+        (patch as any).status = await bunnyPublishGate(existing.videoUrl);
+      }
+
       const video = await storage.updateVideo(req.params.id, patch);
       if (!video) {
         return res.status(404).json({ error: "Video not found" });
@@ -1595,6 +1602,71 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Failed to generate upload params:", error);
       res.status(500).json({ error: "Failed to get upload URL" });
+    }
+  });
+
+  /**
+   * Mint a Bunny video object + a TUS authorisation for the browser to upload
+   * straight to Bunny. Auth required for the same reason as /api/upload/url:
+   * a mintable upload slot is storage cost on the client's card.
+   */
+  app.post("/api/upload/bunny-video", async (req, res) => {
+    try {
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ error: "Authentication required" });
+
+      const { bunnyConfigured, createBunnyVideo, bunnyTusAuth, bunnyStreamHost, bunnyThumbnailUrl } =
+        await import("./bunnyService");
+      if (!bunnyConfigured()) {
+        return res.status(503).json({ error: "Video host not configured" });
+      }
+
+      // The browser checks size before uploading; the server checks because
+      // the browser is not ours to trust. TUS declares length up front, and a
+      // lie about it dies at Bunny — this check just fails politely first.
+      const { MAX_VIDEO_UPLOAD_BYTES } = await import("../shared/uploadLimits");
+      const fileSize = Number(req.body?.fileSize ?? 0);
+      if (fileSize > MAX_VIDEO_UPLOAD_BYTES) {
+        return res.status(413).json({ error: "Video exceeds the upload limit" });
+      }
+
+      const title = String(req.body?.title || "untitled").slice(0, 200);
+      const { guid } = await createBunnyVideo(title);
+      const tus = bunnyTusAuth(guid);
+      res.json({
+        guid,
+        endpoint: tus.endpoint,
+        headers: tus.headers,
+        // Optimistic: the webhook rewrites this to the best rendition that
+        // actually exists once transcoding finishes.
+        playbackUrl: `https://${bunnyStreamHost()}/${guid}/play_720p.mp4`,
+        thumbnailUrl: bunnyThumbnailUrl(guid),
+      });
+    } catch (error) {
+      console.error("Failed to mint Bunny upload:", error);
+      res.status(500).json({ error: "Failed to prepare video upload" });
+    }
+  });
+
+  /**
+   * Bunny transcode webhook. Token-gated (the URL is registered on the library
+   * with ?token=...), and the handler re-reads the video's real state from
+   * Bunny before acting — the body is treated as a hint, never a fact.
+   */
+  app.post("/api/webhooks/bunny", async (req, res) => {
+    try {
+      const expected = process.env.BUNNY_WEBHOOK_TOKEN;
+      if (!expected || req.query.token !== expected) {
+        return res.status(401).json({ error: "Bad token" });
+      }
+      const { handleBunnyTranscodeEvent } = await import("./bunnyWebhook");
+      const result = await handleBunnyTranscodeEvent(storage as any, undefined, req.body ?? {});
+      console.log(`[BunnyWebhook] ${result.action}`);
+      res.json({ received: true });
+    } catch (error) {
+      console.error("Bunny webhook failed:", error);
+      // 500 so Bunny retries: transcode-finished is a fact worth redelivering.
+      res.status(500).json({ error: "Webhook processing failed" });
     }
   });
 

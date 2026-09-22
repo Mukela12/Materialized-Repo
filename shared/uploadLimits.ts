@@ -12,11 +12,16 @@
  * follow.
  */
 
-/** 100 MiB — the Cloudinary Free plan's video ceiling. */
-export const MAX_VIDEO_UPLOAD_BYTES = 100 * 1024 * 1024;
+/**
+ * 2 GiB — the ceiling on Bunny Stream, which replaced the Cloudinary Free
+ * plan's 100MiB as the video host in September 2026. Bunny itself accepts
+ * larger, but two gigabytes is beyond any editorial the client has produced
+ * and a runaway upload should hit SOME wall before it hits the invoice.
+ */
+export const MAX_VIDEO_UPLOAD_BYTES = 2 * 1024 * 1024 * 1024;
 
-/** As shown to a person: "100MB". */
-export const MAX_VIDEO_UPLOAD_LABEL = `${Math.round(MAX_VIDEO_UPLOAD_BYTES / (1024 * 1024))}MB`;
+/** As shown to a person: "2GB". */
+export const MAX_VIDEO_UPLOAD_LABEL = formatBytes(MAX_VIDEO_UPLOAD_BYTES).replace(".0", "");
 
 /** Human file size, for telling somebody how far over they are. */
 export function formatBytes(bytes: number): string {

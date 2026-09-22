@@ -366,6 +366,11 @@ export interface IStorage {
   /** Stamp the file as reclaimed and take the video out of circulation. */
   markVideoMediaDeleted(videoId: string, at: Date): Promise<void>;
   /**
+   * The video whose stored URL contains this Bunny guid. Guids are unique, so
+   * a fragment match is exact — and it spares a migration for a host id column.
+   */
+  findVideoByBunnyGuid(guid: string): Promise<Video | undefined>;
+  /**
    * The voucher this account signed up with, if any.
    *
    * An invitation inherits the inviting brand's own offer end date, so a
@@ -2320,6 +2325,10 @@ export class MemStorage implements IStorage {
   async markVideoMediaDeleted(videoId: string, at: Date): Promise<void> {
     const v: any = this.videos.get(videoId);
     if (v) { v.mediaDeletedAt = at; v.status = "archived"; }
+  }
+
+  async findVideoByBunnyGuid(guid: string): Promise<Video | undefined> {
+    return Array.from(this.videos.values()).find(v => (v.videoUrl ?? "").includes(guid));
   }
 
   async claimOverageCharge(row: any): Promise<any | null> {
@@ -4420,6 +4429,13 @@ export class DatabaseStorage implements IStorage {
     await db.update(videos)
       .set({ mediaDeletedAt: at, status: "archived" })
       .where(eq(videos.id, videoId));
+  }
+
+  async findVideoByBunnyGuid(guid: string): Promise<Video | undefined> {
+    const [row] = await db.select().from(videos)
+      .where(sql`${videos.videoUrl} like ${"%" + guid + "%"}`)
+      .limit(1);
+    return row;
   }
 
   async claimOverageCharge(row: Omit<OverageCharge, "id" | "createdAt" | "stripeInvoiceItemId" | "error">): Promise<OverageCharge | null> {

@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
 import { apiRequest } from "@/lib/queryClient";
+import * as tus from "tus-js-client";
 
 interface UploadResponse {
   objectUrl: string;
@@ -23,6 +24,47 @@ export function useUpload(options: UseUploadOptions = {}) {
     setError(null);
 
     try {
+      /**
+       * Videos go to Bunny Stream over TUS — resumable, so a 1GB editorial on
+       * hotel wifi survives a dropped connection instead of starting over.
+       * Images keep the Cloudinary path below unchanged.
+       */
+      if (file.type.startsWith("video/")) {
+        const mintRes = await apiRequest("POST", "/api/upload/bunny-video", {
+          title: file.name,
+          fileSize: file.size,
+        });
+        const mint = await mintRes.json();
+
+        await new Promise<void>((resolve, reject) => {
+          const upload = new tus.Upload(file, {
+            endpoint: mint.endpoint,
+            headers: mint.headers,
+            metadata: { filetype: file.type, title: file.name },
+            // Chunked so a resume re-sends one chunk, not the whole file.
+            chunkSize: 20 * 1024 * 1024,
+            retryDelays: [0, 3000, 10000, 30000],
+            onProgress: (sent, total) => setProgress(Math.round((sent / total) * 100)),
+            onSuccess: () => resolve(),
+            onError: (err) => reject(err instanceof Error ? err : new Error(String(err))),
+          });
+          // If this same file was interrupted mid-upload, carry on from there.
+          upload.findPreviousUploads().then((prev) => {
+            if (prev.length) upload.resumeFromPreviousUpload(prev[0]);
+            upload.start();
+          }).catch(() => upload.start());
+        });
+
+        const response: UploadResponse = {
+          objectUrl: mint.playbackUrl,
+          publicId: mint.guid,
+          thumbnailUrl: mint.thumbnailUrl,
+        };
+        setProgress(100);
+        options.onSuccess?.(response);
+        return response;
+      }
+
       // 1. Get signed upload params from server
       const paramsRes = await apiRequest("POST", "/api/upload/url", {
         fileName: file.name,
