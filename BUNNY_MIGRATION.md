@@ -15,7 +15,7 @@ analysis, not Bunny's quote):
 - No extra $40 VPS is needed — the app already runs on Railway. Bunny replaces
   the video layer only. Cloudinary stays (free tier) for images and fonts.
 
-## Phase 1 — new uploads land on Bunny (~2–3 days)
+## Phase 1 — new uploads land on Bunny (SHIPPED 2026-09-22, verified E2E against production: TUS 201/204, transcode Finished, webhook received+token-gated, CDN playback 200; BlockNoneReferrer disabled so embeds without a Referer still play)
 - Bunny video library + pull zone; keys in Railway env.
 - Server endpoint: create video object, return TUS auth signature.
 - `use-upload.tsx`: browser → Bunny via TUS (resumable — a 1GB editorial on
