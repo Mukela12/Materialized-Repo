@@ -13,7 +13,7 @@ import { getUncachableStripeClient } from "./stripeClient";
 import { dispatchStripeEvent } from "./webhookHandlers";
 import Stripe from 'stripe';
 import { Scheduler } from "./scheduler";
-import { makePayoutJob, makeFeeInvoiceJob, makeOverageJob, makeRetentionJob, schedulerEnabled } from "./scheduledJobs";
+import { makePayoutJob, makeFeeInvoiceJob, makeOverageJob, makeRetentionJob, makeCertWatchJob, probeCertificate, schedulerEnabled } from "./scheduledJobs";
 
 /**
  * Where stored video actually lives today. After the Bunny migration this
@@ -514,6 +514,18 @@ function startScheduler() {
       // Reports what it would reclaim; deletes nothing until
       // RETENTION_DELETE_ENABLED=true. Safe to wire while that is unset.
       makeRetentionJob(storage as any, cloudinaryRetentionHost),
+      // Certificates checked daily; an expiring or broken one emails the
+      // operator two weeks before a visitor would ever see an error page.
+      makeCertWatchJob(probeCertificate, {
+        sendAlert: async (subject, lines) => {
+          const { sendOpsAlertEmail } = await import("./emailService");
+          await sendOpsAlertEmail({
+            to: process.env.OPS_ALERT_EMAIL || "mukela.j.katungu@gmail.com",
+            subject,
+            lines,
+          });
+        },
+      }),
     ], (m) => log(m));
     scheduler.start();
   } catch (err) {

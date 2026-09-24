@@ -1,7 +1,6 @@
 import { CURRENCY_SYMBOL, PLATFORM_CURRENCY_CODE } from "@/lib/currency";
 import { videoDeliveryUrl } from "@shared/videoDelivery";
-import { planPriceMajor, setupFeeMajor, PLAN_ALLOWANCES, OVERAGE_RATES, type PlanKey } from "@shared/plans";
-import { PricingEstimator } from "@/components/PricingEstimator";
+import { planPriceMajor, setupFeeMajor, PLAN_ALLOWANCES, type PlanKey } from "@shared/plans";
 import { useState, useEffect, useRef } from "react";
 import { motion, useScroll, useTransform, AnimatePresence } from "framer-motion";
 import { useForm } from "react-hook-form";
@@ -1005,7 +1004,14 @@ function SignupSection() {
           </p>
 
           {!selectedRole ? (
-            <div className="grid md:grid-cols-3 gap-6">
+            /*
+              Slim rows, not cards. The previous three large cards sat directly
+              below the pricing grid in the same visual language and read as a
+              second set of tier cards — the client asked for the "duplicate"
+              to go. The role choice must stay (it is how signup starts), so it
+              stays in a form that cannot be mistaken for pricing.
+            */
+            <div className="grid gap-3 max-w-2xl mx-auto">
               {[
                 {
                   role: "creator" as const,
@@ -1034,30 +1040,19 @@ function SignupSection() {
               ].map((item) => (
                 <motion.button
                   key={item.role}
-                  initial={{ boxShadow: "0 0 0px transparent" }}
-                  whileHover={{
-                    scale: 1.04,
-                    backgroundColor: item.hoverBg,
-                    borderColor: item.hoverBorder,
-                    boxShadow: `0 8px 40px ${item.glowColor}, 0 0 0 1px ${item.hoverBorder}`,
-                  }}
-                  whileTap={{ scale: 0.97 }}
-                  transition={{ duration: 0.18, ease: "easeOut" }}
+                  whileHover={{ backgroundColor: item.hoverBg, borderColor: item.hoverBorder }}
+                  whileTap={{ scale: 0.99 }}
+                  transition={{ duration: 0.15, ease: "easeOut" }}
                   onClick={() => handleRoleSelect(item.role)}
-                  className="p-8 rounded-3xl backdrop-blur-sm text-left flex flex-col gap-5 group"
-                  style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.15)", minHeight: 220 }}
+                  className="px-5 py-4 rounded-2xl backdrop-blur-sm text-left flex items-center gap-4 group"
+                  style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.15)" }}
                   data-testid={`button-role-${item.role}`}
                 >
-                  <div>
-                    <div className="text-2xl font-bold text-white mb-3 tracking-tight" style={{ fontFamily: "'Aileron', sans-serif" }}>
-                      {item.title}
-                    </div>
-                    <div className="text-white/75 text-base leading-relaxed">{item.tagline}</div>
+                  <div className="text-lg font-bold text-white tracking-tight w-24 shrink-0" style={{ fontFamily: "'Aileron', sans-serif" }}>
+                    {item.title}
                   </div>
-                  <div className="mt-auto text-sm font-semibold flex items-center gap-1.5 text-white">
-                    Get started
-                    <ArrowRight className="w-4 h-4 opacity-0 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all" />
-                  </div>
+                  <div className="text-white/70 text-sm leading-snug flex-1">{item.tagline}</div>
+                  <ArrowRight className="w-4 h-4 text-white shrink-0 opacity-60 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all" />
                 </motion.button>
               ))}
             </div>
@@ -1580,27 +1575,24 @@ export default function Landing() {
             <p className="text-white/60 mt-3 text-sm sm:text-base">
               All plans include a one-time {CURRENCY_SYMBOL}{setupFeeMajor()} admin setup fee
               {" · "}{PLAN_ALLOWANCES.creator.views.toLocaleString()} views included
-              {" · "}{CURRENCY_SYMBOL}{OVERAGE_RATES.perView.toFixed(3)}/view after that
             </p>
             <p className="text-white/40 mt-2 text-xs">
               All prices in {PLATFORM_CURRENCY_CODE}. Billed monthly, cancel any time.
             </p>
           </div>
 
-          <div className="grid md:grid-cols-3 gap-6 mt-12">
+          {/*
+            Mobile: one card at a time, swiped — the client asked for scrolled
+            rather than stacked. Desktop: the three-up grid as before. The cards
+            are plain divs now: the client asked for the Get Started links to
+            go, so signup has ONE entry point, the signup section itself.
+          */}
+          <div className="flex overflow-x-auto snap-x snap-mandatory gap-6 mt-12 pb-4 -mx-4 px-4 md:grid md:grid-cols-3 md:overflow-visible md:mx-0 md:px-0 md:pb-0">
             {LANDING_PLANS.map((plan) => (
-              <button
+              <div
                 key={plan.id}
-                /*
-                  Scrolls to the signup section rather than calling
-                  handleRoleSelect — that function lives inside SignupSection and
-                  is NOT in scope here, so calling it threw a ReferenceError on
-                  every click. tsc caught it (TS2304); `npm run build` did not,
-                  because vite bundles without typechecking, so it shipped.
-                */
-                onClick={() => document.getElementById("signup")?.scrollIntoView({ behavior: "smooth" })}
                 data-testid={`card-pricing-${plan.id}`}
-                className={`text-left p-8 rounded-3xl backdrop-blur-sm flex flex-col transition-all hover:scale-[1.02] ${
+                className={`text-left p-8 rounded-3xl backdrop-blur-sm flex flex-col min-w-[82%] snap-center sm:min-w-[60%] md:min-w-0 ${
                   plan.featured ? "ring-1 ring-white/40" : ""
                 }`}
                 style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.15)" }}
@@ -1613,7 +1605,7 @@ export default function Landing() {
                   <span className="text-white/60 text-sm">/month</span>
                 </div>
                 <div className="text-white/45 text-xs mt-2">
-                  + {CURRENCY_SYMBOL}{setupFeeMajor()} one-time setup fee + overage
+                  + {CURRENCY_SYMBOL}{setupFeeMajor()} one-time setup fee
                 </div>
 
                 <div className="h-px bg-white/15 my-6" />
@@ -1627,29 +1619,10 @@ export default function Landing() {
                   ))}
                 </ul>
 
-                <div className="mt-8 text-sm font-semibold flex items-center gap-1.5 text-white">
-                  Get started
-                  <ArrowRight className="w-4 h-4" />
-                </div>
-              </button>
+              </div>
             ))}
           </div>
 
-          {/*
-            The estimator, in front of prospects rather than behind a login.
-            It previously existed only inside the two subscription settings
-            pages — and the creator one was gated on !isOnTrial, so the people
-            deciding whether to sign up were precisely the ones who could not
-            see what it would cost them.
-          */}
-          <div className="mt-10 max-w-xl mx-auto">
-            <PricingEstimator
-              plan="creator"
-              selectablePlans={["creator", "starter", "pro"]}
-              title="What would a month cost?"
-              className="bg-white/[0.04] border-white/10 text-white [&_p]:text-white/60 [&_label]:text-white"
-            />
-          </div>
         </div>
       </section>
 

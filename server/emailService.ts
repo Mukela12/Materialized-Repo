@@ -591,3 +591,24 @@ export async function sendCommissionApprovedEmail(opts: {
 export function isEmailConfigured(): boolean {
   return !!process.env.RESEND_API_KEY;
 }
+
+// ── Operations alerts ──────────────────────────────────────────────────────
+/**
+ * Infrastructure alarms (certificate expiry, host unreachable) for whoever
+ * operates the platform. Exists because the client's marketing agency found
+ * out about a certificate problem before we did — "we need to keep on top of
+ * this always and forever", and forever is a cron job, not a person's memory.
+ */
+export async function sendOpsAlertEmail(opts: {
+  to: string;
+  subject: string;
+  lines: string[];
+}): Promise<void> {
+  const items = opts.lines.map((l) => `<li style="margin-bottom:8px;">${l}</li>`).join("");
+  const body = `
+    <p style="margin-bottom:16px;"><strong>${opts.subject}</strong></p>
+    <ul style="padding-left:18px;">${items}</ul>
+    <p style="color:#888;font-size:12px;">Automated check from the MTRLZD scheduler.</p>
+  `;
+  await sendEmail(opts.to, `[MTRLZD ops] ${opts.subject}`, baseTemplate(body));
+}

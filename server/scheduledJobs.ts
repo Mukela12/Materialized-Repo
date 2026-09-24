@@ -464,3 +464,88 @@ export function schedulerEnabled(): boolean {
 }
 
 export { getPlatformCurrency };
+
+// ── Certificate watch ────────────────────────────────────────────────────────
+export const CERT_WATCH_JOB = "cert-watch";
+export const DEFAULT_CERT_WATCH_CRON = "0 7 * * *"; // daily, quiet hour UTC
+/** Alert while there is still time to act, not the morning it expires. */
+export const CERT_ALERT_DAYS = 14;
+export const CERT_WATCH_HOSTS = [
+  "mtrlzd.com",
+  "www.mtrlzd.com",
+  "backend-production-93717.up.railway.app",
+];
+
+export interface CertProbe {
+  /** Resolves with days until expiry; REJECTS when the host cannot present a valid certificate. */
+  (host: string): Promise<{ daysLeft: number }>;
+}
+export interface CertAlerts {
+  sendAlert(subject: string, lines: string[]): Promise<void>;
+}
+
+/**
+ * Daily TLS check on every public host.
+ *
+ * Exists because the client's marketing agency reported "the SSL certificate
+ * has expired" before anyone on the inside knew anything — and whether or not
+ * their report was accurate, the fact that it COULD have been true without an
+ * alarm is the defect. The probe uses a verifying TLS handshake, so an
+ * expired, self-signed or missing certificate all land in the same place: an
+ * email, two weeks before a browser would have shown anyone an error page.
+ *
+ * A problem makes the RUN failed, not just the email sent — the scheduler
+ * ledger stays loud until the certificate is fixed, one line per morning.
+ */
+export function makeCertWatchJob(
+  probe: CertProbe,
+  alerts: CertAlerts,
+  opts: { cron?: string; hosts?: string[]; alertDays?: number } = {},
+): ScheduledJob {
+  const cron = opts.cron || process.env.CERT_WATCH_CRON || DEFAULT_CERT_WATCH_CRON;
+  const hosts = opts.hosts ?? CERT_WATCH_HOSTS;
+  const alertDays = opts.alertDays ?? CERT_ALERT_DAYS;
+  return {
+    name: CERT_WATCH_JOB,
+    schedule: cron,
+    run: async (): Promise<JobResult> => {
+      const problems: string[] = [];
+      let nearest = Infinity;
+      for (const host of hosts) {
+        try {
+          const { daysLeft } = await probe(host);
+          nearest = Math.min(nearest, daysLeft);
+          if (daysLeft < alertDays) {
+            problems.push(`${host}: certificate expires in ${daysLeft} day(s)`);
+          }
+        } catch (err) {
+          problems.push(`${host}: UNREACHABLE or invalid certificate — ${err instanceof Error ? err.message : err}`);
+        }
+      }
+
+      if (problems.length) {
+        await alerts.sendAlert("Certificate attention needed", problems);
+        return { status: "failed", items: hosts.length, detail: problems.join("; ") };
+      }
+      return {
+        status: "success",
+        items: hosts.length,
+        detail: `${hosts.length} host(s) healthy, nearest expiry ${nearest} day(s)`,
+      };
+    },
+  };
+}
+
+/** The real probe: a verifying handshake, then the certificate's own dates. */
+export function probeCertificate(host: string, timeoutMs = 10_000): Promise<{ daysLeft: number }> {
+  return import("node:tls").then((tls) => new Promise((resolve, reject) => {
+    const sock = tls.connect({ host, port: 443, servername: host, timeout: timeoutMs }, () => {
+      const cert = sock.getPeerCertificate();
+      sock.end();
+      if (!cert?.valid_to) return reject(new Error("no certificate presented"));
+      resolve({ daysLeft: Math.floor((new Date(cert.valid_to).getTime() - Date.now()) / 86_400_000) });
+    });
+    sock.on("error", (err) => { sock.destroy(); reject(err); });
+    sock.on("timeout", () => { sock.destroy(); reject(new Error("TLS handshake timeout")); });
+  }));
+}
