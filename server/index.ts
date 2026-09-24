@@ -15,25 +15,7 @@ import Stripe from 'stripe';
 import { Scheduler } from "./scheduler";
 import { makePayoutJob, makeFeeInvoiceJob, makeOverageJob, makeRetentionJob, makeCertWatchJob, probeCertificate, schedulerEnabled } from "./scheduledJobs";
 
-/**
- * Where stored video actually lives today. After the Bunny migration this
- * becomes host-aware — a Bunny URL deletes through Bunny's API, a legacy
- * Cloudinary URL still deletes through Cloudinary.
- */
-const cloudinaryRetentionHost = {
-  async deleteVideo(videoUrl: string): Promise<void> {
-    const [{ parseCloudinaryVideoUrl }, { deleteResource }] = await Promise.all([
-      import("./frameSampler"),
-      import("./cloudinaryService"),
-    ]);
-    const parsed = parseCloudinaryVideoUrl(videoUrl);
-    // A URL this host does not own is not silently "deleted": throwing leaves
-    // the row unstamped and visible in the failure list, rather than marking a
-    // file reclaimed while it sits on some other host costing money.
-    if (!parsed) throw new Error(`not a Cloudinary video URL: ${videoUrl}`);
-    await deleteResource(parsed.publicId, "video");
-  },
-};
+import { mediaHost } from "./retentionHost";
 import { stripeService } from "./stripeService";
 import { runPayouts } from "./payoutRunner";
 import { feeInvoiceStripeAdapter } from "./feeInvoiceStripe";
@@ -513,7 +495,7 @@ function startScheduler() {
       makeOverageJob(storage as any, stripeService),
       // Reports what it would reclaim; deletes nothing until
       // RETENTION_DELETE_ENABLED=true. Safe to wire while that is unset.
-      makeRetentionJob(storage as any, cloudinaryRetentionHost),
+      makeRetentionJob(storage as any, mediaHost),
       // Certificates checked daily; an expiring or broken one emails the
       // operator two weeks before a visitor would ever see an error page.
       makeCertWatchJob(probeCertificate, {

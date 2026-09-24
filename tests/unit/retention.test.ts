@@ -209,3 +209,35 @@ describe("the daily sweep", () => {
     expect(r.detail).toContain("4 considered");
   });
 });
+
+describe("the media host routes deletion by URL", () => {
+  async function host() {
+    const { makeMediaHost } = await import("../../server/retentionHost");
+    const calls: string[] = [];
+    const h = makeMediaHost({
+      deleteFromBunny: async (guid) => { calls.push(`bunny:${guid}`); },
+      deleteFromCloudinary: async (pid) => { calls.push(`cloudinary:${pid}`); },
+      parseCloudinary: (url) => url.includes("res.cloudinary.com")
+        ? { publicId: "materialized/videos/abc" } : null,
+    });
+    return { h, calls };
+  }
+
+  it("a Bunny URL deletes through Bunny", async () => {
+    const { h, calls } = await host();
+    await h.deleteVideo("https://vz-x-1.b-cdn.net/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/play_720p.mp4");
+    expect(calls).toEqual(["bunny:aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"]);
+  });
+
+  it("a legacy Cloudinary URL deletes through Cloudinary", async () => {
+    const { h, calls } = await host();
+    await h.deleteVideo("https://res.cloudinary.com/demo/video/upload/v1/materialized/videos/abc.mp4");
+    expect(calls).toEqual(["cloudinary:materialized/videos/abc"]);
+  });
+
+  it("a URL neither host owns throws — never silently 'deleted'", async () => {
+    const { h, calls } = await host();
+    await expect(h.deleteVideo("https://example.com/video.mp4")).rejects.toThrow("no host owns");
+    expect(calls).toHaveLength(0);
+  });
+});

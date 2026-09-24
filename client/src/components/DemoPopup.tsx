@@ -260,7 +260,7 @@ export function DemoPopup({ open, onClose }: Props) {
             <div className="relative" style={{ aspectRatio: "16/9" }}>
               <video
                 ref={videoRef}
-                src={videoDeliveryUrl("https://res.cloudinary.com/dvj7ayoot/video/upload/v1775609780/materialized/public/croissant-demo.mp4", "player")}
+                src={videoDeliveryUrl("https://vz-97d498f7-34a.b-cdn.net/fc264843-c365-497b-ae72-e0ccf88e4512/play_720p.mp4", "player")}
                 loop
                 playsInline
                 className="w-full h-full object-cover"

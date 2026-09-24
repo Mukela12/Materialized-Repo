@@ -146,3 +146,14 @@ export async function bunnyPublishGate(videoUrl: string | null | undefined): Pro
     return "published";
   }
 }
+
+export async function deleteBunnyVideo(guid: string): Promise<void> {
+  const res = await fetch(`${STREAM_API}/library/${libraryId()}/videos/${guid}`, {
+    method: "DELETE",
+    headers: { AccessKey: streamKey() },
+  });
+  // 404 is success for a delete: the file is gone, which is what was asked.
+  if (!res.ok && res.status !== 404) {
+    throw new Error(`Bunny video delete failed: ${res.status}`);
+  }
+}
