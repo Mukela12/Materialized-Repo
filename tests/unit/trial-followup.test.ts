@@ -97,6 +97,9 @@ describe("the email itself", () => {
     });
     expect(html).toContain("affiliate program");
     expect(html).toContain("five content creators");
+    // The client's wording, 25 Sep: correct it to "…the next 12 days" — kept
+    // computed, so a delayed send can never claim days the account lacks.
+    expect(html).toContain("for the next 12 days");
     expect(html).toContain("12 days to go");
     expect(html).toContain("Invite Your Creators");
     // The copy must never hard-code a trial length the account may not have.

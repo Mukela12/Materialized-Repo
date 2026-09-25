@@ -666,9 +666,9 @@ export function renderTrialFollowupEmailHtml(opts: TrialFollowupEmailOpts): stri
   const body = `
     <h1>You're set up, ${opts.brandDisplayName} — now bring your creators</h1>
     <p>
-      Two days in, and the best part of your trial is still ahead: for the rest of
-      your free trial you can put <strong>creator marketing</strong> to work on your
-      own store.
+      Two days in, and the best part of your trial is still ahead: as part of your
+      free trial, for the next ${opts.trialDaysLeft} days you can put
+      <strong>creator marketing</strong> to work on your own store.
     </p>
     <div style="background:#f7f7f5;border:1px solid #e8e8e8;border-radius:10px;padding:18px;margin:22px 0;">
       <p style="margin:0 0 10px;font-weight:700;color:#202120;">Included in your trial:</p>
