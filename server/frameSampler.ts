@@ -1,4 +1,5 @@
 import { cloudinary, isCloudinaryConfigured } from "./cloudinaryService";
+import { bunnyGuidFromUrl } from "./bunnyService";
 
 /**
  * Server-side frame sampling for vision analysis — no ffmpeg.
@@ -31,6 +32,11 @@ export interface SampleFramesOptions {
   width?: number;
   /** Fetch each frame and attach base64 (default true — the vision path needs it). */
   asBase64?: boolean;
+  /**
+   * Frame extractor for hosts with no frame-URL API (injectable for tests).
+   * Defaults to the ffmpeg extractor.
+   */
+  extractFrame?: (url: string, timestamp: number, width: number) => Promise<Buffer>;
 }
 
 interface ParsedCloudinaryVideo {
@@ -139,6 +145,16 @@ export async function sampleVideoFrames(
 ): Promise<SampledFrame[]> {
   const { count = 4, durationSeconds = null, width = 640, asBase64 = true } = opts;
 
+  /**
+   * Bunny-hosted video: no frame-URL API exists, so frames come out of ffmpeg
+   * as bytes (see server/ffmpegFrames.ts). Same resilient contract — a missing
+   * binary or an all-frames failure degrades to [] and the caller falls back
+   * to metadata-only detection, exactly as an unconfigured Cloudinary does.
+   */
+  if (bunnyGuidFromUrl(videoUrlOrPublicId)) {
+    return sampleBunnyFrames(videoUrlOrPublicId, { count, durationSeconds, width, extractFrame: opts.extractFrame });
+  }
+
   // Bare publicId is usable without Cloudinary credentials for URL building, but a
   // stored URL path still requires a configured account to sign/deliver frames.
   if (!isCloudinaryConfigured()) return [];
@@ -182,4 +198,39 @@ export async function sampleVideoFrames(
   }
 
   return fetched;
+}
+
+async function sampleBunnyFrames(
+  videoUrl: string,
+  opts: { count: number; durationSeconds: number | null | undefined; width: number;
+          extractFrame?: (url: string, timestamp: number, width: number) => Promise<Buffer> },
+): Promise<SampledFrame[]> {
+  let extract = opts.extractFrame;
+  if (!extract) {
+    const { ffmpegAvailable, extractFrameJpeg } = await import("./ffmpegFrames");
+    if (!(await ffmpegAvailable())) return [];
+    extract = extractFrameJpeg;
+  }
+
+  const timestamps = computeSampleTimestamps(opts.durationSeconds, opts.count);
+  const frames: SampledFrame[] = [];
+  // Sequential on purpose: each extraction is a short-lived ffmpeg process
+  // (~4s measured); four at once would contend for the same network and CPU
+  // on a small box for no wall-clock win worth the memory spike.
+  for (const t of timestamps) {
+    try {
+      const buf = await extract(videoUrl, t, opts.width);
+      frames.push({
+        // No renderable frame URL exists on this host; the fragment notation
+        // records provenance for logs without pretending to be fetchable.
+        url: `${videoUrl}#t=${t}`,
+        base64: buf.toString("base64"),
+        mimeType: "image/jpeg",
+        timestamp: t,
+      });
+    } catch {
+      // Skip the frame, keep the rest — same posture as the Cloudinary path.
+    }
+  }
+  return frames;
 }

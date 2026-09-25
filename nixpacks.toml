@@ -1,0 +1,5 @@
+# ffmpeg is load-bearing: detection frame sampling for Bunny-hosted videos
+# (server/ffmpegFrames.ts) extracts stills with it. aptPkgs merges into the
+# auto-detected node provider without replacing its defaults.
+[phases.setup]
+aptPkgs = ["ffmpeg"]

@@ -175,3 +175,46 @@ describe('sampleVideoFrames', () => {
     expect(frames).toEqual([]);
   });
 });
+
+describe("sampling Bunny-hosted videos", () => {
+  const BUNNY = "https://vz-97d498f7-34a.b-cdn.net/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee/play_720p.mp4";
+  /** A one-pixel JPEG's worth of magic bytes, enough to be a Buffer of "JPEG". */
+  const FAKE_JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);
+
+  it("routes to the frame extractor with the computed spread timestamps", async () => {
+    const calls: Array<[string, number, number]> = [];
+    const frames = await sampleVideoFrames(BUNNY, {
+      count: 4,
+      durationSeconds: 40,
+      extractFrame: async (url, t, w) => { calls.push([url, t, w]); return FAKE_JPEG; },
+    });
+    expect(frames).toHaveLength(4);
+    expect(calls.map(c => c[1])).toEqual([5, 15, 25, 35]);
+    expect(calls.every(c => c[0] === BUNNY)).toBe(true);
+    expect(frames[0].base64).toBe(FAKE_JPEG.toString("base64"));
+    expect(frames[0].mimeType).toBe("image/jpeg");
+    expect(frames[0].timestamp).toBe(5);
+  });
+
+  it("a failed frame is skipped, the rest survive — never the whole job", async () => {
+    const frames = await sampleVideoFrames(BUNNY, {
+      count: 3,
+      durationSeconds: 30,
+      extractFrame: async (_u, t) => {
+        if (t === 15) throw new Error("mid-video seek failed");
+        return FAKE_JPEG;
+      },
+    });
+    expect(frames.map(f => f.timestamp)).toEqual([5, 25]);
+  });
+
+  it("does not require Cloudinary configuration — different host, different needs", async () => {
+    // The Cloudinary-unconfigured guard must not swallow Bunny sampling.
+    const frames = await sampleVideoFrames(BUNNY, {
+      count: 1,
+      durationSeconds: 10,
+      extractFrame: async () => FAKE_JPEG,
+    });
+    expect(frames).toHaveLength(1);
+  });
+});

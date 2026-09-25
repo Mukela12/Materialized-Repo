@@ -83,6 +83,17 @@ if (stripeSecret) {
 // handles traffic. Hard no-op when SENTRY_DSN is unset (see server/sentry.ts).
 initSentry();
 
+// ffmpeg backs detection frame sampling for Bunny-hosted videos. Its absence
+// must be THIS log line at boot, not a mystery inside a detection job later.
+import("./ffmpegFrames").then(async (m) => {
+  const version = await m.ffmpegAvailable();
+  if (version) console.log(`[FFmpeg] ${version}`);
+  else console.error(
+    "[FFmpeg] NOT AVAILABLE — frame sampling for Bunny-hosted videos is disabled; " +
+    "detection falls back to metadata. Check nixpacks.toml aptPkgs / FFMPEG_PATH.",
+  );
+});
+
 const app = express();
 const httpServer = createServer(app);
 
