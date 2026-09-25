@@ -48,10 +48,21 @@ describe("who owes the fee", () => {
 });
 
 describe("the fee gates access, and a voucher does not cover it", () => {
-  /** The exact festival case: free subscription, fee still outstanding. */
-  it("a voucher Brand with the fee unpaid has no access", () => {
+  /**
+   * REVERSED 25 Sep 2026 with the trial build: during an active free window
+   * the fee is DEFERRED — "onboarding without delays, without second
+   * thoughts" — and it returns as the first obligation the day the window
+   * lapses. Deferred, never waived: setup_fee_paid stays false throughout.
+   */
+  it("a voucher Brand with the fee unpaid HAS access while the window runs", () => {
     const user = { role: "brand", freeAccess: true, freeAccessUntil: OCT31, setupFeePaid: false };
-    expect(isEntitled(user, null, AUG)).toBe(false);
+    expect(isEntitled(user, null, AUG)).toBe(true);
+  });
+
+  it("and owes the fee again the moment the window lapses", () => {
+    const user = { role: "brand", freeAccess: true, freeAccessUntil: OCT31, setupFeePaid: false };
+    const afterLapse = new Date("2026-11-02T12:00:00Z");
+    expect(isEntitled(user, null, afterLapse)).toBe(false);
   });
 
   it("and gets access the moment the fee is settled", () => {

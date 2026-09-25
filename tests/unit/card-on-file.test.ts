@@ -26,25 +26,53 @@ const voucherCreator = (over: Record<string, unknown> = {}) => ({
   overageCardRequired: true, cardOnFile: false, setupFeePaid: false, ...over,
 });
 
+/**
+ * The client reversed course on 25 Sep 2026: "mtrzld will absorb the overage
+ * charges for brands and creators through to December 31st 2026." The stamp
+ * still lands on every free signup; ENFORCEMENT sleeps until 1 Jan 2027 and
+ * wakes by itself. So the mechanism is proven at a post-window date, and the
+ * absorption window has tests of its own.
+ */
+const POST_WINDOW = new Date("2027-01-02T12:00:00Z");
+
 describe("who owes a card", () => {
-  it("a voucher signup without one", () => {
-    expect(owesCardOnFile(voucherCreator())).toBe(true);
+  it("a stamped signup without one — once the absorption window has closed", () => {
+    expect(owesCardOnFile(voucherCreator(), POST_WINDOW)).toBe(true);
+  });
+
+  it("NOBODY while the absorption window is open — the 25 Sep decision", () => {
+    const inWindow = new Date("2026-10-15T12:00:00Z");
+    expect(owesCardOnFile(voucherCreator(), inWindow)).toBe(false);
+    const lastDay = new Date("2026-12-31T23:00:00Z");
+    expect(owesCardOnFile(voucherCreator(), lastDay)).toBe(false);
+  });
+
+  it("the requirement wakes up on its own on 1 Jan 2027 — no deploy needed", () => {
+    const beforeMidnightUTC5 = new Date("2027-01-01T04:59:00Z"); // still 31 Dec somewhere
+    const after = new Date("2027-01-01T05:01:00Z");
+    expect(owesCardOnFile(voucherCreator(), beforeMidnightUTC5)).toBe(false);
+    expect(owesCardOnFile(voucherCreator(), after)).toBe(true);
   });
 
   it("nobody the rule was not stamped on — comps and pre-rule accounts", () => {
-    expect(owesCardOnFile({ freeAccess: true, overageCardRequired: false, cardOnFile: false })).toBe(false);
-    expect(owesCardOnFile({ freeAccess: true })).toBe(false);
+    expect(owesCardOnFile({ freeAccess: true, overageCardRequired: false, cardOnFile: false }, POST_WINDOW)).toBe(false);
+    expect(owesCardOnFile({ freeAccess: true }, POST_WINDOW)).toBe(false);
   });
 
   it("never an admin", () => {
-    expect(owesCardOnFile(voucherCreator({ isAdmin: true }))).toBe(false);
+    expect(owesCardOnFile(voucherCreator({ isAdmin: true }), POST_WINDOW)).toBe(false);
   });
 });
 
 describe("entitlement", () => {
-  it("blocks voucher free access until the card is vaulted", () => {
-    expect(isEntitled(voucherCreator(), null, AUG)).toBe(false);
-    expect(isEntitled(voucherCreator({ cardOnFile: true }), null, AUG)).toBe(true);
+  it("blocks free access until the card is vaulted — after the window closes", () => {
+    const lateWindow = voucherCreator({ freeAccessUntil: new Date("2027-03-01T00:00:00Z") });
+    expect(isEntitled(lateWindow, null, POST_WINDOW)).toBe(false);
+    expect(isEntitled({ ...lateWindow, cardOnFile: true }, null, POST_WINDOW)).toBe(true);
+  });
+
+  it("grants free access WITHOUT a card while absorption runs", () => {
+    expect(isEntitled(voucherCreator(), null, AUG)).toBe(true);
   });
 
   it("a live subscription satisfies the rule by itself — subscribing IS a card", () => {
@@ -65,8 +93,11 @@ describe("the wiring", () => {
   const read = (f: string) =>
     readFileSync(join(__dirname, "../../", f), "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
 
-  it("the requirement is stamped at voucher redemption only", () => {
-    expect(read("server/authRoutes.ts")).toContain("overageCardRequired: voucherGrants.freeAccess");
+  it("the requirement is stamped on every signup — voucher and trial alike", () => {
+    // Since the 14-day-trial build, every new account gets a free window and
+    // therefore carries the stamp; the absorption window alone decides when
+    // it is enforced.
+    expect(read("server/authRoutes.ts")).toContain("overageCardRequired: true");
   });
 
   it("the setup-mode webhook marks the account", () => {

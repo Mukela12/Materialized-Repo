@@ -6106,10 +6106,13 @@ Identify which products from the catalog are most likely to appear or be feature
       if (!userId) return res.status(401).json({ error: "Authentication required" });
       const user = await storage.getUser(userId);
       if (!user) return res.status(401).json({ error: "Not authenticated" });
+      const { hasFreeAccess } = await import("./entitlement");
       res.json({
         required: oweableRole(user.role),
         paid: !!user.setupFeePaid,
-        outstanding: owesSetupFee(user),
+        // Deferred, not waived, while a trial or voucher window is active:
+        // the banner stands down and returns the day the window lapses.
+        outstanding: owesSetupFee(user) && !hasFreeAccess(user),
         amount: setupFeeMajor(),
         audience: setupFeeAudience(user.role),
       });

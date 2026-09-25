@@ -999,8 +999,11 @@ function SignupSection() {
           <h2 className="text-3xl md:text-4xl font-bold text-center mb-4 text-white">
             Join the Revolution
           </h2>
-          <p className="text-center text-white/70 mb-12 text-lg">
+          <p className="text-center text-white/70 mb-3 text-lg">
             Choose your subscription &amp; increase your sales performance
+          </p>
+          <p className="text-center text-white/50 mb-12 text-sm" data-testid="text-signup-trial-note">
+            Every new account starts with a free 14-day trial — no credit card required
           </p>
 
           {!selectedRole ? (
@@ -1393,15 +1396,20 @@ export default function Landing() {
             transition={{ type: "spring", stiffness: 300, damping: 18 }}
             className="inline-flex"
           >
-            <Button
-              onClick={scrollToSignup}
-              size="lg"
-              className="text-white font-semibold rounded-full border-0"
-              style={{ paddingLeft: "30px", paddingRight: "30px", paddingTop: "15px", paddingBottom: "15px", background: "rgba(255,255,255,0.15)", backdropFilter: "blur(10px)", border: "1px solid rgba(255,255,255,0.25)" }}
-              data-testid="button-hero-cta"
-            >
-              Get Started
-            </Button>
+            <div className="flex flex-col items-start gap-2">
+              <Button
+                onClick={scrollToSignup}
+                size="lg"
+                className="text-white font-semibold rounded-full border-0"
+                style={{ paddingLeft: "30px", paddingRight: "30px", paddingTop: "15px", paddingBottom: "15px", background: "rgba(255,255,255,0.15)", backdropFilter: "blur(10px)", border: "1px solid rgba(255,255,255,0.25)" }}
+                data-testid="button-hero-cta"
+              >
+                Start Your Free 14-Day Trial
+              </Button>
+              <span className="text-white/70 text-xs tracking-wide pl-1" data-testid="text-hero-no-card">
+                No credit card required
+              </span>
+            </div>
           </motion.div>
         </motion.div>
 

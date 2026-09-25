@@ -164,20 +164,33 @@ export function registerAuthRoutes(app: Express) {
       }
     }
 
+    /**
+     * No voucher? Then this signup IS the 14-day free trial — the client's
+     * CapCut-style onboarding (25 Sep 2026): every new account starts with
+     * full access, no card, no fee at the door. The trial is the same
+     * machinery as a voucher window (freeAccessUntil), so lapse, conversion
+     * banners and retention all treat it identically; only the length and
+     * the missing voucher differ.
+     */
+    const { TRIAL_DAYS } = await import("./entitlement");
+    const startsOnTrial = !voucherGrants.freeAccess;
+    const trialUntil = new Date(Date.now() + TRIAL_DAYS * 24 * 60 * 60 * 1000);
+
     const user = await storage.createUser({
       username,
       password: hashed,
       email,
       displayName,
       role,
-      freeAccess: voucherGrants.freeAccess,
-      freeAccessUntil: voucherGrants.freeAccess ? freeAccessUntil : null,
+      freeAccess: voucherGrants.freeAccess || startsOnTrial,
+      freeAccessUntil: voucherGrants.freeAccess ? freeAccessUntil : trialUntil,
       /**
-       * The client's rule: free access is conditional on a card being on file
-       * for overage accountability. Stamped here so it binds voucher signups
-       * only — existing accounts and admin comps are never caught by it.
+       * Overage accountability is stamped on every free window — voucher or
+       * trial — but ENFORCED only outside the absorption window (see
+       * OVERAGE_ABSORPTION_UNTIL): through 31 Dec 2026 nobody is asked for a
+       * card, and on 1 Jan 2027 the stamp wakes up on its own.
        */
-      overageCardRequired: voucherGrants.freeAccess,
+      overageCardRequired: true,
       /**
        * A VOUCHER IS ALREADY AN INVITATION.
        *

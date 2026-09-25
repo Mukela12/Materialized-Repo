@@ -68,10 +68,33 @@ export function hasFreeAccess(user: EntitlementUser, now: Date = new Date()): bo
  * predates the rule pass through untouched. A live subscription also satisfies
  * it — subscribing captured a card by definition.
  */
-export function owesCardOnFile(user: EntitlementUser): boolean {
+/**
+ * The client's 25 Sep 2026 reversal, verbatim: "for the purpose of onboarding
+ * without delays, without second thoughts by users, mtrzld will absorb the
+ * overage charges for brands and creators through to December 31st 2026."
+ *
+ * Implemented as a WINDOW, not a deletion: redemption and trial signup keep
+ * stamping overage_card_required, and this date is the only thing standing
+ * between the stamp and enforcement. On 1 January 2027 the requirement wakes
+ * up BY ITSELF for every stamped account that never vaulted a card — the
+ * policy resumes without a deploy, and flipping it early or extending it is
+ * one date. 05:00 UTC so "through December 31st" holds in every timezone the
+ * client's users are in, same convention as voucher expiries.
+ */
+export const OVERAGE_ABSORPTION_UNTIL = new Date("2027-01-01T05:00:00Z");
+
+export function owesCardOnFile(user: EntitlementUser, now: Date = new Date()): boolean {
   if (user?.isAdmin) return false;
+  if (now.getTime() < OVERAGE_ABSORPTION_UNTIL.getTime()) return false;
   return !!user?.overageCardRequired && !user?.cardOnFile;
 }
+
+/**
+ * Every non-voucher signup starts with this many days of full access — the
+ * client's CapCut-style onboarding: "FREE 14-Day Trial no credit card
+ * required (button/announcement). And install this on the backend."
+ */
+export const TRIAL_DAYS = 14;
 
 export function isEntitled(
   user: EntitlementUser,
@@ -79,8 +102,17 @@ export function isEntitled(
   now: Date = new Date(),
 ): boolean {
   if (user?.isAdmin) return true;
+  /**
+   * An unlapsed free window DEFERS the setup fee rather than following it.
+   * The fee-first ordering was deliberate in September ("no Brand or
+   * Publisher account is ever entirely free"), but a trial that greets a
+   * brand with a $29 paywall is not "onboarding without delays, without
+   * second thoughts" — so during a trial or voucher window the fee waits,
+   * and the moment the window lapses it is the first obligation back. The
+   * fee is deferred, never waived: setup_fee_paid stays false throughout.
+   */
+  if (hasFreeAccess(user, now)) return !owesCardOnFile(user, now);
   if (owesSetupFee(user)) return false;
   if (sub && (sub.status === "active" || sub.status === "trialing")) return true;
-  if (hasFreeAccess(user, now)) return !owesCardOnFile(user);
   return false;
 }
