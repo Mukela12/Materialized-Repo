@@ -638,10 +638,36 @@ export async function registerRoutes(
         }
       }
 
-      // Update video status to published after a delay (simulating processing)
-      setTimeout(async () => {
-        await storage.updateVideo(video.id, { status: "published" } as any);
-      }, 3000);
+      /**
+       * A created video KEEPS the status it was created with. A legacy
+       * setTimeout here force-published every video 3 seconds after creation,
+       * "simulating processing" from the Replit demo days — which overrode
+       * Save Draft (the toast said draft, the row said published) and
+       * bypassed the transcode gate, publishing player URLs whose renditions
+       * did not exist yet. Publishing is now only ever explicit: the publish
+       * endpoint or a PATCH, both of which consult bunnyPublishGate.
+       */
+
+      /**
+       * Close the transcode/creation race. Bunny's webhook fires when the
+       * transcode finishes — which can be while the creator is still typing
+       * the campaign title, BEFORE this row exists. The webhook then finds no
+       * row, answers 200, and never retries, leaving the optimistic
+       * play_720p URL on a video whose best real rendition may be 360p.
+       * Caught live in the 25 Sep QA click-through. Running the same
+       * reconciliation the webhook runs, here AFTER the insert, closes the
+       * window from both sides: finished-before-insert is corrected now,
+       * finished-after-insert is the webhook's normal case.
+       */
+      {
+        const { bunnyGuidFromUrl } = await import("./bunnyService");
+        const guid = bunnyGuidFromUrl(video.videoUrl);
+        if (guid) {
+          const { handleBunnyTranscodeEvent } = await import("./bunnyWebhook");
+          await handleBunnyTranscodeEvent(storage as any, undefined, { VideoGuid: guid })
+            .catch((err) => console.warn(`[Bunny] post-create reconcile failed for ${guid}:`, err));
+        }
+      }
 
       res.status(201).json(video);
     } catch (error) {
@@ -3476,8 +3502,12 @@ Identify which products from the catalog are most likely to appear or be feature
         widgetConfig: widgetConfig ? JSON.stringify(widgetConfig) : null,
       });
 
-      // Update video status
-      await storage.updateVideo(video.id, { status: "published" });
+      // Publish — through the transcode gate: a Bunny video still encoding
+      // parks as "processing" and the webhook completes the promotion.
+      {
+        const { bunnyPublishGate } = await import("./bunnyService");
+        await storage.updateVideo(video.id, { status: await bunnyPublishGate(video.videoUrl) });
+      }
 
       res.json({
         embedCode: publishRecord.embedCode,

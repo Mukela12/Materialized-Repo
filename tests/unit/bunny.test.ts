@@ -185,4 +185,23 @@ describe("the routes, read at the source", () => {
   it("the publish transition consults the transcode gate", () => {
     expect(SRC).toContain("bunnyPublishGate(existing.videoUrl)");
   });
+
+  it("EVERY publish write goes through the gate — nothing force-publishes on a timer", () => {
+    // The QA click-through of 25 Sep caught a legacy setTimeout that
+    // force-published every video 3s after creation: Save Draft produced a
+    // published row, and the publish bypassed the transcode gate entirely.
+    expect(SRC).not.toMatch(/setTimeout[\s\S]{0,200}?status:\s*"published"/);
+    // Both explicit publish sites name the gate.
+    expect(SRC.match(/bunnyPublishGate\(/g)?.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("creating a video reconciles against Bunny AFTER the insert — the webhook race", () => {
+    // Transcode can finish while the creator is still typing the title; the
+    // webhook then finds no row and never retries. The create route must run
+    // the same reconciliation after the row exists.
+    const start = SRC.indexOf("const video = await storage.createVideo(data);");
+    expect(start).toBeGreaterThan(-1);
+    const after = SRC.slice(start, start + 3000);
+    expect(after).toContain("handleBunnyTranscodeEvent");
+  });
 });
