@@ -38,7 +38,7 @@ analysis, not Bunny's quote):
   - NEVER delete a video with a live embed/campaign attached — check first.
   - dry-run mode first, same pattern as overage billing.
 
-## Phase 3 — detection frame sampling (SPIKED 2026-09-06: viable)
+## Phase 3 — detection frame sampling (SHIPPED 2026-09-25: ffmpeg via nixpacks, host-routed in frameSampler, proven against the live library; boot log confirms the binary in production)
 `server/frameSampler.ts` extracts arbitrary-timestamp JPEGs via Cloudinary URL
 transforms; AI detection depends on it. Bunny has no arbitrary-frame URL API.
 
