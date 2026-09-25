@@ -147,6 +147,13 @@ export interface BrandOutreachEmailOpts {
   brandName: string;
   videoTitle: string;
   videoPreviewUrl: string;
+  /**
+   * A still from the video, shown as a clickable poster with a watch button.
+   * Email clients do not play embedded video — Gmail and Outlook strip it —
+   * so the universal pattern is a thumbnail that clicks through to the real
+   * player. Null falls back to the text-only preview link.
+   */
+  videoThumbnailUrl?: string | null;
   authorizeUrl: string;
   creatorMessage?: string;
 }
@@ -179,12 +186,24 @@ export function renderBrandOutreachEmailHtml(opts: BrandOutreachEmailOpts): stri
       a fully interactive, commission-tracked experience your customers can shop directly from.
     </p>
     ${opts.creatorMessage ? `<p style="font-style:italic;border-left:3px solid #677A67;padding-left:14px;color:#444;">"${opts.creatorMessage}"</p>` : ""}
+    ${opts.videoThumbnailUrl ? `
+    <!-- The video, as email allows it: a poster frame that clicks through to
+         the live shoppable player. -->
+    <div style="margin:22px 0;text-align:center;">
+      <a href="${opts.videoPreviewUrl}" style="text-decoration:none;">
+        <img src="${opts.videoThumbnailUrl}" alt="${opts.videoTitle || "Campaign video"} — tap to watch"
+             width="480" style="display:block;margin:0 auto;width:100%;max-width:480px;border-radius:12px;border:0;" />
+        <span style="display:inline-block;margin-top:12px;background:#202120;color:#ffffff;border-radius:999px;padding:10px 22px;font-weight:700;font-size:14px;">
+          &#9654;&nbsp; Watch ${opts.videoTitle || "the campaign preview"}
+        </span>
+      </a>
+    </div>` : `
     <div class="video-box">
       <p><strong>${opts.videoTitle || "Video Preview"}</strong></p>
       <p style="margin-top:8px;">
         <a href="${opts.videoPreviewUrl}">Preview the campaign &rarr;</a>
       </p>
-    </div>
+    </div>`}
 
     <!-- What it costs and what it buys. The client asked for this stated up
          front: a PR contact who does not know the price cannot say yes, and

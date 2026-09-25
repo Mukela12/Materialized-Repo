@@ -28,7 +28,7 @@ import { isEntitled, hasFreeAccess, owesCardOnFile } from "./entitlement";
 import { owesSetupFee, oweableRole, setupFeeAudience } from "./setupFee";
 import { planForRole, planAmountMajor, roleLabel, portalHome } from "./subscriptionPlan";
 import { inviteVoucherFields, inviteBatchId, inviteCapPerBrand, inviteOfferEndFor, inviteOfferEndLabel } from "./inviteVoucher";
-import { videoDeliveryUrl } from "@shared/videoDelivery";
+import { videoDeliveryUrl, videoPosterUrl } from "@shared/videoDelivery";
 import { feeInvoiceStripeAdapter } from "./feeInvoiceStripe";
 
 
@@ -932,6 +932,19 @@ export async function registerRoutes(
         ? `${baseUrl}/embed/${outreach.videoId}`
         : `${baseUrl}/`;
 
+      /**
+       * The poster frame for the email. Email clients strip real video, so
+       * the brand sees the video's own thumbnail with a watch button — the
+       * stored thumbnailUrl (Bunny's generated still), through the delivery
+       * helper's thumbnail sizing for the legacy Cloudinary rows.
+       */
+      const outreachVideo = outreach.videoId
+        ? await storage.getVideo(outreach.videoId).catch(() => undefined)
+        : undefined;
+      const videoThumbnailUrl = outreachVideo
+        ? videoDeliveryUrl(outreachVideo.thumbnailUrl || videoPosterUrl(outreachVideo.videoUrl), "thumbnail") || null
+        : null;
+
       const creatorProfile = await storage.getUserProfile(user.id).catch(() => undefined);
 
       if (isEmailConfigured()) {
@@ -945,6 +958,7 @@ export async function registerRoutes(
           brandName: outreach.brandName,
           videoTitle: outreach.videoTitle ?? "Video Preview",
           videoPreviewUrl,
+          videoThumbnailUrl,
           authorizeUrl,
           creatorMessage: outreach.creatorMessage ?? undefined,
         });

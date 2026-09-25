@@ -112,3 +112,33 @@ describe("the tag-a-brand exception — the client's only exception to free onbo
     expect(block).toContain("startsOnTrial = false");
   });
 });
+
+describe("the outreach email's video preview", () => {
+  it("shows a clickable poster frame when the video has a thumbnail", async () => {
+    const { renderBrandOutreachEmailHtml } = await import("../../server/emailService");
+    const html = renderBrandOutreachEmailHtml({
+      prContactName: "Amelie Laurent", prContactEmail: "pr@x.com",
+      creatorDisplayName: "Miro", creatorInstagramHandle: "@miro",
+      brandName: "Maison", videoTitle: "Paris Edit",
+      videoPreviewUrl: "https://www.mtrlzd.com/embed/abc",
+      videoThumbnailUrl: "https://vz-x.b-cdn.net/g/thumbnail.jpg",
+      authorizeUrl: "https://www.mtrlzd.com/brand-authorize/t",
+    });
+    expect(html).toContain('src="https://vz-x.b-cdn.net/g/thumbnail.jpg"');
+    expect(html).toContain("Watch Paris Edit");
+    // The poster IS the link — a brand taps the image, not just the button.
+    expect(html).toMatch(/<a href="https:\/\/www\.mtrlzd\.com\/embed\/abc"[^>]*>\s*<img/);
+  });
+
+  it("falls back to the text preview link when no thumbnail exists", async () => {
+    const { renderBrandOutreachEmailHtml } = await import("../../server/emailService");
+    const html = renderBrandOutreachEmailHtml({
+      prContactName: "A", prContactEmail: "p@x.com", creatorDisplayName: "M",
+      brandName: "B", videoTitle: "V",
+      videoPreviewUrl: "https://x/embed/abc", videoThumbnailUrl: null,
+      authorizeUrl: "https://x/a",
+    });
+    expect(html).toContain("Preview the campaign");
+    expect(html).not.toContain("&#9654;"); // no watch button without a poster
+  });
+});
