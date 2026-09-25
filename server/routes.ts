@@ -6070,6 +6070,38 @@ Identify which products from the catalog are most likely to appear or be feature
     }
   });
 
+  /**
+   * The payout NUDGE — the client's distinction, 25 Sep: "payment method not
+   * required — to ensure the platform can pay out affiliate commissions."
+   * Informational, never blocking: it invites the earning roles to finish
+   * Stripe Connect onboarding so their first commission has somewhere to go.
+   * Stands down while a fee or card banner is up (one ask at a time), and
+   * disappears for good once the account.updated webhook marks onboarding
+   * complete. Brands are not nudged — their Connect setup is part of the
+   * selling flow, asked for in context.
+   */
+  app.get("/api/payouts/nudge", async (req, res) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      if (!userId) return res.status(401).json({ error: "Authentication required" });
+      const user = await storage.getUser(userId);
+      if (!user) return res.status(401).json({ error: "Not authenticated" });
+
+      const { hasFreeAccess } = await import("./entitlement");
+      // Publishers are stored with role "affiliate" — there is no third value.
+      const earningRole = user.role === "creator" || user.role === "affiliate";
+      const feeOutstanding = owesSetupFee(user) && !hasFreeAccess(user);
+      const cardOutstanding = owesCardOnFile(user) && !feeOutstanding;
+      res.json({
+        needed: earningRole && !user.stripeConnectOnboarded && !feeOutstanding && !cardOutstanding && !user.isAdmin,
+        onboarded: !!user.stripeConnectOnboarded,
+      });
+    } catch (error) {
+      console.error("Payout nudge error:", error);
+      res.status(500).json({ error: "Failed to read payout status" });
+    }
+  });
+
   app.post("/api/card/checkout", async (req, res) => {
     try {
       const userId = (req.session as any)?.userId;

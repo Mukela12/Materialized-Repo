@@ -66,3 +66,27 @@ describe("the wiring, read at the source", () => {
     expect(src).toContain("No credit card required");
   });
 });
+
+describe("the payout nudge", () => {
+  const routes = read("server/routes.ts");
+  const handler = routes.slice(routes.indexOf('app.get("/api/payouts/nudge"'), routes.indexOf('app.get("/api/payouts/nudge"') + 2000);
+
+  it("targets the earning roles and nobody else", () => {
+    expect(handler).toContain('user.role === "creator" || user.role === "affiliate"');
+  });
+
+  it("stands down while a fee or card banner is up — one ask at a time", () => {
+    expect(handler).toContain("!feeOutstanding && !cardOutstanding");
+  });
+
+  it("disappears once the webhook marks onboarding complete", () => {
+    expect(handler).toContain("!user.stripeConnectOnboarded");
+  });
+
+  it("the banner is dismissible and soft — a nudge, not an obligation", () => {
+    const banner = read("client/src/components/PayoutNudgeBanner.tsx");
+    expect(banner).toContain("sessionStorage");
+    expect(banner).toContain("banner-payout-nudge");
+    expect(banner).not.toContain("border-amber"); // the obligation colour is reserved for obligations
+  });
+});

@@ -67,6 +67,7 @@ import { ChevronDown, LogOut, User, Layers, Settings, Shield, LifeBuoy } from "l
 import { SetupFeeBanner } from "@/components/SetupFeeBanner";
 import { SubscriptionPrompt } from "@/components/SubscriptionPrompt";
 import { CardOnFileBanner } from "@/components/CardOnFileBanner";
+import { PayoutNudgeBanner } from "@/components/PayoutNudgeBanner";
 
 function CreatorRouter() {
   return (
@@ -513,6 +514,7 @@ function AppContent() {
             <SetupFeeBanner />
             {/* Stands down server-side while the fee is owed — one ask at a time. */}
             <CardOnFileBanner />
+            <PayoutNudgeBanner />
             {/* Only one of these ever renders: the server reports the plan as
                 "needed" solely once the setup fee is settled, so a new account
                 is asked for one thing at a time. */}
