@@ -150,7 +150,7 @@ function defaultAgreementDocumentBase64(brandName: string, signerName: string): 
     <h1>Materialized Brand Agreement</h1>
     <p>This agreement is entered into between Materialized and <strong>${brandName}</strong>.</p>
     <p>
-      By signing below, ${signerName} authorises the featured video to be made
+      By signing below, ${signerName} authorizes the featured video to be made
       shoppable with ${brandName} products under the Materialized marketplace terms,
       including the agreed commission split on attributed sales.
     </p>

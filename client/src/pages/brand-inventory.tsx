@@ -451,7 +451,7 @@ export default function BrandInventory() {
 
   const { data: products = [], isLoading } = useQuery<Product[]>({
     // Own inventory only — unscoped, this endpoint answers "whose products may
-    // I browse", which on a Brand's own catalogue page means the marketplace.
+    // I browse", which on a Brand's own catalog page means the marketplace.
     queryKey: ["/api/products", "mine"],
     queryFn: () => fetch("/api/products?mine=true", { credentials: "include" }).then((r) => r.json()),
   });

@@ -202,7 +202,7 @@ const TYPEWRITER_PHRASES = [
   "Turn videos into revenue",
   "Connect with brands",
   "Build your affiliate empire",
-  "Monetise your content",
+  "Monetize your content",
 ];
 
 function TypewriterText() {
@@ -725,7 +725,7 @@ function DataAnalyticsSection() {
               <TypewriterText />
             </h2>
             <p className="text-lg md:text-xl text-white/70 max-w-xl mb-10">
-              The all-in-one platform for creators, brands, and publishers to monetise video content with AI-powered product detection and seamless affiliate tracking.
+              The all-in-one platform for creators, brands, and publishers to monetize video content with AI-powered product detection and seamless affiliate tracking.
             </p>
             <motion.div
               whileHover={{ scale: 1.08 }}
@@ -868,7 +868,7 @@ const ROLE_ROUTES: Record<string, string> = {
  * Landing-page plan copy.
  *
  * Prices are NOT written here — planPriceMajor() and setupFeeMajor() read
- * shared/plans.ts, the same catalogue server/stripeService.ts mints Stripe
+ * shared/plans.ts, the same catalog server/stripeService.ts mints Stripe
  * prices from. That is deliberate: this page and the customer's card must never
  * disagree, and the product has already shipped two contradictory price lists
  * once.
@@ -889,7 +889,7 @@ const LANDING_PLANS: {
     label: "Creator",
     featured: true,
     features: [
-      "Upload and monetise 8 videos per month",
+      "Upload and monetize 8 videos per month",
       "Tag brands for unlimited credits per month",
       "Publish shoppable videos to Substack, your website or your store",
       "Engage your audience through interactive storytelling",
@@ -903,7 +903,7 @@ const LANDING_PLANS: {
     role: "brand",
     label: "Brand",
     features: [
-      "Make your product catalogue shoppable in creator videos",
+      "Make your product catalog shoppable in creator videos",
       "Connect Shopify or WooCommerce and sync your inventory",
       "Campaigns with creators and publishers",
       "Attributed sales reporting",
@@ -1569,7 +1569,7 @@ export default function Landing() {
       })()}
 
       {/*
-        Pricing. Amounts come from shared/plans.ts — the same catalogue the server
+        Pricing. Amounts come from shared/plans.ts — the same catalog the server
         mints Stripe prices from — so the page can never advertise a number
         different from the one a customer is charged. The feature copy lives here
         because it is marketing text, not a billing fact.
@@ -1668,7 +1668,7 @@ export default function Landing() {
                 label: "Support",
                 content: (
                   <div className="text-white/60 text-sm leading-relaxed">
-                    <p className="mb-3">Need help? Visit our Help Centre for guides and FAQs, or browse the Creator, Brand, and Publisher dashboards to get started.</p>
+                    <p className="mb-3">Need help? Visit our Help Center for guides and FAQs, or browse the Creator, Brand, and Publisher dashboards to get started.</p>
                     <div className="flex flex-wrap gap-3 mb-3">
                       <Link href="/creator" className="text-[#1351aa] hover:text-[#4a7ed6] underline" data-testid="link-footer-creator">Creator Portal</Link>
                       <Link href="/brand" className="text-[#1351aa] hover:text-[#4a7ed6] underline" data-testid="link-footer-brand">Brand Portal</Link>

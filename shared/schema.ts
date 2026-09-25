@@ -101,6 +101,8 @@ export const users = pgTable("users", {
   /** A default payment method exists on the Stripe customer. Set by webhook. */
   cardOnFile: boolean("card_on_file").notNull().default(false),
   cardOnFileAt: timestamp("card_on_file_at"),
+  /** When the day-2 trial nurture email went out. NULL = not yet sent. */
+  trialFollowupEmailSentAt: timestamp("trial_followup_email_sent_at"),
   emailVerified: boolean("email_verified").default(false),
   emailVerificationToken: text("email_verification_token"),
   emailVerificationExpires: timestamp("email_verification_expires"),
@@ -128,7 +130,7 @@ export const brands = pgTable("brands", {
   // self-serve version of that (emailed accept link, store connect, hosted
   // checkout) was built and then cut: review showed a creator could name an
   // unclaimed brand in a free-text invite, receive the token themselves, and take
-  // ownership of a real catalogue. See stash "self-serve brand acceptance".
+  // ownership of a real catalog. See stash "self-serve brand acceptance".
   //
   // This is the safe form of the same outcome: an admin verifies the brand and
   // settles the $29 out of band, then grants a window here. No untrusted party
@@ -359,13 +361,13 @@ export const brandKits = pgTable("brand_kits", {
   defaultPosition: carouselPositionEnum("default_position").default("bottom"),
 
   // ── The rest of the client's styling list (0022) ──────────────────────────
-  // The carousel's own panel colour. It was hard-coded black at whatever
-  // opacity was set, so a brand could colour the button and nothing else.
+  // The carousel's own panel color. It was hard-coded black at whatever
+  // opacity was set, so a brand could color the button and nothing else.
   defaultCarouselBackgroundColor: text("default_carousel_background_color"),
   // Two separate radii. One value drove both the panel and the button, so a
   // square panel forced square buttons and a pill button forced a pill panel.
   defaultButtonCornerRadius: integer("default_button_corner_radius"),
-  // Text colours. Both were inherited from the theme, which is white — legible
+  // Text colors. Both were inherited from the theme, which is white — legible
   // on a dark panel and invisible on a pale one.
   defaultBrandTitleColor: text("default_brand_title_color"),
   defaultProductTitleColor: text("default_product_title_color"),
@@ -405,7 +407,7 @@ export const videoCarouselOverrides = pgTable("video_carousel_overrides", {
   buttonTextColor: text("button_text_color"),
 
   // Mirrors of the brand-kit defaults above. NULL means "inherit" — the client
-  // asked to change colours per video for a season or a collection without
+  // asked to change colors per video for a season or a collection without
   // disturbing the defaults every other video uses.
   carouselBackgroundColor: text("carousel_background_color"),
   buttonCornerRadius: integer("button_corner_radius"),
@@ -811,7 +813,7 @@ export type InsertCreatorBonus = typeof creatorBonuses.$inferInsert;
  * A typeface a brand uploaded, rather than one of the twelve built in.
  *
  * The client: "Font upload must allow for the .otf or .ttf". Most fashion
- * brands licence their own face and had no way to use it — a font was either a
+ * brands license their own face and had no way to use it — a font was either a
  * built-in or a name typed in and looked up on Google Fonts, which silently
  * fell back to system-ui when the name was not published there.
  *
@@ -1692,7 +1694,7 @@ export const vouchers = pgTable("vouchers", {
   /**
    * WHICH partner within the batch, where assignedTo is WHO the batch went to.
    *
-   * Brooklyn's 81 codes all carry assignedTo "Brooklyn"; the festival organiser
+   * Brooklyn's 81 codes all carry assignedTo "Brooklyn"; the festival organizer
    * is the only person who knows that a given code went to a particular brand.
    * They fill this in on the exported CSV and it is read back by code, so
    * redemptions can be attributed to a partner rather than to a festival.
@@ -1709,7 +1711,7 @@ export const vouchers = pgTable("vouchers", {
   expiresAt: timestamp("expires_at"),
   /**
    * Free period in days, counted from redemption. NULL keeps the festival
-   * behaviour: free until the voucher's own expiry date.
+   * behavior: free until the voucher's own expiry date.
    */
   freeDays: integer("free_days"),
   /** Revocation is a timestamp, not a delete: redemptions already made stay valid. */

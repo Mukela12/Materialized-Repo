@@ -1,5 +1,5 @@
 /**
- * Bunny Stream: the upload authorisation, the delivery URLs, and the webhook
+ * Bunny Stream: the upload authorization, the delivery URLs, and the webhook
  * that turns "uploaded" into "playable".
  */
 import { describe, it, expect, beforeEach } from "vitest";
@@ -15,7 +15,7 @@ beforeEach(() => {
   process.env.BUNNY_STREAM_HOST = HOST;
 });
 
-describe("the TUS authorisation", () => {
+describe("the TUS authorization", () => {
   it("signs exactly libraryId + key + expire + guid — the order Bunny verifies", async () => {
     const { bunnyTusAuth } = await import("../../server/bunnyService");
     // Vector computed OUTSIDE this codebase (python hashlib), so the test

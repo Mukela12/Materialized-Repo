@@ -549,3 +549,72 @@ export function probeCertificate(host: string, timeoutMs = 10_000): Promise<{ da
     sock.on("timeout", () => { sock.destroy(); reject(new Error("TLS handshake timeout")); });
   }));
 }
+
+// ── Day-2 trial nurture ──────────────────────────────────────────────────────
+export const TRIAL_FOLLOWUP_JOB = "trial-followup";
+/** Hourly: "48 hours after" should mean 48–49, not 48–72. */
+export const DEFAULT_TRIAL_FOLLOWUP_CRON = "15 * * * *";
+
+export interface TrialFollowupStore {
+  getBrandsDueTrialFollowup(now: Date): Promise<Array<{
+    id: string; email: string; displayName: string | null; freeAccessUntil: Date | null;
+  }>>;
+  markTrialFollowupSent(userId: string, at: Date): Promise<void>;
+}
+
+export interface TrialFollowupMailer {
+  send(opts: { to: string; brandDisplayName: string; trialDaysLeft: number; dashboardUrl: string }): Promise<void>;
+}
+
+/**
+ * The client's day-2 email, 25 Sep: 48 hours after a brand starts their
+ * trial, one email presenting creator marketing — connect the existing
+ * affiliate program, invite five creators. "Icing on the cake."
+ *
+ * Send THEN mark, in that order: a crash between the two re-sends one email
+ * on the next run, which is annoying; the reverse marks an email sent that
+ * never was, which silently loses the one nurture touch the trial gets.
+ */
+export function makeTrialFollowupJob(
+  store: TrialFollowupStore,
+  mailer: TrialFollowupMailer,
+  opts: { cron?: string; now?: () => Date; dashboardUrl?: string } = {},
+): ScheduledJob {
+  const cron = opts.cron || process.env.TRIAL_FOLLOWUP_CRON || DEFAULT_TRIAL_FOLLOWUP_CRON;
+  return {
+    name: TRIAL_FOLLOWUP_JOB,
+    schedule: cron,
+    run: async (): Promise<JobResult> => {
+      const now = (opts.now ?? (() => new Date()))();
+      const due = await store.getBrandsDueTrialFollowup(now);
+      if (due.length === 0) {
+        return { status: "skipped", items: 0, detail: "no brands at the 48-hour mark" };
+      }
+
+      let sent = 0;
+      const failures: string[] = [];
+      for (const b of due) {
+        const trialDaysLeft = b.freeAccessUntil
+          ? Math.max(0, Math.ceil((new Date(b.freeAccessUntil).getTime() - now.getTime()) / 86_400_000))
+          : 0;
+        try {
+          await mailer.send({
+            to: b.email,
+            brandDisplayName: b.displayName || "there",
+            trialDaysLeft,
+            dashboardUrl: opts.dashboardUrl || "https://www.mtrlzd.com/brand",
+          });
+          await store.markTrialFollowupSent(b.id, now);
+          sent++;
+        } catch (err) {
+          failures.push(`${b.id}: ${err instanceof Error ? err.message : err}`);
+        }
+      }
+      return {
+        status: failures.length ? "failed" : "success",
+        items: sent,
+        detail: `${sent} nurture email(s) sent` + (failures.length ? `; failed — ${failures.join("; ")}` : ""),
+      };
+    },
+  };
+}

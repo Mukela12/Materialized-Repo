@@ -13,7 +13,7 @@
  *   2. POST 99 more listingIds → 200 OK, zero extra charge
  *
  * and it stays that way, because /checkout refuses to run again on a published
- * playlist. 100 licences for the price of 1. The card path was no better: its
+ * playlist. 100 licenses for the price of 1. The card path was no better: its
  * item-count check runs only at /confirm-payment, i.e. after the PaymentIntent is
  * already sized.
  *
@@ -40,6 +40,6 @@ export function isPlaylistLocked(status: string | null | undefined): boolean {
 /** The message shown to the user. One wording, server and client. */
 export function playlistLockedMessage(status: string | null | undefined): string {
   return status === "published"
-    ? "This playlist is already published — its licence is paid. Create a new playlist to license more videos."
+    ? "This playlist is already published — its license is paid. Create a new playlist to license more videos."
     : "This playlist has a payment in progress, so its videos are locked. Finish or cancel it before changing what it contains.";
 }

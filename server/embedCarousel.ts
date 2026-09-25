@@ -8,7 +8,7 @@
  * "Buy" written into the JavaScript regardless of the label chosen.
  *
  * That is the one place a viewer ever sees a carousel. So a brand could set
- * their colours, watch the preview change, publish, and find their own site
+ * their colors, watch the preview change, publish, and find their own site
  * showing the platform's default blue.
  *
  * ── Everything here is sanitised first ───────────────────────────────────────
@@ -109,7 +109,7 @@ export function embedCarouselCss(raw: CarouselSettings): string {
       ${s.showTitle ? "" : "display:none;"}
     }
     /* PRICE FOLLOWS THE PRODUCT TITLE, NOT THE BRAND TITLE.
-       It was bound to brandTitleColor, so changing "Brand title colour"
+       It was bound to brandTitleColor, so changing "Brand title color"
        recoloured the price and nothing else — the client reported exactly
        that. The price belongs to the product line; the brand name is its own
        element, styled below. */

@@ -5,7 +5,7 @@
  * `onChange` at all — typing in it did nothing, on a page reachable from all
  * three portals. It sat above an FAQ accordion it was clearly meant to filter.
  *
- * These pin the filter behaviour so the box cannot quietly become decorative
+ * These pin the filter behavior so the box cannot quietly become decorative
  * again.
  */
 import { describe, it, expect } from "vitest";

@@ -56,7 +56,7 @@ interface FontEntry {
  *
  * Extracted so it can appear in two places at once: on the Preview tab, and
  * beside the controls on Default Carousel Settings. The client asked for the
- * second — previously you changed a colour on one tab and had to switch to
+ * second — previously you changed a color on one tab and had to switch to
  * another to find out what it did, which is not a preview so much as a memory
  * test. Both instances read the same state, so they cannot drift.
  *
@@ -68,7 +68,7 @@ interface FontEntry {
  *
  * It used to honour exactly two positions — `items-start` for "top" and
  * `items-end` for everything else — so picking "bottom-right" drew the carousel
- * bottom-centre and picking "left" drew it bottom-centre too. The setting saved
+ * bottom-center and picking "left" drew it bottom-center too. The setting saved
  * correctly; only the picture was wrong. The client concluded from it that the
  * positioning options did not exist, which is a fair reading when the only way
  * to check reports no change.
@@ -93,7 +93,7 @@ function CarouselPreview({
     >
       {/* Same renderer as the upload editor. This page used to have its own
           copy of the markup, and it drifted every time the carousel changed —
-          positions, then colours. */}
+          positions, then colors. */}
       <CarouselMockup settings={settings} scale={1.15} testId={testId} />
     </CarouselPreviewFrame>
   );
@@ -879,7 +879,7 @@ export default function BrandKitPage() {
                   reach. Rendering the same component removes the possibility.
 
                   The preview beside it reads the same state, so changing a
-                  colour shows its effect without switching tabs — which is what
+                  color shows its effect without switching tabs — which is what
                   she asked for and why the second preview exists at all. */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <ProductCarouselEditor

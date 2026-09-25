@@ -87,7 +87,7 @@ describe("the payout nudge", () => {
     const banner = read("client/src/components/PayoutNudgeBanner.tsx");
     expect(banner).toContain("sessionStorage");
     expect(banner).toContain("banner-payout-nudge");
-    expect(banner).not.toContain("border-amber"); // the obligation colour is reserved for obligations
+    expect(banner).not.toContain("border-amber"); // the obligation color is reserved for obligations
   });
 });
 

@@ -13,7 +13,7 @@
  * number of publishers reposting, so one creator's allowance was consumed ten
  * times over by ten reposts. The client settled it: each account has its own
  * allowance and pays for its own usage. The old tests pinned that multiplier
- * explicitly; they are replaced rather than loosened, because the behaviour they
+ * explicitly; they are replaced rather than loosened, because the behavior they
  * described is no longer the intended one.
  *
  * What has NOT changed: these numbers still live in exactly one place. The

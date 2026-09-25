@@ -12,7 +12,7 @@
  * The server mints a video object and a short-lived signature; the browser
  * then speaks TUS (resumable) straight to Bunny. A 1GB editorial on hotel
  * wifi survives a dropped connection, the backend never proxies the bytes,
- * and the signature only authorises the one video id it was minted for.
+ * and the signature only authorizes the one video id it was minted for.
  *
  * ── Upload ≠ playable ────────────────────────────────────────────────────────
  * Bunny transcodes after upload. The stored playback URL is not live until the
@@ -73,7 +73,7 @@ export async function getBunnyVideo(guid: string): Promise<BunnyVideo> {
 }
 
 /**
- * The TUS presigned authorisation, per Bunny's contract:
+ * The TUS presigned authorization, per Bunny's contract:
  * sha256_hex(library_id + api_key + expiration_unix_seconds + video_guid).
  *
  * Scoped twice over: it expires, and it only opens the single video object the

@@ -6,7 +6,7 @@
  * in the Brand Kit page — with the mapping to and from the database written out
  * by hand in each. They drifted, as duplicated lists do: the Brand Kit preview
  * honoured two of the eight carousel positions, so choosing "bottom-right"
- * drew the carousel bottom-centre. The setting saved correctly the whole time;
+ * drew the carousel bottom-center. The setting saved correctly the whole time;
  * only the picture lied, and the client reasonably concluded the positioning
  * options did not exist.
  *
@@ -126,7 +126,7 @@ function defaultKey(key: string): string {
 /**
  * Fold a brand kit row into settings. Anything unset on the row is left at the
  * base default rather than becoming null — a half-populated settings object is
- * how a colour picker ends up rendering "undefined".
+ * how a color picker ends up rendering "undefined".
  */
 export function settingsFromBrandKit(kit: Record<string, any> | null | undefined): CarouselSettings {
   const out: CarouselSettings = { ...CAROUSEL_DEFAULTS };
@@ -165,10 +165,10 @@ export function applyOverride(
 }
 
 /**
- * The panel's background as a CSS colour.
+ * The panel's background as a CSS color.
  *
  * Opacity is stored 0–100 separately from the hex so the two controls the
- * client asked for stay independent: changing the colour must not reset the
+ * client asked for stay independent: changing the color must not reset the
  * transparency, and vice versa.
  */
 export function panelBackground(s: Pick<CarouselSettings, "carouselBackgroundColor" | "backgroundOpacity">): string {
@@ -212,7 +212,7 @@ export function isStackedPosition(position: CarouselPosition | string): boolean 
 // ── Sanitising, for anywhere settings are interpolated into CSS or HTML ──────
 //
 // THE THREAT
-//   Colours and fonts are free-text columns a creator controls. The embed is
+//   Colors and fonts are free-text columns a creator controls. The embed is
 //   server-rendered HTML served INSIDE A BRAND'S PAGE, so a value like
 //       #fff;} #pay{display:none} .x{
 //   would close the rule it sits in and write arbitrary CSS — hiding the
@@ -222,13 +222,13 @@ export function isStackedPosition(position: CarouselPosition | string): boolean 
 //
 //   So no value reaches a stylesheet without passing through here. Anything
 //   that does not match its expected shape falls back to the default rather
-//   than being escaped and emitted — an invalid colour has no correct rendering
+//   than being escaped and emitted — an invalid color has no correct rendering
 //   anyway, and a fallback is the only safe interpretation.
 
 /** `#rgb` or `#rrggbb`, and nothing else. */
 const HEX = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
 
-/** A colour, or the given fallback if it is not one. */
+/** A color, or the given fallback if it is not one. */
 export function safeColor(value: unknown, fallback: string): string {
   const v = typeof value === "string" ? value.trim() : "";
   return HEX.test(v) ? v : fallback;
@@ -345,7 +345,7 @@ export function overrideFromSettings(
   for (const key of [...SHARED_KEYS, ...OVERRIDE_ONLY_KEYS]) {
     const a = (base as any)[key];
     const b = (edited as any)[key];
-    // Colours compare case-insensitively: a picker returns "#1F1B6D" for a
+    // Colors compare case-insensitively: a picker returns "#1F1B6D" for a
     // stored "#1f1b6d", and storing that as an override would detach the field
     // from the brand kit over a difference nobody can see.
     const same = typeof a === "string" && typeof b === "string"

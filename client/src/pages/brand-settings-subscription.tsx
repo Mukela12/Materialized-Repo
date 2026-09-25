@@ -25,7 +25,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { BrandSubscription } from "@shared/schema";
 
-// ─── Plan catalogue ───────────────────────────────────────────────────────────
+// ─── Plan catalog ───────────────────────────────────────────────────────────
 // Plan ids are the stable Stripe/DB keys (see shared/plans.ts) — `label` carries
 // the customer-facing naming, so relabelling never touches billing.
 // `legacy: true` keeps a plan renderable for an existing subscriber while hiding
@@ -79,7 +79,7 @@ const PLANS: {
     price: price("creator"),
     period: "/ month",
     legacy: true,
-    description: "For creators monetising their videos",
+    description: "For creators monetizing their videos",
     features: [
       "Unlimited shoppable videos",
       "Unlimited data storage",

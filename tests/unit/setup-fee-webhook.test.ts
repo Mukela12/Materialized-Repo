@@ -4,7 +4,7 @@
  * ── Why this exists as a dispatch test ───────────────────────────────────────
  * `stripe trigger` cannot prove this. It sends tok_visa, a TEST token, and the
  * platform account is live — live mode correctly refuses fake cards, which is
- * the right behaviour and also means the handler can never be exercised that
+ * the right behavior and also means the handler can never be exercised that
  * way. The remaining options are a real card (a human with a wallet) or driving
  * the dispatcher directly with the event Stripe would send. This is the latter.
  *

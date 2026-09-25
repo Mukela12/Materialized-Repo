@@ -861,7 +861,7 @@ export type MintResult =
  * ── WHY THE FULL PRICE, NOT JUST "> 0" ──────────────────────────────────────
  * A token is $49 of platform credit funded out of a $249 subscription. Gating on
  * "any money at all" funds it out of ANY invoice on a qualifying plan, and two
- * ordinary Stripe behaviours make that cheap:
+ * ordinary Stripe behaviors make that cheap:
  *
  *   1. PRORATION. A mid-cycle plan change emits a real, paid invoice for a few
  *      dollars. Under `> 0` a $2 proration on a 'starter' subscription mints a

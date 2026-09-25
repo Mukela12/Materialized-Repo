@@ -41,7 +41,7 @@ const DialogContent = React.forwardRef<
         /**
          * max-h + overflow, on the BASE component.
          *
-         * A dialog is centred with `top-50% translate-y-[-50%]` and had no
+         * A dialog is centerd with `top-50% translate-y-[-50%]` and had no
          * height cap, so anything taller than the viewport overflowed off BOTH
          * ends with nothing scrollable — you could reach neither the top nor
          * the bottom. The client hit it on the playlist checkout: the "Use 1

@@ -1,5 +1,5 @@
 /**
- * The one definition of the default product-carousel button colours.
+ * The one definition of the default product-carousel button colors.
  *
  * WHY A SHARED CONSTANT AND NOT A LITERAL
  *   The green #314d3b was hardcoded in five places — ProductCarouselEditor's

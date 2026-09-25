@@ -218,7 +218,7 @@ export function renderBrandOutreachEmailHtml(opts: BrandOutreachEmailOpts): stri
     </div>
 
     <p>
-      Clicking below authorises ${creator} to make this video shoppable with your products.
+      Clicking below authorizes ${creator} to make this video shoppable with your products.
       You'll then receive a <strong>MTRLZD Brand Agreement</strong> (via DocuSign) covering
       video marketplace commissions.
     </p>
@@ -259,7 +259,7 @@ export async function sendBrandAgreementEmail(opts: {
   const body = `
     <h1>Hey ${firstName}, you're almost there!</h1>
     <p>
-      Thank you for authorising <strong>${opts.creatorDisplayName}</strong> to make their
+      Thank you for authorizing <strong>${opts.creatorDisplayName}</strong> to make their
       <em>${opts.videoTitle || "video"}</em> shoppable with <strong>${opts.brandName}</strong> products.
     </p>
     <p>
@@ -294,7 +294,7 @@ export async function sendDocuSignReminderEmail(opts: {
   const body = `
     <h1>Hey ${firstName}, just a nudge</h1>
     <p>
-      You authorised <strong>${opts.brandName}</strong> to feature in a shoppable video on Materialized &mdash;
+      You authorized <strong>${opts.brandName}</strong> to feature in a shoppable video on Materialized &mdash;
       that's great! The final step is reviewing and signing the <strong>Materialized Brand Agreement</strong>
       via DocuSign. It takes less than two minutes.
     </p>
@@ -364,7 +364,7 @@ export async function sendGlobalPitchEmail(opts: {
       <p>&#10003; <strong>Unlimited shoppable video campaigns</strong> across any creator, any region</p>
       <p>&#10003; <strong>Real-time ROI dashboard</strong> &mdash; revenue, clicks, commissions, by creator</p>
       <p>&#10003; <strong>Affiliate management</strong> &mdash; invite, manage, and pay creators automatically</p>
-      <p>&#10003; <strong>Global product catalogue</strong> &mdash; sync your inventory once, sell everywhere</p>
+      <p>&#10003; <strong>Global product catalog</strong> &mdash; sync your inventory once, sell everywhere</p>
       <p>&#10003; <strong>Stripe Connect payouts</strong> &mdash; automated, compliant, instant</p>
     </div>
     <div class="cta-wrap">
@@ -373,7 +373,7 @@ export async function sendGlobalPitchEmail(opts: {
   `;
   await sendEmail(
     opts.prContactEmail,
-    `${opts.brandName} × Materialized — let's build your global creator programme`,
+    `${opts.brandName} × Materialized — let's build your global creator program`,
     baseTemplate(body)
   );
 }
@@ -494,7 +494,7 @@ export async function sendAffiliateInvitationEmail(opts: {
   const body = `
     <h1>You've been invited, ${firstName}!</h1>
     <p>
-      <strong>${opts.inviterName}</strong> has invited you to join their affiliate programme on
+      <strong>${opts.inviterName}</strong> has invited you to join their affiliate program on
       Materialized &mdash; earn commissions by promoting shoppable videos and driving sales.
     </p>
     <div class="video-box">
@@ -511,7 +511,7 @@ export async function sendAffiliateInvitationEmail(opts: {
   `;
   await sendEmail(
     opts.affiliateEmail,
-    `${opts.inviterName} invited you to join their affiliate programme on Materialized`,
+    `${opts.inviterName} invited you to join their affiliate program on Materialized`,
     baseTemplate(body)
   );
 }
@@ -643,4 +643,63 @@ export async function sendOpsAlertEmail(opts: {
     <p style="color:#888;font-size:12px;">Automated check from the MTRLZD scheduler.</p>
   `;
   await sendEmail(opts.to, `[MTRLZD ops] ${opts.subject}`, baseTemplate(body));
+}
+
+// ── Day-2 trial nurture ────────────────────────────────────────────────────
+export interface TrialFollowupEmailOpts {
+  to: string;
+  brandDisplayName: string;
+  /** Days left of the trial at send time, so the copy never overpromises. */
+  trialDaysLeft: number;
+  dashboardUrl: string;
+}
+
+/**
+ * Sent once, 48 hours after a brand starts their free trial. The client's
+ * brief, verbatim: it "explains as part of their free trial ... they can
+ * integrate their existing Affiliate program and invite five Content
+ * Creators to their account ... present their opportunity to integrate
+ * creator marketing into their e-commerce and maximize their sales revenue
+ * from video. This should be like icing on the cake."
+ */
+export function renderTrialFollowupEmailHtml(opts: TrialFollowupEmailOpts): string {
+  const body = `
+    <h1>You're set up, ${opts.brandDisplayName} — now bring your creators</h1>
+    <p>
+      Two days in, and the best part of your trial is still ahead: for the rest of
+      your free trial you can put <strong>creator marketing</strong> to work on your
+      own store.
+    </p>
+    <div style="background:#f7f7f5;border:1px solid #e8e8e8;border-radius:10px;padding:18px;margin:22px 0;">
+      <p style="margin:0 0 10px;font-weight:700;color:#202120;">Included in your trial:</p>
+      <p style="margin:0 0 8px;font-size:14px;color:#555;line-height:1.7;">
+        <strong>Connect your existing affiliate program</strong> — your current
+        partners and commission terms carry straight over, and every click and sale
+        from video is tracked back to the creator who made it.
+      </p>
+      <p style="margin:0;font-size:14px;color:#555;line-height:1.7;">
+        <strong>Invite five content creators</strong> to your account — they tag your
+        products in their videos, and their audiences shop what they see, on your
+        site, at your prices.
+      </p>
+    </div>
+    <p>
+      Brands using creator video turn an audience's attention into store revenue
+      without making a single ad. Your shelf is already in their videos — this
+      makes it shoppable.
+    </p>
+    <div class="cta-wrap">
+      <a href="${opts.dashboardUrl}" class="cta">Invite Your Creators</a>
+    </div>
+    <p class="note">You're on a free trial with ${opts.trialDaysLeft} day${opts.trialDaysLeft === 1 ? "" : "s"} to go — no card on file, nothing charged.</p>
+  `;
+  return baseTemplate(body);
+}
+
+export async function sendTrialFollowupEmail(opts: TrialFollowupEmailOpts): Promise<void> {
+  await sendEmail(
+    opts.to,
+    "Your trial's best feature: creators selling for you",
+    renderTrialFollowupEmailHtml(opts),
+  );
 }

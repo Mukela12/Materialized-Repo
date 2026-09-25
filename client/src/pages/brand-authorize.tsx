@@ -59,7 +59,7 @@ export default function BrandAuthorize() {
             {isUsed ? (
               <>
                 <CheckCircle className="w-12 h-12 text-[#1351aa] mx-auto mb-4" />
-                <h1 className="text-white text-xl font-bold mb-2">Already Authorised</h1>
+                <h1 className="text-white text-xl font-bold mb-2">Already Authorized</h1>
                 <p className="text-white/60 text-sm">
                   This link has already been used. Please check your email for the Materialized Brand Agreement.
                 </p>
@@ -69,7 +69,7 @@ export default function BrandAuthorize() {
                 <AlertCircle className="w-12 h-12 text-red-400 mx-auto mb-4" />
                 <h1 className="text-white text-xl font-bold mb-2">Link Not Found</h1>
                 <p className="text-white/60 text-sm">
-                  This authorisation link is invalid or has expired.
+                  This authorization link is invalid or has expired.
                 </p>
               </>
             )}
@@ -92,7 +92,7 @@ export default function BrandAuthorize() {
             </div>
             <h1 className="text-white text-2xl font-bold mb-3">You're all set, {firstName}!</h1>
             <p className="text-white/70 text-sm leading-relaxed mb-6">
-              Thank you for authorising this collaboration. We've sent you an email with the
+              Thank you for authorizing this collaboration. We've sent you an email with the
               <strong className="text-white"> Materialized Brand Agreement</strong> (via DocuSign).
               Once signed, you'll receive the embeddable code to publish the shoppable video on your website.
             </p>

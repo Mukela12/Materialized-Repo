@@ -17,7 +17,7 @@
  * Through this helper the same ten thousand views cost roughly $9.
  *
  * ── Why a URL in and a URL out ───────────────────────────────────────────────
- * `getOptimizedVideoUrl` in cloudinaryService.ts already built optimised URLs
+ * `getOptimizedVideoUrl` in cloudinaryService.ts already built optimized URLs
  * and was called from nowhere, because it takes a publicId while the database
  * stores whole URLs. Two places in the embed path therefore hand-rolled their
  * own `.replace("/upload/", "/upload/q_auto,f_auto,w_720/")` — with different
@@ -27,7 +27,7 @@
  * ── Idempotent on purpose ────────────────────────────────────────────────────
  * A URL that already carries a transformation is returned unchanged rather than
  * having a second segment stacked in front of it. Stored URLs, hand-written
- * marketing URLs and already-optimised URLs all pass through the same call
+ * marketing URLs and already-optimized URLs all pass through the same call
  * sites, and `w_1080/w_640/<file>` is not a URL Cloudinary serves.
  */
 

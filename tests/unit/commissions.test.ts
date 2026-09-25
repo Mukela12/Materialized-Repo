@@ -13,7 +13,7 @@ beforeEach(() => {
   // The PLATFORM default creator rate is 0 (creators are paid by brands directly
   // — see server/feeConfig.ts). These tests exercise the creator-commission
   // MECHANISM, which still has to work whenever an admin sets a rate, so they pin
-  // an explicit 8%. Default-rate behaviour is covered in fee-split.test.ts.
+  // an explicit 8%. Default-rate behavior is covered in fee-split.test.ts.
   process.env.CREATOR_COMMISSION_PCT = '8';
 });
 

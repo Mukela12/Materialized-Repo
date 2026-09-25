@@ -33,7 +33,7 @@ import {
 } from "@shared/playlistStyle";
 import { withAlpha } from "@shared/carousel";
 
-/** Colour swatch + hex field, kept in step. Same control as the carousel editor. */
+/** Color swatch + hex field, kept in step. Same control as the carousel editor. */
 function ColorField({
   label, value, onChange, testId, disabledReason,
 }: {
@@ -41,7 +41,7 @@ function ColorField({
   /**
    * Why this control currently does nothing.
    *
-   * A colour picker that stores a value nothing renders is the exact shape of
+   * A color picker that stores a value nothing renders is the exact shape of
    * bug this project keeps producing: the setting saves, the picture does not
    * change, and the only conclusion available is that the feature is broken. If
    * a control cannot show its effect, it says so rather than accepting input
@@ -240,13 +240,13 @@ export function PlaylistStyleEditor({
             </div>
 
             <ColorField
-              label="Border colour"
+              label="Border color"
               value={style.frameBorderColor}
               onChange={(v) => set("frameBorderColor", v)}
               testId="frame-border-color"
               disabledReason={
                 !style.frameShow
-                  ? "The frame is hidden, so there is no border to colour."
+                  ? "The frame is hidden, so there is no border to color."
                   : style.frameBorderWidth === 0
                     ? "Set a border width above to use this."
                     : undefined
@@ -294,7 +294,7 @@ export function PlaylistStyleEditor({
             </div>
 
             <ColorField
-              label="Play button colour"
+              label="Play button color"
               value={style.playButtonColor}
               onChange={(v) => set("playButtonColor", v)}
               testId="play-button-color"
@@ -334,7 +334,7 @@ export function PlaylistStyleEditor({
               />
             </div>
             <ColorField
-              label="Audio icon colour"
+              label="Audio icon color"
               value={style.audioIconColor}
               onChange={(v) => set("audioIconColor", v)}
               testId="audio-icon-color"

@@ -14,7 +14,7 @@ export const DEFAULT_PLAN: PlanKey = 'starter';
 
 /**
  * Amount (in cents) → plan key. Derived from PLAN_CONFIG so a new tier can never
- * be added to the catalogue without the webhook fallback learning about it —
+ * be added to the catalog without the webhook fallback learning about it —
  * a missing entry here silently records the subscriber on DEFAULT_PLAN.
  */
 export const PLAN_AMOUNT_FALLBACK: Record<number, PlanKey> = Object.fromEntries(

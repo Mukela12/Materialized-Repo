@@ -132,7 +132,7 @@ export default function Cookies() {
         <p>
           Materialized does not set advertising cookies, does not run a third-party
           advertising pixel, and does not use a general-purpose web analytics tracker on
-          this site. We do not sell or share cookie data for cross-context behavioural
+          this site. We do not sell or share cookie data for cross-context behavioral
           advertising.
         </p>
         <p>

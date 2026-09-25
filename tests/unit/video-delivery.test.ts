@@ -8,7 +8,7 @@
  * cosmetic — "the transform is actually present" is the margin.
  *
  * The failure mode most worth pinning is DOUBLE application. Stored URLs,
- * hand-written marketing URLs and already-optimised embed URLs all flow through
+ * hand-written marketing URLs and already-optimized embed URLs all flow through
  * the same call sites, and `w_1080/w_720/<file>` is not a URL Cloudinary serves
  * — it is a broken player with no error in the console.
  */

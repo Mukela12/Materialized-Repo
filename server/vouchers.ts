@@ -30,12 +30,12 @@ export interface VoucherRecord {
   brandUserId: string | null;
   roleRestriction: string | null;
   maxRedemptions: number | null;
-  /** Null means usable immediately — the behaviour before the column existed. */
+  /** Null means usable immediately — the behavior before the column existed. */
   activeFrom: Date | null;
   expiresAt: Date | null;
   /**
    * Free period in days from redemption. NULL = free until expiresAt, the
-   * festival behaviour. The influencer campaign is the other shape: the code
+   * festival behavior. The influencer campaign is the other shape: the code
    * redeems until 31 October, but each signup gets its own 30 days.
    */
   freeDays: number | null;

@@ -1,7 +1,7 @@
 /**
  * Shared shell for the public legal pages (/privacy, /cookies).
  *
- * Colours are hardcoded rather than using the `bg-card` / `text-foreground` theme
+ * Colors are hardcoded rather than using the `bg-card` / `text-foreground` theme
  * tokens on purpose: these pages are linked from the dark landing footer and are
  * reachable logged-out, so a light-mode visitor must still get the dark treatment.
  * Same approach the landing page takes.

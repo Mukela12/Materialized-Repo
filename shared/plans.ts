@@ -1,5 +1,5 @@
 /**
- * Subscription plan catalogue — the single source of truth for both server and client.
+ * Subscription plan catalog — the single source of truth for both server and client.
  *
  * The KEYS ('creator' | 'starter' | 'pro') are stable identifiers. They are written
  * into live Stripe product/price metadata (`metadata.plan`) and persisted in
@@ -42,7 +42,7 @@ export function isPlanKey(value: unknown): value is PlanKey {
  * `plan` gates nothing server-side (entitlement keys off subscription STATUS, not
  * tier), so the endpoint allowlist is the only thing stopping a brand from buying
  * the cheaper Creator tier and receiving the full Brand/Publisher feature set.
- * Validate against these, not against the whole catalogue.
+ * Validate against these, not against the whole catalog.
  *
  * CREATOR_PLANS stays permissive on purpose: creators who subscribed before the
  * Creator tier existed hold 'starter'/'pro' and must still be able to transact.
@@ -143,7 +143,7 @@ export function setupFeeMajor(): number {
  * overage, just like the other user types." Each account has its own allowance
  * and pays for its own usage. That is why `estimateBill` takes no publisher
  * count — it was removed rather than defaulted, so nobody can pass one and
- * quietly get the old behaviour.
+ * quietly get the old behavior.
  *
  * ── Still not authoritative ──────────────────────────────────────────────────
  * Nothing BILLS from these. They drive an on-screen estimate. Views are recorded

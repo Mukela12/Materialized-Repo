@@ -452,7 +452,7 @@ export default function PlaylistsPage() {
             {/* ── Styling ──────────────────────────────────────────────────
                 Shown in EVERY state, deliberately. isPlaylistLocked freezes a
                 playlist's CONTENTS once it is paid for, because it is priced per
-                video — none of which is a reason to refuse a border colour. The
+                video — none of which is a reason to refuse a border color. The
                 main case for this screen is a publisher looking at the embed on
                 their own site and wanting the frame a shade darker; locking it
                 would mean re-licensing every video to change a corner radius. */}

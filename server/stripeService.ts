@@ -1,7 +1,7 @@
 import { getUncachableStripeClient } from './stripeClient';
 import { getPlatformCurrency, feeInvoiceAutoCharge } from './feeConfig';
 
-// Plan catalogue lives in shared/ so the client renders exactly the amounts the
+// Plan catalog lives in shared/ so the client renders exactly the amounts the
 // server charges. See shared/plans.ts for why the keys must never be renamed.
 export {
   PLAN_CONFIG, PLAN_KEYS, isPlanKey, planPriceMajor,
@@ -272,7 +272,7 @@ export class StripeService {
    *
    * Why a customer credit balance and not a coupon or a discounted price: a coupon
    * is a discount on the PRICE and recurs (or needs per-customer promo-code
-   * plumbing); a discounted price forks the catalogue and breaks
+   * plumbing); a discounted price forks the catalog and breaks
    * findOrCreateSubscriptionPrice's `unit_amount === config.amount` match, minting
    * a duplicate price on every checkout. The credit balance is a customer-level
    * ledger Stripe drains automatically at invoice finalization, leaves the

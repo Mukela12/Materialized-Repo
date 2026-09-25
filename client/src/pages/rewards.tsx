@@ -42,7 +42,7 @@ const QUALIFYING_PLAN_PRICE = planPriceMajor("starter");
 /**
  * Token terms, per the client's request for a T&C accordion on this page.
  *
- * Every line here is a statement about behaviour this codebase actually has, not
+ * Every line here is a statement about behavior this codebase actually has, not
  * boilerplate. Sources, so a future edit can re-check rather than guess:
  *   - $49/token, the three sinks, never-cashable  → server/wallet.ts module doc
  *   - append-only, balance = SUM(delta_tokens)    → shared/schema.ts tokenLedger

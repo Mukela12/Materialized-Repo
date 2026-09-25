@@ -1,5 +1,5 @@
 /**
- * Category badge colours.
+ * Category badge colors.
  *
  * ── Why solid, and why one copy ──────────────────────────────────────────────
  * These badges sit ON TOP OF a video thumbnail. They were `bg-pink-500/15` and
@@ -10,7 +10,7 @@
  * thumbnail background."
  *
  * The map existed in FOUR places (VideoCard, library, brand-library,
- * affiliate-library) with the fallback colour already drifting between them —
+ * affiliate-library) with the fallback color already drifting between them —
  * `bg-muted` in two, `bg-muted/50` in the others. One copy now.
  *
  * ON_THUMBNAIL is opaque, with white text and a shadow, because it must survive

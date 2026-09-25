@@ -96,7 +96,7 @@ describe("when the money left but the ledger write failed", () => {
       markCommissionsPaid: async () => { throw new Error("db write failed"); },
     }));
 
-    // The old behaviour put this in `failed`, the commissions stayed approved,
+    // The old behavior put this in `failed`, the commissions stayed approved,
     // and the next run paid the same debt again on top of a landed transfer.
     expect(summary.failed).toHaveLength(0);
     expect(summary.needsReconciliation).toHaveLength(1);

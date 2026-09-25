@@ -2,9 +2,9 @@
  * Nothing creator-controlled reaches a stylesheet unvalidated.
  *
  * ── Why this is a security boundary and not a tidiness one ───────────────────
- * Carousel colours and fonts are free-text columns a creator controls. The
+ * Carousel colors and fonts are free-text columns a creator controls. The
  * embed is server-rendered HTML that runs INSIDE A BRAND'S OWN PAGE. So a
- * colour of
+ * color of
  *     #fff;} #pay{display:none} .x{
  * closes the rule it is written into and appends arbitrary CSS to a third
  * party's site: hide the checkout, cover the video, overlay anything anywhere.
@@ -13,7 +13,7 @@
  * The storage path offers no protection — the columns are `text`, and the admin
  * screen is not the only way to write them.
  *
- * The rule is fall back, not escape. An invalid colour has no correct
+ * The rule is fall back, not escape. An invalid color has no correct
  * rendering, so the default is the only safe reading of it.
  */
 import { describe, it, expect } from "vitest";
@@ -35,20 +35,20 @@ const CSS_BREAKOUTS = [
   "#fff\n}\n#carousel{opacity:0}",
 ];
 
-describe("colours", () => {
+describe("colors", () => {
   it("refuses every CSS break-out and falls back", () => {
     for (const payload of CSS_BREAKOUTS) {
       expect(safeColor(payload, "#1351aa"), `accepted: ${payload}`).toBe("#1351aa");
     }
   });
 
-  it("accepts the two hex forms a colour input actually produces", () => {
+  it("accepts the two hex forms a color input actually produces", () => {
     expect(safeColor("#1f1b6d", "#000000")).toBe("#1f1b6d");
     expect(safeColor("#FFF", "#000000")).toBe("#FFF");
     expect(safeColor("  #abc  ", "#000000")).toBe("#abc");
   });
 
-  it("refuses anything that is not a hex colour", () => {
+  it("refuses anything that is not a hex color", () => {
     for (const v of ["", "red", "1f1b6d", "#12345", "#gggggg", null, undefined, 42, {}]) {
       expect(safeColor(v, "#1351aa")).toBe("#1351aa");
     }
@@ -153,7 +153,7 @@ describe("sanitising a whole settings object", () => {
     expect(sanitiseSettings(undefined)).toEqual(CAROUSEL_DEFAULTS);
   });
 
-  it("produces colours that withAlpha can always parse", () => {
+  it("produces colors that withAlpha can always parse", () => {
     // withAlpha returns its input untouched on junk. Feeding it sanitised
     // values is what guarantees it never emits a raw payload into a rule.
     const out = sanitiseSettings({ carouselBackgroundColor: "#fff;}x{" } as any);

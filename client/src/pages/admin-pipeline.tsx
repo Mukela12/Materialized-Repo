@@ -91,7 +91,7 @@ const STAGE_ORDER = [
 const STAGE_CONFIG: Record<string, { label: string; color: string; icon: any; bg: string }> = {
   pending:        { label: "Pending",          color: "text-gray-500",   icon: Clock,          bg: "bg-gray-100 dark:bg-gray-800" },
   email_sent:     { label: "Email Sent",        color: "text-blue-600",   icon: Mail,           bg: "bg-blue-50 dark:bg-blue-900/20" },
-  authorized:     { label: "Authorised",        color: "text-amber-600",  icon: CheckCircle2,   bg: "bg-amber-50 dark:bg-amber-900/20" },
+  authorized:     { label: "Authorized",        color: "text-amber-600",  icon: CheckCircle2,   bg: "bg-amber-50 dark:bg-amber-900/20" },
   agreement_sent: { label: "Agreement Sent",    color: "text-purple-600", icon: FileSignature,  bg: "bg-purple-50 dark:bg-purple-900/20" },
   completed:      { label: "Signed",            color: "text-green-600",  icon: FileSignature,  bg: "bg-green-50 dark:bg-green-900/20" },
   declined:       { label: "Declined",          color: "text-red-600",    icon: AlertCircle,    bg: "bg-red-50 dark:bg-red-900/20" },
@@ -1588,7 +1588,7 @@ export default function AdminPipeline() {
   const { data: pipeline = [], isLoading, refetch } = useQuery<PipelineEntry[]>({
     queryKey: ["/api/admin/pipeline"],
     queryFn: () => fetch("/api/admin/pipeline").then(r => {
-      if (!r.ok) throw new Error("Not authorised");
+      if (!r.ok) throw new Error("Not authorized");
       return r.json();
     }),
     retry: false,
@@ -1704,7 +1704,7 @@ export default function AdminPipeline() {
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3 mb-8">
           {[
             { label: "Total Outreach", value: stats.total, icon: Mail, color: "text-blue-600" },
-            { label: "Authorised", value: stats.authorized, icon: CheckCircle2, color: "text-amber-600" },
+            { label: "Authorized", value: stats.authorized, icon: CheckCircle2, color: "text-amber-600" },
             { label: "Agreement Opened", value: stats.agreementStarted, icon: Clock, color: "text-yellow-600" },
             { label: "Agreement Signed", value: stats.agreementSigned, icon: FileSignature, color: "text-green-600" },
             { label: "Subscribed", value: stats.subscribed, icon: CreditCard, color: "text-emerald-600" },
@@ -1725,7 +1725,7 @@ export default function AdminPipeline() {
           {[
             { value: "all", label: "All" },
             { value: "email_sent", label: "Email Sent" },
-            { value: "authorized", label: "Authorised" },
+            { value: "authorized", label: "Authorized" },
             { value: "agreement_started", label: "Agmt Opened" },
             { value: "agreement_signed", label: "Agmt Signed" },
             { value: "subscribed", label: "Subscribed" },
@@ -1835,7 +1835,7 @@ export default function AdminPipeline() {
                         <div className="grid grid-cols-5 gap-2">
                           {[
                             { label: "Email Sent", ts: entry.createdAt, done: stage >= 1 },
-                            { label: "Authorised", ts: entry.authorizedAt, done: stage >= 2 },
+                            { label: "Authorized", ts: entry.authorizedAt, done: stage >= 2 },
                             { label: "Agmt Opened", ts: entry.agreementStartedAt, done: stage >= 3 },
                             { label: "Agmt Signed", ts: entry.agreementSignedAt, done: stage >= 4 },
                             { label: "Subscribed", ts: entry.brandSubscribedAt, done: stage >= 5 },

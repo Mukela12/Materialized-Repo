@@ -115,7 +115,7 @@ export function registerAuthRoutes(app: Express) {
      * Voucher validation happens BEFORE the account is created, so a bad code
      * can be reported instead of silently producing an ordinary account.
      *
-     * The old behaviour compared one env-var string and, on a mismatch, created
+     * The old behavior compared one env-var string and, on a mismatch, created
      * the account anyway with no free access and no message. A creator handed a
      * voucher by their brand would type it, get a normal trial, and never learn
      * it had not worked — nor would the brand, until they asked why their people

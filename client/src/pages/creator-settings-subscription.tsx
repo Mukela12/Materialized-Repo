@@ -44,7 +44,7 @@ const PLANS: {
     label: "Creator",
     price: price("creator"),
     period: "/ month",
-    description: "For creators monetising their videos",
+    description: "For creators monetizing their videos",
     popular: true,
     features: [
       "Unlimited shoppable videos",

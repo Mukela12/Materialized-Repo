@@ -41,7 +41,7 @@ export default function Referrals() {
         <div>
           <h1 className="text-2xl md:text-3xl font-bold tracking-tight">My Brand Partners</h1>
           <p className="text-muted-foreground mt-1">
-            Upload your video, tag a brand, and monetise it. Tag a brand and you earn
+            Upload your video, tag a brand, and monetize it. Tag a brand and you earn
             tokens and in-app credits when they subscribe.
           </p>
         </div>

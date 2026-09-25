@@ -8,9 +8,9 @@
  * single time the carousel changed:
  *
  *   - the Brand Kit copy honoured two of the eight positions, so "bottom-right"
- *     drew bottom-centre and the client concluded the option did not exist;
+ *     drew bottom-center and the client concluded the option did not exist;
  *   - when the panel became colourable, one copy was updated and the other kept
- *     `rgba(0,0,0,…)` hard-coded, so choosing a colour appeared to do nothing.
+ *     `rgba(0,0,0,…)` hard-coded, so choosing a color appeared to do nothing.
  *
  * Both times the setting saved correctly and only the picture was wrong, which
  * is the hardest kind of fault for a client to report: it looks like the
@@ -120,7 +120,7 @@ export function CarouselMockup({
       )}
 
       <div className="flex-1 min-w-0">
-        {/* The brand name — what brandTitleColor colours. Previously the
+        {/* The brand name — what brandTitleColor colors. Previously the
             carousel showed no brand line at all, so that control had nothing
             of its own to affect and had been pointed at the price instead. */}
         {settings.showTitle && (
@@ -152,8 +152,8 @@ export function CarouselMockup({
           <p
             style={{
               // The price sits with the product, so it follows the product
-              // title's colour. Binding it to brandTitleColor is what made
-              // "Brand title colour" appear to control the price.
+              // title's color. Binding it to brandTitleColor is what made
+              // "Brand title color" appear to control the price.
               color: settings.productTitleColor,
               opacity: 0.8,
               fontSize: px(10 * (settings.priceFontSize / 100)),
@@ -169,7 +169,7 @@ export function CarouselMockup({
           type="button"
           className="px-2 py-1 flex-shrink-0 font-medium transition-colors"
           style={{
-            // Hovering is the only way to judge a hover colour, so the mock-up
+            // Hovering is the only way to judge a hover color, so the mock-up
             // is genuinely hoverable rather than showing a static swatch.
             backgroundColor: hovered ? settings.buttonHoverColor : buttonBackground(settings),
             color: settings.buttonTextColor,

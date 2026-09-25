@@ -49,7 +49,7 @@ interface VoucherRow {
   batchId: string | null;
   /** Who it was handed to. Free text: most recipients have no account yet. */
   assignedTo: string | null;
-  /** Which partner within that batch. Filled in by the organiser, not by us. */
+  /** Which partner within that batch. Filled in by the organizer, not by us. */
   partner: string | null;
   /** Who actually redeemed it, once someone has. */
   redeemedBy: string | null;
@@ -137,7 +137,7 @@ export function VoucherManager() {
   });
 
   /**
-   * Read the PARTNER column back out of the organiser's spreadsheet.
+   * Read the PARTNER column back out of the organizer's spreadsheet.
    *
    * Parsed in the browser and posted as rows, matching the creator-invite
    * importer — the server never sees a file, and only code+partner crosses.
@@ -422,7 +422,7 @@ export function VoucherManager() {
                 shown, [
                 { header: "Code", value: (v) => v.code },
                 // PARTNER sits second, right beside the code, because it is the
-                // column the organiser is being asked to fill in — at the far
+                // column the organizer is being asked to fill in — at the far
                 // right of eleven columns it is missed.
                 { header: "PARTNER", value: (v) => v.partner ?? "" },
                 { header: "Given to", value: (v) => v.assignedTo ?? "" },
@@ -562,7 +562,7 @@ export function VoucherManager() {
                       </td>
                       {/* PARTNER — which brand within the batch, editable here.
                           The CSV round trip still exists for a file coming back
-                          from an organiser, but the festivals are "an ever
+                          from an organizer, but the festivals are "an ever
                           changing arrangement of brands", so the common case is
                           correcting one row rather than exchanging spreadsheets. */}
                       <td className="py-2 pr-4">

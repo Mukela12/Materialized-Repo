@@ -5,7 +5,7 @@
  * Eight positions are offered, saved and enforced. The upload editor drew all
  * eight. The Brand Kit preview drew TWO — `items-start` for "top", `items-end`
  * for everything else — so "bottom-right", "left" and "top-left" all rendered
- * bottom-centre. The setting was stored correctly the whole time; only the
+ * bottom-center. The setting was stored correctly the whole time; only the
  * picture lied.
  *
  * That is worse than having no preview. The client's report was that the
@@ -38,18 +38,18 @@ describe("every position is distinct", () => {
 });
 
 describe("anchoring", () => {
-  it("anchors the four corners to two edges each, and neither centres", () => {
+  it("anchors the four corners to two edges each, and neither centers", () => {
     for (const p of ["top-left", "top-right", "bottom-left", "bottom-right"] as const) {
       const s = carouselPositionStyles(p);
       const [vertical, horizontal] = p.split("-");
       expect(s[vertical as "top" | "bottom"]).toBeDefined();
       expect(s[horizontal as "left" | "right"]).toBeDefined();
-      // A corner that also centres would fight its own anchor.
+      // A corner that also centers would fight its own anchor.
       expect(s.transform).toBeUndefined();
     }
   });
 
-  it("centres top and bottom horizontally", () => {
+  it("centers top and bottom horizontally", () => {
     for (const p of ["top", "bottom"] as const) {
       const s = carouselPositionStyles(p);
       expect(s.left).toBe("50%");
@@ -57,7 +57,7 @@ describe("anchoring", () => {
     }
   });
 
-  it("centres left and right vertically", () => {
+  it("centers left and right vertically", () => {
     for (const p of ["left", "right"] as const) {
       const s = carouselPositionStyles(p);
       expect(s.top).toBe("50%");
@@ -65,7 +65,7 @@ describe("anchoring", () => {
     }
   });
 
-  it("falls back to bottom-centre for an unknown value rather than throwing", () => {
+  it("falls back to bottom-center for an unknown value rather than throwing", () => {
     // Stored data predates the enum; a null or a typo must still render.
     const s = carouselPositionStyles("nonsense");
     expect(s.bottom).toBeDefined();

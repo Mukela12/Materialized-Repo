@@ -2,7 +2,7 @@
  * Turning a saved brand kit into carousel settings for a new video.
  *
  * The upload modal ignored the brand kit entirely — every video started from the
- * generic defaults, so a brand that had set its colours, font and button label
+ * generic defaults, so a brand that had set its colors, font and button label
  * had to redo that work on every upload. The Brand Kit page meanwhile told them
  * "These settings will be applied to all new video uploads".
  *
@@ -11,7 +11,7 @@
  * null or ""), and dropping a field when CarouselSettings grows. Both are pinned
  * below. `default_button_color` is nullable, and an empty string rather than
  * NULL has already been observed in this database in the equivalent video
- * thumbnail column — so "" must be treated as unset, not as a colour.
+ * thumbnail column — so "" must be treated as unset, not as a color.
  */
 import { describe, it, expect } from "vitest";
 import {

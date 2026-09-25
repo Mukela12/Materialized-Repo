@@ -5,9 +5,9 @@
  * missed --cta, so every default Button stayed green. The second sweep fixed
  * --cta and missed the product-carousel defaults, which were hardcoded in five
  * separate files — so a creator opening the upload modal still met a green BUY
- * NOW, and so did any brand that had never picked a colour.
+ * NOW, and so did any brand that had never picked a color.
  *
- * Both misses have the same shape: a colour written as a literal in more than
+ * Both misses have the same shape: a color written as a literal in more than
  * one place cannot be changed in one edit, and a grep for the *chrome* does not
  * find the *defaults*. These tests pin both properties — no hardcoded green
  * anywhere, and one definition for the carousel default.
@@ -39,8 +39,8 @@ function walk(dir: string, out: string[] = []): string[] {
 const FILES = ROOTS.flatMap((r) => walk(r));
 
 describe("the retired green", () => {
-  it("appears in no source file as a colour value", () => {
-    // Quoted or in a CSS declaration — i.e. actually used as a colour. A prose
+  it("appears in no source file as a color value", () => {
+    // Quoted or in a CSS declaration — i.e. actually used as a color. A prose
     // mention in a comment explaining the history is fine and deliberate.
     const asValue = /(["'`]#314d3b["'`]|:\s*#314d3b\b)/i;
 
@@ -50,7 +50,7 @@ describe("the retired green", () => {
   });
 });
 
-describe("the carousel default colour", () => {
+describe("the carousel default color", () => {
   it("is the MTRLZD accent, not a green", () => {
     expect(CAROUSEL_DEFAULT_BUTTON_COLOR.toLowerCase()).toBe("#1351aa");
     expect(CAROUSEL_DEFAULT_BUTTON_TEXT_COLOR.toUpperCase()).toBe("#FFFFFF");
@@ -64,7 +64,7 @@ describe("the carousel default colour", () => {
 
   it("is what every carousel default object uses", () => {
     // Each of these declares a default carousel settings object. If one grows a
-    // literal colour again, the import disappears and this fails.
+    // literal color again, the import disappears and this fails.
     for (const f of [
       "client/src/components/ProductCarouselEditor.tsx",
       "client/src/components/VideoProductCarousel.tsx",

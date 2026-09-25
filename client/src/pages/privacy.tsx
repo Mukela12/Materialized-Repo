@@ -77,7 +77,7 @@ export default function Privacy() {
           </li>
           <li>
             <strong className="text-white/80">Content you submit.</strong> Videos,
-            thumbnails, images, product catalogues, campaign briefs, playlists and any
+            thumbnails, images, product catalogs, campaign briefs, playlists and any
             other material you upload or import into the Service.
           </li>
           <li>
@@ -236,7 +236,7 @@ export default function Privacy() {
           If you are a California resident, you may additionally have the right to know
           what personal information is collected and disclosed, to request deletion or
           correction, and not to be discriminated against for exercising those rights.
-          We do not sell or share personal information for cross-context behavioural
+          We do not sell or share personal information for cross-context behavioral
           advertising.
         </p>
         <p>
@@ -259,7 +259,7 @@ export default function Privacy() {
 
       <LegalSection heading="11. Security">
         <p>
-          We use technical and organisational measures appropriate to the risk, including
+          We use technical and organizational measures appropriate to the risk, including
           encryption in transit (HTTPS), hashed passwords, HTTP-only session cookies,
           role-based access controls, encryption of sensitive stored credentials, rate
           limiting, and audit logging. No system is perfectly secure, and we cannot

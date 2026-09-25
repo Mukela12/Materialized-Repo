@@ -314,7 +314,7 @@ export interface IStorage {
    * Set the partner on one code from the admin table.
    *
    * The CSV import (setVoucherPartners) stays for a whole batch coming back from
-   * an organiser; this is the single-row edit, for the far commoner case of
+   * an organizer; this is the single-row edit, for the far commoner case of
    * fixing one entry or filling them in by hand.
    */
   setVoucherPartner(id: string, partner: string | null): Promise<boolean>;
@@ -369,6 +369,16 @@ export interface IStorage {
     videoId: string; userId: string; videoUrl: string;
     freeAccessEndedAt: Date | null; embedCount: number; licenseCount: number;
   }>>;
+  /**
+   * Brands due the day-2 trial nurture email: trial signups (no voucher
+   * redemption) whose account is 48+ hours old, still inside the trial
+   * window, and not yet emailed. The 14-day age ceiling means a deploy after
+   * downtime cannot mail months-old accounts about a trial they no longer have.
+   */
+  getBrandsDueTrialFollowup(now: Date): Promise<Array<{
+    id: string; email: string; displayName: string | null; freeAccessUntil: Date | null;
+  }>>;
+  markTrialFollowupSent(userId: string, at: Date): Promise<void>;
   /** Stamp the file as reclaimed and take the video out of circulation. */
   markVideoMediaDeleted(videoId: string, at: Date): Promise<void>;
   /**
@@ -2320,7 +2330,7 @@ export class MemStorage implements IStorage {
         videoUrl: v.videoUrl,
         freeAccessEndedAt: u.freeAccessUntil ?? null,
         embedCount: Array.from(this.embedDeploymentsMap.values()).filter((e: any) => e.videoId === v.id).length,
-        // Through the global listing, exactly as the SQL does — a licence
+        // Through the global listing, exactly as the SQL does — a license
         // purchase has no videoId of its own.
         licenseCount: (() => {
           const listingIds = new Set(
@@ -2338,6 +2348,25 @@ export class MemStorage implements IStorage {
   async markVideoMediaDeleted(videoId: string, at: Date): Promise<void> {
     const v: any = this.videos.get(videoId);
     if (v) { v.mediaDeletedAt = at; v.status = "archived"; }
+  }
+
+  async getBrandsDueTrialFollowup(now: Date): Promise<Array<{ id: string; email: string; displayName: string | null; freeAccessUntil: Date | null }>> {
+    const out: any[] = [];
+    const redeemedUserIds = new Set(this.voucherRedemptionsList?.map((r: any) => r.userId) ?? []);
+    for (const u of Array.from(this.users.values()) as any[]) {
+      if (u.role !== "brand" || u.isAdmin || u.trialFollowupEmailSentAt) continue;
+      if (!u.freeAccess || !u.freeAccessUntil) continue;
+      if (redeemedUserIds.has(u.id)) continue; // voucher window, not a trial
+      const created = new Date(u.createdAt).getTime();
+      const ageHours = (now.getTime() - created) / 3_600_000;
+      if (ageHours >= 48 && ageHours <= 14 * 24) out.push({ id: u.id, email: u.email, displayName: u.displayName ?? null, freeAccessUntil: u.freeAccessUntil });
+    }
+    return out;
+  }
+
+  async markTrialFollowupSent(userId: string, at: Date): Promise<void> {
+    const u: any = this.users.get(userId);
+    if (u) u.trialFollowupEmailSentAt = at;
   }
 
   async findVideoByBunnyGuid(guid: string): Promise<Video | undefined> {
@@ -2402,7 +2431,7 @@ export class MemStorage implements IStorage {
   }
 
   // ── Platform fee accruals ──────────────────────────────────────────────────
-  // In-memory mirror of the DatabaseStorage behaviour, including the unique
+  // In-memory mirror of the DatabaseStorage behavior, including the unique
   // (store_connection_id, external_order_id) guard — which is thrown as a 23505
   // so recordFeeAccrual's dedup path behaves identically here.
   private feeAccrualsMap = new Map<string, any>();
@@ -4212,7 +4241,7 @@ export class DatabaseStorage implements IStorage {
       // undefined activeFrom reads as "no start date" and the code redeems early.
       activeFrom: row.activeFrom, expiresAt: row.expiresAt, revokedAt: row.revokedAt,
       // Omitting freeDays would silently revert a rolling code to fixed-date
-      // behaviour — everyone free until 31 Oct instead of 30 days each.
+      // behavior — everyone free until 31 Oct instead of 30 days each.
       freeDays: row.freeDays ?? null,
     } : null;
   }
@@ -4283,7 +4312,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   /**
-   * Write the partner column back from the organiser's spreadsheet.
+   * Write the partner column back from the organizer's spreadsheet.
    *
    * Matched on the canonical code — the same letters-and-digits comparison
    * redemption uses — because a spreadsheet round-trip is exactly where a code
@@ -4422,9 +4451,9 @@ export class DatabaseStorage implements IStorage {
       videoUrl: videos.videoUrl,
       freeAccessEndedAt: users.freeAccessUntil,
       embedCount: sql<number>`(select count(*)::int from ${embedDeployments} e where e.video_id = ${videos.id})`,
-      // A licence is bought against a global-library LISTING, not a video, so
+      // A license is bought against a global-library LISTING, not a video, so
       // the count goes through that listing. Getting this wrong reads as zero
-      // licences, which is the answer that permits deletion.
+      // licenses, which is the answer that permits deletion.
       licenseCount: sql<number>`(
         select count(*)::int
         from ${videoLicensePurchases} l
@@ -4449,6 +4478,28 @@ export class DatabaseStorage implements IStorage {
     await db.update(videos)
       .set({ mediaDeletedAt: at, status: "archived" })
       .where(eq(videos.id, videoId));
+  }
+
+  async getBrandsDueTrialFollowup(now: Date): Promise<Array<{ id: string; email: string; displayName: string | null; freeAccessUntil: Date | null }>> {
+    const cutoffNew = new Date(now.getTime() - 48 * 3_600_000);
+    const cutoffOld = new Date(now.getTime() - 14 * 24 * 3_600_000);
+    return await db.select({
+      id: users.id, email: users.email, displayName: users.displayName, freeAccessUntil: users.freeAccessUntil,
+    }).from(users)
+      .where(and(
+        eq(users.role, "brand"),
+        eq(users.freeAccess, true),
+        sql`${users.freeAccessUntil} is not null`,
+        sql`${users.trialFollowupEmailSentAt} is null`,
+        sql`coalesce(${users.isAdmin}, false) = false`,
+        sql`${users.createdAt} <= ${cutoffNew}`,
+        sql`${users.createdAt} >= ${cutoffOld}`,
+        sql`not exists (select 1 from voucher_redemptions vr where vr.user_id = ${users.id})`,
+      ));
+  }
+
+  async markTrialFollowupSent(userId: string, at: Date): Promise<void> {
+    await db.update(users).set({ trialFollowupEmailSentAt: at }).where(eq(users.id, userId));
   }
 
   async findVideoByBunnyGuid(guid: string): Promise<Video | undefined> {

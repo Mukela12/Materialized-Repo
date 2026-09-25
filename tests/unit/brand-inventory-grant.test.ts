@@ -3,7 +3,7 @@
  *
  * The gate has exactly two independent grants:
  *   (a) an unexpired admin window  — the "$29 paid, no subscription" case
- *   (b) an active subscription     — pre-existing behaviour, must not regress
+ *   (b) an active subscription     — pre-existing behavior, must not regress
  *
  * These tests pin the decision itself. The rule is small enough that the risk is
  * not complexity, it is someone later reordering the clauses and quietly making

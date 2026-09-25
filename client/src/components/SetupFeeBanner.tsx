@@ -71,7 +71,7 @@ export function SetupFeeBanner() {
       {/* The client: "PAY NOW capitals. Remove $29 as it is repetitive. This is
           a call to action, and it should stand out more vibrantly." The amount
           is already in the sentence above it, so the button carries the verb
-          alone and is sized and coloured to be the thing you look at. */}
+          alone and is sized and colored to be the thing you look at. */}
       <Button
         size="lg"
         onClick={() => pay.mutate()}

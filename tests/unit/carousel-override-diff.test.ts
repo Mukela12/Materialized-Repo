@@ -1,7 +1,7 @@
 /**
  * A per-video override stores only what differs from the creator's defaults.
  *
- * ── The behaviour this protects ──────────────────────────────────────────────
+ * ── The behavior this protects ──────────────────────────────────────────────
  * The client asked for both halves of this: the Brand Kit is "Default settings
  * for this user and all of their videos", AND "the user should have
  * capabilities to edit each unique video setting".
@@ -55,8 +55,8 @@ describe("storing an override", () => {
     expect(applyOverride(base, restored).buttonColor).toBe(wasOverridden.buttonColor === "#ff0000" ? base.buttonColor : base.buttonColor);
   });
 
-  it("ignores a colour that differs only in case", () => {
-    // A colour input hands back "#1F1B6D" for a stored "#1f1b6d". Treating that
+  it("ignores a color that differs only in case", () => {
+    // A color input hands back "#1F1B6D" for a stored "#1f1b6d". Treating that
     // as a change would detach the field over a difference nobody can see.
     const edited = { ...base, carouselBackgroundColor: "#1F1B6D" };
     expect(overrideFromSettings(base, edited).carouselBackgroundColor).toBeNull();
@@ -92,7 +92,7 @@ describe("the whole point: the brand kit still reaches the video", () => {
     const kit = { defaultButtonColor: "#1650a8", defaultCornerRadius: 30 };
     const before = settingsFromBrandKit(kit);
 
-    // She overrides ONLY the button colour on this video.
+    // She overrides ONLY the button color on this video.
     const override = overrideFromSettings(before, { ...before, buttonColor: "#ff0000" });
 
     // Later she changes her default corner radius for the season.

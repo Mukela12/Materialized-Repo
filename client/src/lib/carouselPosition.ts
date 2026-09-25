@@ -5,7 +5,7 @@
  * There were two previews of the same thing and they disagreed. The upload
  * editor implemented all eight positions; the Brand Kit preview implemented two
  * — `items-start` for "top" and `items-end` for everything else — so choosing
- * "bottom-right" there drew the carousel bottom-centre. The setting saved
+ * "bottom-right" there drew the carousel bottom-center. The setting saved
  * correctly and the preview lied about it, which is worse than not having a
  * preview: the client reported that the positioning options did not exist,
  * because the only way she had to check said they did nothing.

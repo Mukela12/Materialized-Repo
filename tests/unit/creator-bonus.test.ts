@@ -132,7 +132,7 @@ describe("who earns it", () => {
 describe("what it is a percentage OF", () => {
   it("uses what was paid, not the plan's list price", async () => {
     // A discounted, prorated or part-paid invoice must earn 5% of the money
-    // that actually arrived. Reading the catalogue price instead would pay a
+    // that actually arrived. Reading the catalog price instead would pay a
     // creator on revenue the platform never received.
     const discounted = await computeCreatorBonus(store(), input({ amountPaidCents: 4900 }));
     expect(discounted.earned).toBe(true);

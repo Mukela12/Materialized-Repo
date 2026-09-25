@@ -4,7 +4,7 @@
  * The defect: POST /api/playlists/:id/items had no guard on playlist.status. Pay
  * for a 1-video playlist with 1 token (or by card), then POST 99 more listingIds →
  * 200 OK, zero extra charge. Re-running checkout is blocked on a published
- * playlist, so it stays 100 videos for the price of 1 — $4,851 of licences given
+ * playlist, so it stays 100 videos for the price of 1 — $4,851 of licenses given
  * away per playlist, repeatable.
  *
  * The rule lives in @shared/playlists so the server guard and the client's disabled

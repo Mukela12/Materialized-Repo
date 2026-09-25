@@ -1,10 +1,10 @@
 /**
- * Carousel settings: defaults, inheritance, and colour.
+ * Carousel settings: defaults, inheritance, and color.
  *
  * ── What went wrong before ───────────────────────────────────────────────────
  * The settings shape existed in two files with the database mapping written out
  * by hand in each, and they drifted. The Brand Kit preview honoured two of the
- * eight positions, so "bottom-right" drew bottom-centre — the value saved
+ * eight positions, so "bottom-right" drew bottom-center — the value saved
  * correctly and only the picture lied, which is the hardest kind of bug to
  * report. The client concluded the positioning options did not exist.
  *
@@ -21,8 +21,8 @@ import {
 
 describe("the defaults", () => {
   it("gives every setting a concrete value — none undefined", () => {
-    // A half-populated settings object is how a colour input ends up rendering
-    // the string "undefined" instead of a colour.
+    // A half-populated settings object is how a color input ends up rendering
+    // the string "undefined" instead of a color.
     for (const [k, v] of Object.entries(CAROUSEL_DEFAULTS)) {
       expect(v, `${k} has no default`).toBeDefined();
       expect(v, `${k} is null`).not.toBeNull();
@@ -127,8 +127,8 @@ describe("a per-video override", () => {
   });
 });
 
-describe("colour and opacity", () => {
-  it("keeps colour and transparency independent", () => {
+describe("color and opacity", () => {
+  it("keeps color and transparency independent", () => {
     // Two separate controls in the client's list. Changing one must not reset
     // the other, which is why opacity is stored apart from the hex.
     expect(withAlpha("#1f1b6d", 80)).toBe("rgba(31, 27, 109, 0.8)");
@@ -147,7 +147,7 @@ describe("colour and opacity", () => {
   it("returns junk untouched rather than rgba(NaN,NaN,NaN)", () => {
     // NaN renders as transparent black — indistinguishable from the carousel
     // having vanished, which is a support ticket rather than a visible error.
-    for (const junk of ["", "not-a-colour", "#12345", "rgb(1,2,3)"]) {
+    for (const junk of ["", "not-a-color", "#12345", "rgb(1,2,3)"]) {
       expect(withAlpha(junk, 50)).toBe(junk);
     }
   });
@@ -157,7 +157,7 @@ describe("colour and opacity", () => {
     expect(withAlpha("#000000", -20)).toBe("rgba(0, 0, 0, 0)");
   });
 
-  it("builds the panel and the button from their own colour and opacity", () => {
+  it("builds the panel and the button from their own color and opacity", () => {
     const s = { ...CAROUSEL_DEFAULTS, carouselBackgroundColor: "#112233", backgroundOpacity: 50,
                 buttonColor: "#445566", buttonOpacity: 25 };
     expect(panelBackground(s)).toBe("rgba(17, 34, 51, 0.5)");

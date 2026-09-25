@@ -16,7 +16,7 @@
  * These are publisher-controlled values rendered inside somebody else's page.
  * Nothing reaches a stylesheet without passing through here, and anything that
  * does not match its shape falls back rather than being escaped — an invalid
- * colour has no correct rendering.
+ * color has no correct rendering.
  */
 import { safeColor, safeInt, safeEnum } from "./carousel";
 

@@ -26,7 +26,7 @@ describe("the rolling window is computed at signup", () => {
     expect(auth).toMatch(/check\.voucher\.freeDays != null\s*\?\s*new Date\(Date\.now\(\) \+ check\.voucher\.freeDays \* 24 \* 60 \* 60 \* 1000\)/);
   });
 
-  it("a voucher without freeDays keeps the festival behaviour", () => {
+  it("a voucher without freeDays keeps the festival behavior", () => {
     expect(auth).toMatch(/:\s*\(check\.voucher\.expiresAt \?\? null\)/);
   });
 });
@@ -35,7 +35,7 @@ describe("freeDays survives the lookup", () => {
   /**
    * getVoucherByCode maps fields EXPLICITLY — its own comment explains that an
    * omitted field fails silently. A dropped freeDays reads as null, which is
-   * the fixed-date behaviour: everyone free until 31 Oct instead of 30 days
+   * the fixed-date behavior: everyone free until 31 Oct instead of 30 days
    * each. Nobody complains about getting more free time, so it would surface
    * as a revenue hole in December.
    */

@@ -13,7 +13,7 @@ import { getUncachableStripeClient } from "./stripeClient";
 import { dispatchStripeEvent } from "./webhookHandlers";
 import Stripe from 'stripe';
 import { Scheduler } from "./scheduler";
-import { makePayoutJob, makeFeeInvoiceJob, makeOverageJob, makeRetentionJob, makeCertWatchJob, probeCertificate, schedulerEnabled } from "./scheduledJobs";
+import { makePayoutJob, makeFeeInvoiceJob, makeOverageJob, makeRetentionJob, makeCertWatchJob, makeTrialFollowupJob, probeCertificate, schedulerEnabled } from "./scheduledJobs";
 
 import { mediaHost } from "./retentionHost";
 import { stripeService } from "./stripeService";
@@ -509,6 +509,13 @@ function startScheduler() {
       makeRetentionJob(storage as any, mediaHost),
       // Certificates checked daily; an expiring or broken one emails the
       // operator two weeks before a visitor would ever see an error page.
+      // The day-2 trial nurture: creators, affiliate program, icing on cake.
+      makeTrialFollowupJob(storage as any, {
+        send: async (o) => {
+          const { sendTrialFollowupEmail } = await import("./emailService");
+          await sendTrialFollowupEmail(o);
+        },
+      }, { dashboardUrl: `${process.env.APP_URL || "https://www.mtrlzd.com"}/brand` }),
       makeCertWatchJob(probeCertificate, {
         sendAlert: async (subject, lines) => {
           const { sendOpsAlertEmail } = await import("./emailService");

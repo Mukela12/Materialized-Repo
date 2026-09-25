@@ -51,7 +51,7 @@ export default function BrandDashboard() {
 
   const { data: products = [], isLoading: productsLoading } = useQuery<Product[]>({
     // Own inventory only — unscoped, this endpoint answers "whose products may
-    // I browse", which on a Brand's own catalogue page means the marketplace.
+    // I browse", which on a Brand's own catalog page means the marketplace.
     queryKey: ["/api/products", "mine"],
     queryFn: () => fetch("/api/products?mine=true", { credentials: "include" }).then((r) => r.json()),
   });
@@ -304,7 +304,7 @@ export default function BrandDashboard() {
               This used to be a non-functional mock: a single "API Key" field whose
               Connect button called no endpoint at all — it flipped local state and
               showed "API Connected! Your product inventory is now syncing", which
-              was never true. A brand following it would believe their catalogue was
+              was never true. A brand following it would believe their catalog was
               live while nothing had been imported.
 
               The working integration lives at /brand/inventory, which collects the

@@ -17,7 +17,7 @@ export const LICENSE_FEE = 49;
 export const LICENSE_FEE_DECIMAL = LICENSE_FEE.toFixed(2);
 
 /**
- * Playlist curation is charged PER VIDEO at the same licence fee — a 5-video
+ * Playlist curation is charged PER VIDEO at the same license fee — a 5-video
  * playlist costs 5 × LICENSE_FEE.
  */
 export const LICENSE_FEE_PER_VIDEO = LICENSE_FEE;

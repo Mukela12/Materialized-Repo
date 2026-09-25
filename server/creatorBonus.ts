@@ -25,7 +25,7 @@
  *
  * ── Why the amount is computed from Stripe's own number ──────────────────────
  * `amount_paid` on the invoice, never the plan's list price. A brand on a
- * discount, a proration, a partial credit or a currency the catalogue does not
+ * discount, a proration, a partial credit or a currency the catalog does not
  * know about must earn 5% OF WHAT WAS ACTUALLY PAID. Reading the list price
  * instead would pay a creator on money that never arrived.
  */

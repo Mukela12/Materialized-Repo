@@ -48,7 +48,7 @@ export interface RetentionCandidate {
   freeAccessEndedAt: Date | null;
   /** Embed deployments recorded for this video, ever. */
   embedCount: number;
-  /** Paid licences taken on this video, ever. */
+  /** Paid licenses taken on this video, ever. */
   licenseCount: number;
 }
 

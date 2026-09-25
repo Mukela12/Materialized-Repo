@@ -39,7 +39,7 @@ import { CAROUSEL_DEFAULT_BUTTON_COLOR, CAROUSEL_DEFAULT_BUTTON_TEXT_COLOR } fro
 export type { CarouselSettings };
 
 
-/** One colour control: swatch + hex field, kept in step with each other. */
+/** One color control: swatch + hex field, kept in step with each other. */
 function ColorField({
   label, value, onChange, testId,
 }: { label: string; value: string; onChange: (v: string) => void; testId: string }) {
@@ -89,7 +89,7 @@ export function ProductCarouselEditor({
   videoUrl,
 }: ProductCarouselEditorProps) {
   const [showPreview, setShowPreview] = useState(true);
-  // So the hover colour can actually be judged in the preview.
+  // So the hover color can actually be judged in the preview.
   const [hovered, setHovered] = useState(false);
   // The creator's uploaded typefaces, offered alongside the built-ins.
   const brandFonts = useBrandFontOptions();
@@ -602,7 +602,7 @@ export { defaultSettings as defaultCarouselSettings };
  * A saved brand kit, expressed as carousel settings.
  *
  * The upload modal used to start every video from `defaultSettings`, ignoring
- * the brand kit entirely — so a brand that had chosen its colours, font and
+ * the brand kit entirely — so a brand that had chosen its colors, font and
  * button label in Brand Kit still got the generic defaults every time it
  * uploaded, and had to redo the work per video. The Brand Kit page's own copy
  * said "These settings will be applied to all new video uploads", which was

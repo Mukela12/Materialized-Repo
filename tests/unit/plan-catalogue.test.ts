@@ -1,5 +1,5 @@
 /**
- * Guardrails for the subscription plan catalogue.
+ * Guardrails for the subscription plan catalog.
  *
  * The failure this file exists to prevent: adding a tier to PLAN_CONFIG without
  * teaching the webhook resolver about it. `planFromSubscription` falls back to a
@@ -86,7 +86,7 @@ describe('PLAN_AMOUNT_FALLBACK stays in sync with PLAN_CONFIG', () => {
     }
   });
 
-  it('has no entries beyond the catalogue', () => {
+  it('has no entries beyond the catalog', () => {
     expect(Object.keys(PLAN_AMOUNT_FALLBACK)).toHaveLength(PLAN_KEYS.length);
   });
 

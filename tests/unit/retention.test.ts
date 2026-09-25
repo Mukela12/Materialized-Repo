@@ -103,10 +103,10 @@ function harness(opts: { candidates?: any[]; enabled?: boolean; hostFails?: bool
  * The tests above run the job against a hand-written fake store, which is the
  * right shape for policy but proves nothing about the query that feeds it.
  *
- * It hid a real bug. Both the SQL and the MemStorage mirror counted licences by
+ * It hid a real bug. Both the SQL and the MemStorage mirror counted licenses by
  * `video_id` — a column video_license_purchases does not have. Postgres threw;
- * MemStorage silently matched nothing and returned zero, and zero licences is
- * the answer that PERMITS deletion. A licence is bought against a global-library
+ * MemStorage silently matched nothing and returned zero, and zero licenses is
+ * the answer that PERMITS deletion. A license is bought against a global-library
  * listing, so the count has to travel through that listing.
  */
 describe("counting protection against real storage", () => {

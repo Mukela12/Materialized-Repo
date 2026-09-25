@@ -98,7 +98,7 @@ describe("redeeming a voucher", () => {
     expect(r.ok).toBe(true);
   });
 
-  it("null activeFrom keeps the pre-0027 behaviour of working immediately", () => {
+  it("null activeFrom keeps the pre-0027 behavior of working immediately", () => {
     // 215 of 216 live codes have no dates at all; they must not start refusing.
     const r = checkRedeemable(voucher({ activeFrom: null }), { role: "creator", redemptionCount: 0, now: NOW });
     expect(r.ok).toBe(true);

@@ -581,7 +581,7 @@ export function VideoUploadModal({
     upload: "Upload your video to start building a shoppable campaign",
     details: "Name your campaign, select featured brands and enable AI product detection",
     detecting: "Gemini AI is scanning your video for brand products",
-    carousel: "Customise how the product carousel appears on your video",
+    carousel: "Customize how the product carousel appears on your video",
     refer: videoUrl
       ? "Can't find a brand? Send them a direct outreach email with your video"
       : "Can't find a brand? Refer them to join the platform",
@@ -973,7 +973,7 @@ export function VideoUploadModal({
             <div className="rounded-xl border overflow-hidden">
               <div className="flex items-center gap-2 px-4 py-3 bg-muted/50 border-b">
                 <Settings2 className="h-4 w-4 text-primary" />
-                <span className="text-sm font-semibold">Carousel Customisation</span>
+                <span className="text-sm font-semibold">Carousel Customization</span>
               </div>
               <div className="p-4">
                 <ProductCarouselEditor
@@ -1033,7 +1033,7 @@ export function VideoUploadModal({
                       <p className="font-medium">{videoUrl ? "Direct Brand Outreach" : "Invite a Brand"}</p>
                       <p className="text-sm text-muted-foreground">
                         {videoUrl
-                          ? "We'll email the brand's PR contact with a preview of your video and a one-click authorisation button."
+                          ? "We'll email the brand's PR contact with a preview of your video and a one-click authorization button."
                           : "Help us bring more brands to the platform. We'll send them an invitation on your behalf."}
                       </p>
                     </div>

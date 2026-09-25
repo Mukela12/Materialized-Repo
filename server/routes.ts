@@ -421,7 +421,7 @@ export async function registerRoutes(
        * is where their store API key lives. Unscoped, this endpoint answers the
        * discovery question instead ("whose inventory may I browse"), which is
        * the right answer for a creator tagging a brand and the wrong one here:
-       * the client opened her own catalogue and found other brands' products in
+       * the client opened her own catalog and found other brands' products in
        * it. Admin is not exempt, or an admin-owned brand would see the whole
        * marketplace as its own stock.
        */
@@ -926,7 +926,7 @@ export async function registerRoutes(
        * is why it was not working.
        *
        * The embed is the public, no-auth view of exactly what they are being
-       * asked to authorise.
+       * asked to authorize.
        */
       const videoPreviewUrl = outreach.videoId
         ? `${baseUrl}/embed/${outreach.videoId}`
@@ -1646,7 +1646,7 @@ export async function registerRoutes(
   });
 
   /**
-   * Mint a Bunny video object + a TUS authorisation for the browser to upload
+   * Mint a Bunny video object + a TUS authorization for the browser to upload
    * straight to Bunny. Auth required for the same reason as /api/upload/url:
    * a mintable upload slot is storage cost on the client's card.
    */
@@ -3183,7 +3183,7 @@ export async function registerRoutes(
             const brand = await storage.getBrand(brandId);
             if (!(await isBrandInventoryDiscoverable(brandId))) {
               console.log(
-                `[Detection] Skipping catalogue for brand ${brandId} (${brand?.name ?? "unknown"}) — not subscribed`,
+                `[Detection] Skipping catalog for brand ${brandId} (${brand?.name ?? "unknown"}) — not subscribed`,
               );
               continue;
             }
@@ -3200,7 +3200,7 @@ export async function registerRoutes(
             }
           }
 
-          // Fallback path — today's metadata-only "text guess". Behaviour is
+          // Fallback path — today's metadata-only "text guess". Behavior is
           // byte-for-byte identical to before: same prompt, same parsing, same
           // zeroed timestamps. `note` records why we ended up here for the badge.
           const runTextGuess = async (note?: string) => {
@@ -3260,7 +3260,7 @@ Identify which products from the catalog are most likely to appear or be feature
 
           // Real path — frame-based vision. Runs only when the Gemini key is set
           // AND we can actually sample frames from the stored video; otherwise we
-          // degrade to the text guess above so behaviour matches today exactly.
+          // degrade to the text guess above so behavior matches today exactly.
           const hasGeminiKey = !!process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
 
           if (!hasGeminiKey) {
@@ -4079,7 +4079,7 @@ Identify which products from the catalog are most likely to appear or be feature
       const pl = await storage.getPlaylist(Number(req.params.id));
       if (!pl || pl.userId !== user.id) return res.status(404).json({ error: "Playlist not found" });
       // A playlist is priced PER VIDEO, and it is priced ONCE. Adding videos after
-      // it has been paid for is buying 100 licences for the price of 1: the token
+      // it has been paid for is buying 100 licenses for the price of 1: the token
       // path debits at /checkout and the card path sizes its PaymentIntent there
       // too, and neither can be re-run afterwards (checkout 400s on a published
       // playlist), so the extra videos would simply be free. The contents are
@@ -4154,8 +4154,8 @@ Identify which products from the catalog are most likely to appear or be feature
    *
    * ── Why this is not blocked when the playlist is published ────────────────
    * isPlaylistLocked exists because a playlist is priced PER VIDEO and paid for
-   * once: adding items after payment would be free licences. That reasoning is
-   * about CONTENTS, and none of it applies to a border colour.
+   * once: adding items after payment would be free licenses. That reasoning is
+   * about CONTENTS, and none of it applies to a border color.
    *
    * Locking styling would in fact break the main case for having it — a
    * publisher embeds the playlist, looks at it on their own site, and wants the
@@ -4436,7 +4436,7 @@ Identify which products from the catalog are most likely to appear or be feature
       // onto the purchase (insertVideoLicensePurchaseSchema omits it), so
       // purchase.stripePaymentIntentId was always NULL and
       // /api/purchases/:id/confirm-payment hard-failed with "No payment on record
-      // for this purchase" — i.e. a licence purchase could never complete.
+      // for this purchase" — i.e. a license purchase could never complete.
       // /api/library/list already persisted its intent id; this path did not.
       await storage.updateVideoLicensePurchaseStatus(purchase.id, "pending", paymentIntent.id);
 
@@ -4455,7 +4455,7 @@ Identify which products from the catalog are most likely to appear or be feature
 
   // Confirm license purchase payment. Must be the buyer, and the payment is
   // verified against Stripe — previously any anonymous caller could mark any
-  // purchase "paid" with a client-supplied id, i.e. free licences.
+  // purchase "paid" with a client-supplied id, i.e. free licenses.
   app.post("/api/purchases/:id/confirm-payment", async (req, res) => {
     try {
       const sessionUserId = (req.session as any)?.userId;
@@ -4757,7 +4757,7 @@ Identify which products from the catalog are most likely to appear or be feature
    * Mechanism: a NEGATIVE Stripe customer balance transaction — a credit Stripe
    * drains automatically at the next invoice finalization. Not a coupon (recurs,
    * needs promo-code plumbing) and not a discounted price (forks the price
-   * catalogue). See stripeService.applyCustomerCreditCents for the sign warning.
+   * catalog). See stripeService.applyCustomerCreditCents for the sign warning.
    *
    * THIS HANDLER IS A THIN ADAPTER ON PURPOSE. All of the money logic — the
    * debit-then-Stripe ordering, the idempotency reuse rules and the compensating
@@ -5856,7 +5856,7 @@ Identify which products from the catalog are most likely to appear or be feature
   });
 
   /**
-   * Admin: read the PARTNER column back from the organiser's spreadsheet.
+   * Admin: read the PARTNER column back from the organizer's spreadsheet.
    *
    * Takes rows of { code, partner } rather than a file — the CSV is parsed in
    * the browser, as the affiliate importer already does, so there is no upload
@@ -5877,7 +5877,7 @@ Identify which products from the catalog are most likely to appear or be feature
         const code = typeof r?.code === "string" ? r.code.trim() : "";
         if (!code) continue;
         const partnerRaw = typeof r?.partner === "string" ? r.partner.trim() : "";
-        // A blank cell means "the organiser did not fill this one in", which is
+        // A blank cell means "the organizer did not fill this one in", which is
         // not the same as "clear the partner" — skip rather than wipe a value.
         if (!partnerRaw) continue;
         entries.push({ code, partner: partnerRaw.slice(0, 200) });
@@ -5911,7 +5911,7 @@ Identify which products from the catalog are most likely to appear or be feature
   /**
    * Admin: set the partner on one code.
    *
-   * The CSV round trip stays for a batch coming back from an organiser, but the
+   * The CSV round trip stays for a batch coming back from an organizer, but the
    * client's festivals are "an ever changing arrangement of brands", so the
    * common case is editing one entry in the table rather than exchanging files.
    */
@@ -6373,7 +6373,7 @@ Identify which products from the catalog are most likely to appear or be feature
    * window, no subscription" rule. The admin verifies the brand and settles the
    * $29 out of band, then grants the window here. The self-serve version was cut
    * after review found a creator could take ownership of another brand's
-   * catalogue through it — see the migration header and the git stash.
+   * catalog through it — see the migration header and the git stash.
    *
    * Body: { days?: number }  — omit or pass 0/negative to REVOKE immediately.
    *       { note?: string }  — free text, e.g. the invoice reference.
@@ -7421,7 +7421,7 @@ Identify which products from the catalog are most likely to appear or be feature
     .product-card:hover{transform:scale(1.05)}
     .product-card img{width:100%;height:clamp(30px,var(--card-img-h,10vw),80px);object-fit:cover;border-radius:clamp(4px,1vw,8px)}
     /* The brand line truncates exactly like the product name. It never had a
-       base rule at all — only colour and font from the per-video block — so a
+       base rule at all — only color and font from the per-video block — so a
        long brand ran the full width of the strip and three cards' worth of
        "MATERIALIZED FASHION" collided into one another. */
     .product-brand{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
@@ -7527,7 +7527,7 @@ ${embedCarouselCss(carousel)}
       var a=document.createElement("a");
       a.href=p.productUrl||"#";a.target="_blank";a.rel="noopener";a.className="product-card";
       if(p.imageUrl){var img=document.createElement("img");img.src=p.imageUrl;img.alt=p.name;a.appendChild(img);}
-      // The brand line. brandTitleColor had nothing of its own to colour, so
+      // The brand line. brandTitleColor had nothing of its own to color, so
       // it had been pointed at the price — which is what the client saw as
       // "Brand Title color changes the Price color".
       if(p.brandName){var bd=document.createElement("div");bd.className="product-brand";bd.textContent=p.brandName;a.appendChild(bd);}
@@ -7711,7 +7711,7 @@ ${embedCarouselCss(carousel)}
       const products = overlays.map(o => ({
         name: (o.name || "").replace(/"/g, '\\"'),
         // The widget rendered no brand line, so brandTitleColor had nothing to
-        // colour here either. Same fix as the iframe embed.
+        // color here either. Same fix as the iframe embed.
         brandName: (o.brandName || "").replace(/[<>"'&]/g, ""),
         imageUrl: o.imageUrl,
         price: o.price,
