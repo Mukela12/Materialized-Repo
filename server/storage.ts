@@ -185,6 +185,12 @@ export interface IStorage {
   createBrandOutreach(outreach: InsertBrandOutreach): Promise<BrandOutreach>;
   getBrandOutreach(id: string): Promise<BrandOutreach | undefined>;
   getBrandOutreachByToken(token: string): Promise<BrandOutreach | undefined>;
+  /**
+   * Any outreach ever sent to this contact address — how a signup knows the
+   * brand arrived via a creator's tag. The tag-a-brand $29 is the client's
+   * "only exception" to free onboarding, so these accounts skip the trial.
+   */
+  findBrandOutreachByContactEmail(email: string): Promise<BrandOutreach | undefined>;
   getBrandOutreachesByCreator(creatorId: string): Promise<BrandOutreach[]>;
   getAllBrandOutreaches(): Promise<BrandOutreach[]>;
   updateBrandOutreachStatus(id: string, status: string, authorizedAt?: Date): Promise<BrandOutreach | undefined>;
@@ -979,6 +985,13 @@ export class MemStorage implements IStorage {
 
   async getBrandOutreachByToken(token: string): Promise<BrandOutreach | undefined> {
     return Array.from(this.brandOutreachMap.values()).find((o) => o.authToken === token);
+  }
+
+  async findBrandOutreachByContactEmail(email: string): Promise<BrandOutreach | undefined> {
+    const needle = email.trim().toLowerCase();
+    return Array.from(this.brandOutreachMap?.values() ?? []).find(
+      (o: any) => (o.prContactEmail ?? "").trim().toLowerCase() === needle,
+    );
   }
 
   async getBrandOutreachesByCreator(creatorId: string): Promise<BrandOutreach[]> {
@@ -3060,6 +3073,13 @@ export class DatabaseStorage implements IStorage {
   async getBrandOutreachByToken(token: string): Promise<BrandOutreach | undefined> {
     const [outreach] = await db.select().from(brandOutreachRequests).where(eq(brandOutreachRequests.authToken, token));
     return outreach;
+  }
+
+  async findBrandOutreachByContactEmail(email: string): Promise<BrandOutreach | undefined> {
+    const [row] = await db.select().from(brandOutreachRequests)
+      .where(sql`lower(trim(${brandOutreachRequests.prContactEmail})) = ${email.trim().toLowerCase()}`)
+      .limit(1);
+    return row;
   }
 
   async getBrandOutreachesByCreator(creatorId: string): Promise<BrandOutreach[]> {

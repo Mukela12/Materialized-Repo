@@ -50,7 +50,7 @@ describe("a trial account's lifecycle", () => {
 describe("the wiring, read at the source", () => {
   it("signup grants the trial to every non-voucher account", () => {
     const src = read("server/authRoutes.ts");
-    expect(src).toContain("const startsOnTrial = !voucherGrants.freeAccess");
+    expect(src).toContain("let startsOnTrial = !voucherGrants.freeAccess");
     expect(src).toMatch(/TRIAL_DAYS \* 24 \* 60 \* 60 \* 1000/);
     expect(src).toContain("freeAccess: voucherGrants.freeAccess || startsOnTrial");
   });
@@ -88,5 +88,27 @@ describe("the payout nudge", () => {
     expect(banner).toContain("sessionStorage");
     expect(banner).toContain("banner-payout-nudge");
     expect(banner).not.toContain("border-amber"); // the obligation colour is reserved for obligations
+  });
+});
+
+describe("the tag-a-brand exception — the client's only exception to free onboarding", () => {
+  it("a tagged brand's email is findable in storage, case- and space-insensitively", async () => {
+    const { MemStorage } = await import("../../server/storage");
+    const st: any = new MemStorage();
+    const creator = await st.createUser({ username: "c", email: "c@x.com", password: "x", role: "creator" } as any);
+    await st.createBrandOutreach({
+      creatorId: creator.id, brandName: "Maison Demo",
+      prContactName: "Amelie", prContactEmail: "PR@MaisonDemo.com ",
+    } as any);
+    expect(await st.findBrandOutreachByContactEmail("pr@maisondemo.com")).toBeTruthy();
+    expect(await st.findBrandOutreachByContactEmail("someone-else@x.com")).toBeUndefined();
+  });
+
+  it("signup denies the trial to a tagged brand and nobody else", () => {
+    const src = read("server/authRoutes.ts");
+    const block = src.slice(src.indexOf("let startsOnTrial"), src.indexOf("const trialUntil"));
+    expect(block).toContain('role === "brand"');
+    expect(block).toContain("findBrandOutreachByContactEmail(email)");
+    expect(block).toContain("startsOnTrial = false");
   });
 });

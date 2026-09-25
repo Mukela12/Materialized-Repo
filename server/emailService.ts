@@ -138,7 +138,7 @@ export async function sendPasswordResetEmail(opts: {
 
 // ── Brand Outreach ─────────────────────────────────────────────────────────
 
-export async function sendBrandOutreachEmail(opts: {
+export interface BrandOutreachEmailOpts {
   prContactName: string;
   prContactEmail: string;
   creatorDisplayName: string;
@@ -149,7 +149,14 @@ export async function sendBrandOutreachEmail(opts: {
   videoPreviewUrl: string;
   authorizeUrl: string;
   creatorMessage?: string;
-}): Promise<void> {
+}
+
+/**
+ * Rendering split from sending so the client can be shown the exact HTML a
+ * brand receives (she edits copy against previews, not source), and so tests
+ * can pin the layout without an outbox.
+ */
+export function renderBrandOutreachEmailHtml(opts: BrandOutreachEmailOpts): string {
   const firstName = opts.prContactName.split(" ")[0];
 
   /**
@@ -207,11 +214,17 @@ export async function sendBrandOutreachEmail(opts: {
 
     <p class="note">If you weren't expecting this email, you can safely ignore it.</p>
   `;
-  await sendEmail(
-    opts.prContactEmail,
-    `${creator} wants to make their video shoppable with ${opts.brandName}`,
-    baseTemplate(body)
-  );
+  return baseTemplate(body);
+}
+
+export function brandOutreachEmailSubject(opts: BrandOutreachEmailOpts): string {
+  const handle = formatCreatorHandle(opts.creatorInstagramHandle);
+  const creator = handle ?? opts.creatorDisplayName;
+  return `${creator} wants to make their video shoppable with ${opts.brandName}`;
+}
+
+export async function sendBrandOutreachEmail(opts: BrandOutreachEmailOpts): Promise<void> {
+  await sendEmail(opts.prContactEmail, brandOutreachEmailSubject(opts), renderBrandOutreachEmailHtml(opts));
 }
 
 export async function sendBrandAgreementEmail(opts: {

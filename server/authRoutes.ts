@@ -173,7 +173,20 @@ export function registerAuthRoutes(app: Express) {
      * the missing voucher differ.
      */
     const { TRIAL_DAYS } = await import("./entitlement");
-    const startsOnTrial = !voucherGrants.freeAccess;
+    /**
+     * The client's one exception to free onboarding (25 Sep): "Maintain the
+     * b2b tag-a-brand which requires the $29 Admin Setup Fee (this is the
+     * only exception) and the initial method where mtrlzd generates
+     * preliminary revenue." A brand whose address a creator has tagged was
+     * already quoted the $29 campaign activation in the outreach email — so
+     * that signup gets no trial window, and the fee meets them at the door
+     * exactly as promised. Everyone else starts the 14-day trial.
+     */
+    let startsOnTrial = !voucherGrants.freeAccess;
+    if (startsOnTrial && role === "brand") {
+      const tagged = await storage.findBrandOutreachByContactEmail(email).catch(() => undefined);
+      if (tagged) startsOnTrial = false;
+    }
     const trialUntil = new Date(Date.now() + TRIAL_DAYS * 24 * 60 * 60 * 1000);
 
     const user = await storage.createUser({
