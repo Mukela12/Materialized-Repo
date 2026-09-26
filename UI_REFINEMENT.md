@@ -10,6 +10,19 @@ explaining itself. Patterns are borrowed from DegreeDesk
 - Landing pricing swipes until `lg` (tablet cards 231px -> 340px).
 - Testimonial dots: 16x2px -> 30x32px tap targets.
 
+## Shipped 2026-09-26/27, rounds 1 and 2 (all 46 portal routes audited locally)
+- Sidebar: icon rail below 1280px in all three portals (tablet content
+  564px -> 764px); full sidebar from 1280; publisher sidebar says
+  "Publisher Portal" and uses the shared active state.
+- One shared page width (max-w-7xl) for every page.
+- Tab bars scroll instead of stretching the page (analytics, all portals).
+- Dialogs are bottom sheets on phones (grab handle, safe area, larger close).
+- Touch sizing by pointer type (filter chips, card menus).
+- Grid children can shrink (wallet, rewards, inventory overflow gone).
+- Brand inventory phone layout; labeled dashboard tabs; refined stat cards;
+  referral promo sticks when dismissed, sits above the nav, links to Referrals.
+- Result: 0 of 46 routes overflow at 375px.
+
 ## Audit findings (public pages measured at 375 / 820 / 1280)
 - 21 tap targets under 36px on phones.
 - 13 of 44 pages have no max width (stretch edge to edge on wide monitors);
