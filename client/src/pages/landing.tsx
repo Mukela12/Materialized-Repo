@@ -383,19 +383,25 @@ function TestimonialCarousel() {
             </motion.div>
           </AnimatePresence>
         </div>
-        <div className="flex justify-center gap-1.5 mt-5" role="tablist" aria-label="Testimonial navigation">
+        <div className="flex justify-center gap-0.5 mt-3" role="tablist" aria-label="Testimonial navigation">
           {TESTIMONIALS.map((testimonial, index) => (
             <button
               key={index}
               onClick={() => setActiveIndex(index)}
-              className={`h-[2px] rounded-full transition-all ${
-                index === activeIndex ? "bg-[#1351aa] w-6" : "bg-white/20 w-4"
-              }`}
+              // The visible mark stays a 2px line; the button around it is a
+              // 32px-tall tap target. The bare line was 16x2px on phones.
+              className="group flex items-center h-8 px-1"
               data-testid={`button-testimonial-${index}`}
               role="tab"
               aria-selected={index === activeIndex}
               aria-label={`View testimonial from ${testimonial.author}`}
-            />
+            >
+              <span
+                className={`block h-[2px] rounded-full transition-all ${
+                  index === activeIndex ? "bg-[#1351aa] w-6" : "bg-white/20 w-4 group-hover:bg-white/40"
+                }`}
+              />
+            </button>
           ))}
         </div>
       </div>
@@ -1595,12 +1601,12 @@ export default function Landing() {
             are plain divs now: the client asked for the Get Started links to
             go, so signup has ONE entry point, the signup section itself.
           */}
-          <div className="flex overflow-x-auto snap-x snap-mandatory gap-6 mt-12 pb-4 -mx-4 px-4 md:grid md:grid-cols-3 md:overflow-visible md:mx-0 md:px-0 md:pb-0">
+          <div className="flex overflow-x-auto snap-x snap-mandatory gap-6 mt-12 pb-4 -mx-4 px-4 lg:grid lg:grid-cols-3 lg:overflow-visible lg:mx-0 lg:px-0 lg:pb-0">
             {LANDING_PLANS.map((plan) => (
               <div
                 key={plan.id}
                 data-testid={`card-pricing-${plan.id}`}
-                className={`text-left p-8 rounded-3xl backdrop-blur-sm flex flex-col min-w-[82%] snap-center sm:min-w-[60%] md:min-w-0 ${
+                className={`text-left p-8 rounded-3xl backdrop-blur-sm flex flex-col min-w-[82%] snap-center sm:min-w-[60%] md:min-w-[46%] lg:min-w-0 ${
                   plan.featured ? "ring-1 ring-white/40" : ""
                 }`}
                 style={{ background: "rgba(255,255,255,0.07)", border: "1px solid rgba(255,255,255,0.15)" }}

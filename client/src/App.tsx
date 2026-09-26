@@ -428,7 +428,12 @@ function AppContent() {
 
   return (
     <AuthGuard>
-      <div className="flex h-screen w-full">
+      {/*
+        h-dvh, not h-screen: on iOS Safari 100vh is the height with the URL bar
+        HIDDEN, so the last rows of every page and the bottom nav's clearance
+        sat under the browser chrome. dvh tracks the visible area.
+      */}
+      <div className="flex h-dvh w-full">
         <div className="hidden md:block">
           {getSidebar()}
         </div>
@@ -507,7 +512,9 @@ function AppContent() {
               )}
             </div>
           </header>
-          <main className="flex-1 overflow-y-auto p-4 md:p-6 pb-24 md:pb-6 bg-background">
+          {/* overflow-x-hidden: one wide child (a long URL, an unwrapped table)
+              must scroll inside itself, never drag the whole page sideways. */}
+          <main className="flex-1 overflow-y-auto overflow-x-hidden p-4 md:p-6 pb-24 md:pb-6 bg-background">
             {/* Renders itself only when a Brand or Publisher still owes the
                 one-time fee. Above the router so it is the first thing on the
                 page — a blocked account with no explanation reads as broken. */}
