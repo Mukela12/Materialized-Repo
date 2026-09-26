@@ -7,15 +7,15 @@ interface DashboardTabsProps {
 }
 
 const tabs = [
-  { id: "stats", label: "Stats Overview", icon: BarChart3 },
-  { id: "affiliate", label: "Affiliate Links", icon: Link2 },
+  { id: "stats", label: "Stats Overview", short: "Stats", icon: BarChart3 },
+  { id: "affiliate", label: "Affiliate Links", short: "Links", icon: Link2 },
   // "Charity Support" is hidden until the feature is real. Nothing in the system
   // ever writes users.charity_contribution and no donation is ever made, so the
   // panel claimed money was being given to charity when none had been. See the
   // charity block in pages/dashboard.tsx. Restore this entry when it is built.
-  { id: "demo", label: "Video Demo", icon: PlayCircle },
-  { id: "actions", label: "Quick Actions", icon: Zap },
-  { id: "performance", label: "Performance", icon: TrendingUp },
+  { id: "demo", label: "Video Demo", short: "Demo", icon: PlayCircle },
+  { id: "actions", label: "Quick Actions", short: "Actions", icon: Zap },
+  { id: "performance", label: "Performance", short: "Performance", icon: TrendingUp },
 ];
 
 export function DashboardTabs({ activeTab, onTabChange }: DashboardTabsProps) {
@@ -31,8 +31,14 @@ export function DashboardTabs({ activeTab, onTabChange }: DashboardTabsProps) {
                 value={tab.id}
                 className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap data-[state=active]:bg-background data-[state=active]:shadow-sm"
                 data-testid={`tab-${tab.id}`}
+                onFocus={(e) => e.currentTarget.scrollIntoView({ block: "nearest", inline: "nearest" })}
+                onClick={(e) => e.currentTarget.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" })}
               >
                 <Icon className="h-4 w-4" />
+                {/* Words on every screen: five bare icons on a phone left people
+                    guessing. Short labels below sm, full labels above; the bar
+                    scrolls when they do not fit. */}
+                <span className="sm:hidden">{tab.short}</span>
                 <span className="hidden sm:inline">{tab.label}</span>
               </TabsTrigger>
             );

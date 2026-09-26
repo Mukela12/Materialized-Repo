@@ -900,12 +900,12 @@ export default function BrandInventory() {
               <p className="text-sm text-muted-foreground">{products.length} products in inventory</p>
             </div>
             {products.length > 0 && (
-              <div className="flex items-center gap-2 w-full sm:w-auto">
+              <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto sm:flex-nowrap">
                 <Select
                   value={sortKey ?? "name"}
                   onValueChange={(v) => { if (v !== sortKey) toggleSort(v); }}
                 >
-                  <SelectTrigger className="w-[140px]" data-testid="select-product-sort">
+                  <SelectTrigger className="flex-1 sm:w-[140px] sm:flex-none" data-testid="select-product-sort">
                     <div className="flex items-center gap-2">
                       <ArrowDownUp className="h-3.5 w-3.5" />
                       <SelectValue placeholder="Sort by" />
@@ -928,6 +928,7 @@ export default function BrandInventory() {
                 >
                   <ArrowDownUp className={`h-4 w-4 transition-transform ${sortDir === "asc" ? "rotate-180" : ""}`} />
                 </Button>
+                <div className="order-first w-full sm:order-none sm:w-auto">
                 <TableToolbar
                   query={query}
                   onQueryChange={setQuery}
@@ -936,6 +937,7 @@ export default function BrandInventory() {
                   searchPlaceholder="Search products…"
                   data-testid="products-toolbar"
                 />
+                </div>
               </div>
             )}
           </div>
@@ -952,7 +954,7 @@ export default function BrandInventory() {
               {productRows.map((product) => (
                 <div
                   key={product.id}
-                  className="flex items-center gap-4 p-4 border rounded-lg hover-elevate cursor-pointer"
+                  className="flex flex-wrap items-center gap-x-4 gap-y-3 p-4 border rounded-lg hover-elevate cursor-pointer sm:flex-nowrap"
                   data-testid={`product-card-${product.id}`}
                 >
                   {product.imageUrl ? (
@@ -969,8 +971,8 @@ export default function BrandInventory() {
                   <div className="flex-1 min-w-0">
                     <p className="font-medium truncate">{product.name}</p>
                     <p className="text-sm text-muted-foreground truncate">{product.description}</p>
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className="font-semibold text-primary">{CURRENCY_SYMBOL}{product.price}</span>
+                    <div className="flex flex-wrap items-center gap-2 mt-1">
+                      <span className="font-semibold text-primary tabular-nums">{CURRENCY_SYMBOL}{product.price}</span>
                       {(product as any).productType && (
                         <Badge variant="outline" className="text-xs">{(product as any).productType}</Badge>
                       )}
@@ -991,11 +993,11 @@ export default function BrandInventory() {
                       </a>
                     )}
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
+                  <div className="flex w-full items-center justify-end gap-2 border-t pt-3 sm:w-auto sm:shrink-0 sm:border-0 sm:pt-0">
                     <Button
                       variant="outline"
                       size="sm"
-                      className="rounded-full"
+                      className="rounded-full h-9 py-0 px-5"
                       onClick={() => setEditingProduct(product)}
                       data-testid={`button-edit-product-${product.id}`}
                     >

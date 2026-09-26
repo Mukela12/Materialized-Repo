@@ -428,3 +428,20 @@
     min-height: 2.5rem;
   }
 }
+
+/*
+ * Grid and flex children may shrink below their content's natural width.
+ * Browsers default grid/flex items to min-width:auto, so a grid with no
+ * explicit columns below its breakpoint (e.g. "grid lg:grid-cols-2") sized
+ * its single column to the widest content inside: the wallet cards rendered
+ * 402px wide on a 375px phone. Long words and URLs still wrap because of the
+ * overflow-wrap rule below.
+ */
+main .grid > * {
+  min-width: 0;
+}
+/* break-word, not anywhere: anywhere also shrinks min-content width, which
+   would let flex rows crush short labels like prices to one character. */
+main :where(p, h1, h2, h3, h4, li, dd, td) {
+  overflow-wrap: break-word;
+}

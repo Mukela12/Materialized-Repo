@@ -153,15 +153,17 @@ export default function Dashboard() {
       <DashboardTabs activeTab={activeTab} onTabChange={setActiveTab} />
 
       {activeTab === "stats" && (
-        <Card>
-          <CardHeader className="pb-2">
+        // On phones the outer card sheds its border and padding: two layers of
+        // card chrome squeezed the stat grid until labels broke mid-phrase.
+        <Card className="max-sm:border-0 max-sm:bg-transparent max-sm:shadow-none">
+          <CardHeader className="pb-2 max-sm:px-0 max-sm:pt-0">
             <CardTitle className="text-lg font-semibold">Stats This Month</CardTitle>
             <p className="text-sm text-muted-foreground">
               Your key performance metrics and analytics overview
             </p>
           </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          <CardContent className="max-sm:px-0">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
               {stats ? (
                 <>
                   <StatCard
