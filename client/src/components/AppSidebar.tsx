@@ -130,7 +130,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
 
         return (
           <SidebarMenuItem key={item.path}>
-            <SidebarMenuButton asChild isActive={isActive}>
+            <SidebarMenuButton asChild isActive={isActive} tooltip={item.label}>
               <Link href={item.path}>
                 <Icon className="h-4 w-4" />
                 <span>{item.label}</span>
@@ -157,9 +157,9 @@ export function AppSidebar({ user }: AppSidebarProps) {
   );
 
   return (
-    <Sidebar>
-      <SidebarHeader className="p-4">
-        <div className="flex items-center gap-3 mb-4">
+    <Sidebar collapsible="icon">
+      <SidebarHeader className="p-4 group-data-[collapsible=icon]:p-2">
+        <div className="flex items-center gap-3 mb-4 group-data-[collapsible=icon]:hidden">
           <img
             src={materializedLogo}
             alt="Materialized"
@@ -168,14 +168,14 @@ export function AppSidebar({ user }: AppSidebarProps) {
           />
         </div>
         
-        <div className="flex items-center gap-3 p-3 rounded-xl bg-sidebar-accent/50">
-          <Avatar className="h-10 w-10">
+        <div className="flex items-center gap-3 p-3 rounded-xl bg-sidebar-accent/50 group-data-[collapsible=icon]:p-0 group-data-[collapsible=icon]:bg-transparent group-data-[collapsible=icon]:justify-center">
+          <Avatar className="h-10 w-10 group-data-[collapsible=icon]:h-8 group-data-[collapsible=icon]:w-8">
             <AvatarImage src={user?.avatarUrl} />
             <AvatarFallback className="bg-primary/20 text-primary">
               {user?.displayName?.charAt(0) || "C"}
             </AvatarFallback>
           </Avatar>
-          <div className="flex-1 min-w-0">
+          <div className="flex-1 min-w-0 group-data-[collapsible=icon]:hidden">
             <p className="text-sm font-medium truncate">
               {user?.displayName || "Creator"}
             </p>
@@ -185,11 +185,11 @@ export function AppSidebar({ user }: AppSidebarProps) {
           </div>
         </div>
         
-        <Badge className="mt-3 w-fit" variant="default">
+        <Badge className="mt-3 w-fit group-data-[collapsible=icon]:hidden" variant="default">
           Creator
         </Badge>
         
-        <div className="relative mt-4">
+        <div className="relative mt-4 group-data-[collapsible=icon]:hidden">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
             placeholder="Search menu..."
@@ -302,10 +302,11 @@ export function AppSidebar({ user }: AppSidebarProps) {
         )}
       </SidebarContent>
 
-      <SidebarFooter className="p-4">
+      <SidebarFooter className="p-4 group-data-[collapsible=icon]:p-2">
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton
+              tooltip="Sign Out"
               onClick={() => logoutMutation.mutate()}
               className="text-muted-foreground hover:text-destructive w-full"
               data-testid="button-sidebar-logout"

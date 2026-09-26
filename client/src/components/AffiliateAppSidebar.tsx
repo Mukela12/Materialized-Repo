@@ -105,20 +105,20 @@ export function AffiliateAppSidebar({ user }: AffiliateAppSidebarProps) {
   const { data: unreadCount = 0 } = useMailboxUnreadCount();
 
   return (
-    <Sidebar className="border-r border-border">
-      <SidebarHeader className="p-4 border-b border-border">
-        <div className="flex items-center gap-3">
+    <Sidebar collapsible="icon" className="border-r border-border">
+      <SidebarHeader className="p-4 border-b border-border group-data-[collapsible=icon]:p-2">
+        <div className="flex items-center gap-3 group-data-[collapsible=icon]:hidden">
           <img
             src={materializedLogo}
             alt="Materialized"
             className="invert dark:invert-0"
             style={{ height: 40, width: "auto" }}
           />
-          <p className="text-xs text-muted-foreground">Affiliate Portal</p>
+          <p className="text-xs text-muted-foreground">Publisher Portal</p>
         </div>
       </SidebarHeader>
 
-      <SidebarContent className="p-2">
+      <SidebarContent className="p-2 group-data-[collapsible=icon]:p-0">
         <SidebarGroup>
           <SidebarGroupLabel className="text-xs text-muted-foreground px-2 mb-2">
             Main
@@ -131,10 +131,7 @@ export function AffiliateAppSidebar({ user }: AffiliateAppSidebarProps) {
                 const isMailbox = item.url.endsWith("/mailbox");
                 return (
                   <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton
-                      asChild
-                      className={isActive ? "bg-sidebar-accent text-sidebar-accent-foreground" : ""}
-                    >
+                    <SidebarMenuButton asChild isActive={isActive} tooltip={item.title}>
                       <Link href={item.url} data-testid={`nav-${item.title.toLowerCase().replace(/\s/g, '-')}`}>
                         <item.icon className="w-4 h-4" />
                         <span>{item.title}</span>
@@ -162,10 +159,7 @@ export function AffiliateAppSidebar({ user }: AffiliateAppSidebarProps) {
                 const isActive = location === item.url;
                 return (
                   <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton 
-                      asChild
-                      className={isActive ? "bg-sidebar-accent text-sidebar-accent-foreground" : ""}
-                    >
+                    <SidebarMenuButton asChild isActive={isActive} tooltip={item.title}>
                       <Link href={item.url} data-testid={`nav-${item.title.toLowerCase()}`}>
                         <item.icon className="w-4 h-4" />
                         <span>{item.title}</span>
@@ -179,16 +173,16 @@ export function AffiliateAppSidebar({ user }: AffiliateAppSidebarProps) {
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter className="p-4 border-t border-border">
-        <div className="flex items-center gap-3">
-          <Avatar className="w-9 h-9 border border-border">
+      <SidebarFooter className="p-4 border-t border-border group-data-[collapsible=icon]:p-2">
+        <div className="flex items-center gap-3 group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:gap-2">
+          <Avatar className="w-9 h-9 border border-border group-data-[collapsible=icon]:w-8 group-data-[collapsible=icon]:h-8">
             <AvatarImage src={user?.avatarUrl || undefined} />
             <AvatarFallback className="bg-primary/10 text-primary">
               {user?.displayName?.charAt(0) || "A"}
             </AvatarFallback>
           </Avatar>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium truncate">{user?.displayName || "Affiliate"}</p>
+          <div className="flex-1 min-w-0 group-data-[collapsible=icon]:hidden">
+            <p className="text-sm font-medium truncate">{user?.displayName || "Publisher"}</p>
             <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
           </div>
           <Button

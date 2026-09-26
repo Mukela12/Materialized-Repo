@@ -410,3 +410,21 @@
 .blob-spin-ccw {
   animation: blob-spin-ccw 4s linear infinite;
 }
+
+/*
+ * Touch sizing by CAPABILITY, not screen width: a touchscreen laptop needs it,
+ * a narrow desktop browser does not. A 2026 audit at phone width found 16
+ * undersized targets on My Videos alone: 26px-tall filter chips and 32px
+ * card menu buttons. Controls that must keep their own geometry (switches,
+ * checkboxes, radios, tabs, menu items) are excluded.
+ */
+@media (pointer: coarse) {
+  main button:not([role="switch"]):not([role="checkbox"]):not([role="radio"]):not([role="tab"]):not([role="slider"]):not([data-radix-collection-item]),
+  main [role="button"] {
+    min-height: 2.25rem;
+  }
+  main button:has(> svg:only-child):not([role="switch"]):not([role="checkbox"]):not([data-radix-collection-item]) {
+    min-width: 2.5rem;
+    min-height: 2.5rem;
+  }
+}

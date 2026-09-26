@@ -60,7 +60,7 @@ import AffiliateAccept from "@/pages/affiliate-accept";
 import Privacy from "@/pages/privacy";
 import Cookies from "@/pages/cookies";
 import { useCurrentUser, useLogout } from "@/hooks/useCurrentUser";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { ChevronDown, LogOut, User, Layers, Settings, Shield, LifeBuoy } from "lucide-react";
@@ -526,7 +526,11 @@ function AppContent() {
                 "needed" solely once the setup fee is settled, so a new account
                 is asked for one thing at a time. */}
             <SubscriptionPrompt />
-            <Router />
+            {/* One shared width for every page: 13 pages stretched edge to edge
+                on wide monitors while the rest used seven different caps. */}
+            <div className="mx-auto w-full max-w-7xl">
+              <Router />
+            </div>
           </main>
         </div>
       </div>
@@ -535,14 +539,36 @@ function AppContent() {
   );
 }
 
+/**
+ * Sidebar open state follows the screen: full sidebar from 1280px, icon rail
+ * below it (tablets and small laptops), drawer on phones (the primitive's own
+ * mobile mode). A 16rem sidebar on an 820px tablet left 564px for content.
+ * The toggle still works at any width; crossing the 1280px line resets to the
+ * width's default rather than remembering a choice made at another size.
+ */
+const WIDE_SIDEBAR_QUERY = "(min-width: 1280px)";
+function useSidebarOpenForWidth(): [boolean, (open: boolean) => void] {
+  const [open, setOpen] = useState(() =>
+    typeof window === "undefined" ? true : window.matchMedia(WIDE_SIDEBAR_QUERY).matches,
+  );
+  useEffect(() => {
+    const mq = window.matchMedia(WIDE_SIDEBAR_QUERY);
+    const onChange = (e: MediaQueryListEvent) => setOpen(e.matches);
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
+  }, []);
+  return [open, setOpen];
+}
+
 function AppWithSidebar() {
   const sidebarStyle = {
     "--sidebar-width": "16rem",
-    "--sidebar-width-icon": "3rem",
+    "--sidebar-width-icon": "3.5rem",
   };
+  const [sidebarOpen, setSidebarOpen] = useSidebarOpenForWidth();
 
   return (
-    <SidebarProvider style={sidebarStyle as React.CSSProperties}>
+    <SidebarProvider style={sidebarStyle as React.CSSProperties} open={sidebarOpen} onOpenChange={setSidebarOpen}>
       <AppContent />
     </SidebarProvider>
   );
