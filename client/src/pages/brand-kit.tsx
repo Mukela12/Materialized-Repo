@@ -532,20 +532,20 @@ export default function BrandKitPage() {
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="grid w-full grid-cols-4 rounded-full">
           <TabsTrigger value="colors" className="rounded-full gap-2" data-testid="tab-colors">
-            <Palette className="h-4 w-4" />
-            <span className="hidden sm:inline">Colors</span>
+            <Palette className="hidden h-4 w-4 sm:block" />
+            <span className="text-xs sm:text-sm">Colors</span>
           </TabsTrigger>
           <TabsTrigger value="fonts" className="rounded-full gap-2" data-testid="tab-fonts">
-            <Type className="h-4 w-4" />
-            <span className="hidden sm:inline">Fonts</span>
+            <Type className="hidden h-4 w-4 sm:block" />
+            <span className="text-xs sm:text-sm">Fonts</span>
           </TabsTrigger>
           <TabsTrigger value="carousel" className="rounded-full gap-2" data-testid="tab-carousel">
-            <Settings className="h-4 w-4" />
-            <span className="hidden sm:inline">Carousel</span>
+            <Settings className="hidden h-4 w-4 sm:block" />
+            <span className="text-xs sm:text-sm">Carousel</span>
           </TabsTrigger>
           <TabsTrigger value="preview" className="rounded-full gap-2" data-testid="tab-preview">
-            <Eye className="h-4 w-4" />
-            <span className="hidden sm:inline">Preview</span>
+            <Eye className="hidden h-4 w-4 sm:block" />
+            <span className="text-xs sm:text-sm">Preview</span>
           </TabsTrigger>
         </TabsList>
 

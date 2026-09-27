@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatCard } from "@/components/StatCard";
+import { greeting, todayLabel } from "@/lib/greeting";
 import { 
   DollarSign, 
   TrendingUp, 
@@ -78,38 +79,38 @@ export default function AffiliateDashboard() {
     <div className="space-y-6 pb-24 md:pb-6">
       
       <div>
-        <h1 className="text-2xl md:text-3xl font-bold tracking-tight" data-testid="text-welcome">
-          Welcome back, {currentUser?.displayName || "Affiliate"}
+        <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">{todayLabel()}</p>
+        <h1 className="mt-1 text-2xl md:text-3xl font-bold tracking-tight" data-testid="text-welcome">
+          {greeting(currentUser?.displayName)}
         </h1>
-        <p className="text-muted-foreground mt-1">
-          Manage your video campaigns and track your earnings
-        </p>
       </div>
 
-      <div className="stat-panel grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* No trend on earnings: this used to show a hard-coded "+15% vs last
+          month" to every publisher with any earnings. A trend appears only
+          when it is computed from real history. */}
+      <div className="stat-panel grid grid-cols-2 lg:grid-cols-4">
         <StatCard
-          title="Total Earnings"
+          title="Earnings"
           value={`${CURRENCY_SYMBOL}${totalEarnings.toFixed(2)}`}
-          subtitle="Lifetime earnings"
+          subtitle="Commission from every sale your pages drove"
           icon={DollarSign}
-          trend={totalEarnings > 0 ? { value: 15, isPositive: true } : undefined}
         />
         <StatCard
-          title="Active Campaigns"
-          value={activeCampaigns.toString()}
-          subtitle="Currently running"
+          title="Live campaigns"
+          value={activeCampaigns.toLocaleString()}
+          subtitle="Videos running on your site"
           icon={Video}
         />
         <StatCard
-          title="Total Clicks"
+          title="Clicks"
           value={totalClicks.toLocaleString()}
-          subtitle="All campaigns"
+          subtitle="Readers who tapped a product"
           icon={MousePointer}
         />
         <StatCard
-          title="Conversions"
-          value={totalConversions.toString()}
-          subtitle="Total sales"
+          title="Sales"
+          value={totalConversions.toLocaleString()}
+          subtitle="Purchases after a click"
           icon={TrendingUp}
         />
       </div>

@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatCard } from "@/components/StatCard";
+import { greeting, todayLabel, monthToDateLabel } from "@/lib/greeting";
 import { AffiliateCard } from "@/components/AffiliateCard";
 import { DashboardTabs } from "@/components/DashboardTabs";
 import { AffiliateTable } from "@/components/AffiliateTable";
@@ -128,17 +129,12 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-6 pb-24 md:pb-6">
-      <div className="-mx-4 md:-mx-6 -mt-6 mb-4 overflow-hidden">
-        </div>
-
       <CreatorRewardNotification />
 
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Dashboard</h1>
-          <p className="text-muted-foreground mt-1">
-            Manage your video commerce platform
-          </p>
+        <div className="min-w-0">
+          <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">{todayLabel()}</p>
+          <h1 className="mt-1 text-2xl md:text-3xl font-bold tracking-tight">{greeting(currentUser?.displayName)}</h1>
         </div>
         <Button 
           onClick={() => setUploadModalOpen(true)} 
@@ -153,64 +149,49 @@ export default function Dashboard() {
       <DashboardTabs activeTab={activeTab} onTabChange={setActiveTab} />
 
       {activeTab === "stats" && (
-        // On phones the outer card sheds its border and padding: two layers of
-        // card chrome squeezed the stat grid until labels broke mid-phrase.
-        <Card className="max-sm:border-0 max-sm:bg-transparent max-sm:shadow-none">
-          <CardHeader className="pb-2 max-sm:px-0 max-sm:pt-0">
-            <CardTitle className="text-lg font-semibold">Stats This Month</CardTitle>
-            <p className="text-sm text-muted-foreground">
-              Your key performance metrics and analytics overview
-            </p>
-          </CardHeader>
-          <CardContent className="max-sm:px-0">
-            <div className="stat-panel grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-              {stats ? (
-                <>
-                  <StatCard
-                    title="Total Views"
-                    value={stats.totalViews}
-                    subtitle="Video engagement"
-                    icon={Eye}
-                  />
-                  {/* Gross sales the creator's videos drove — NOT a Materialized
-                      balance. The platform creator commission rate is 0 by default
-                      (brands pay creators directly), so this must never be labelled
-                      "Revenue" or "Earnings". See server/feeConfig.ts. */}
-                  <StatCard
-                    title="Attributed Sales"
-                    value={`$${stats.totalRevenue.toFixed(0)}`}
-                    subtitle="Sales your videos drove"
-                    icon={DollarSign}
-                  />
-                  <StatCard
-                    title="Total Clicks"
-                    value={stats.totalClicks}
-                    subtitle="Product interactions"
-                    icon={MousePointer}
-                  />
-                  <StatCard
-                    title="Average CTR"
-                    value={`${stats.averageCTR.toFixed(2)}%`}
-                    subtitle="Click-through rate"
-                    icon={MousePointer}
-                  />
-                </>
-              ) : (
-                <>
-                  <StatCard title="Total Views" value={0} subtitle="Video engagement" icon={Eye} />
-                  <StatCard title="Attributed Sales" value="$0" subtitle="Sales your videos drove" icon={DollarSign} />
-                  <StatCard title="Total Clicks" value={0} subtitle="Product interactions" icon={MousePointer} />
-                  <StatCard title="Average CTR" value="0.00%" subtitle="Click-through rate" icon={MousePointer} />
-                </>
-              )}
-            </div>
-            <p className="mt-4 text-xs text-muted-foreground leading-relaxed" data-testid="text-attributed-sales-note">
-              <span className="font-medium text-foreground/80">Attributed Sales</span> is the value your
-              videos generated for brands. Your commission is paid to you directly by the brand you work
-              with, not through Materialized — use this as your performance record when agreeing rates.
-            </p>
-          </CardContent>
-        </Card>
+        // A section, not a card holding cards: a quiet heading with the window
+        // the numbers cover, then one framed panel. The money metric leads.
+        <section className="space-y-3" aria-labelledby="stats-heading">
+          <div className="flex items-baseline justify-between gap-3">
+            <h2 id="stats-heading" className="text-base font-semibold tracking-tight">This month</h2>
+            <span className="text-xs text-muted-foreground tabular-nums">{monthToDateLabel()}</span>
+          </div>
+          <div className="stat-panel grid grid-cols-2 lg:grid-cols-4">
+            {/* Gross sales the creator's videos drove — NOT a Materialized
+                balance. The platform creator commission rate is 0 by default
+                (brands pay creators directly), so this must never be labelled
+                "Revenue" or "Earnings". See server/feeConfig.ts. */}
+            <StatCard
+              title="Attributed Sales"
+              value={`$${(stats?.totalRevenue ?? 0).toFixed(0)}`}
+              subtitle="What your videos sold for the brands in them"
+              icon={DollarSign}
+            />
+            <StatCard
+              title="Views"
+              value={(stats?.totalViews ?? 0).toLocaleString()}
+              subtitle="Plays across every page your videos are embedded on"
+              icon={Eye}
+            />
+            <StatCard
+              title="Product clicks"
+              value={(stats?.totalClicks ?? 0).toLocaleString()}
+              subtitle="Taps through to a brand's store"
+              icon={MousePointer}
+            />
+            <StatCard
+              title="Click-through"
+              value={`${(stats?.averageCTR ?? 0).toFixed(2)}%`}
+              subtitle="Clicks per view"
+              icon={MousePointer}
+            />
+          </div>
+          <p className="text-xs text-muted-foreground leading-relaxed" data-testid="text-attributed-sales-note">
+            <span className="font-medium text-foreground/80">Attributed Sales</span> is the value your
+            videos generated for brands. Your commission is paid to you directly by the brand you work
+            with, not through Materialized. Use it as your performance record when agreeing rates.
+          </p>
+        </section>
       )}
 
       {activeTab === "affiliate" && (

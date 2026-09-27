@@ -5,6 +5,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatCard } from "@/components/StatCard";
+import { greeting, todayLabel, monthToDateLabel } from "@/lib/greeting";
 import { BrandDashboardTabs } from "@/components/BrandDashboardTabs";
 import { VideoUploadModal } from "@/components/VideoUploadModal";
 import { defaultCarouselSettings } from "@/components/ProductCarouselEditor";
@@ -163,11 +164,9 @@ export default function BrandDashboard() {
   return (
     <div className="space-y-6 pb-24 md:pb-6">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Brand Dashboard</h1>
-          <p className="text-muted-foreground mt-1">
-            Manage your products and connect with creators
-          </p>
+        <div className="min-w-0">
+          <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">{todayLabel()}</p>
+          <h1 className="mt-1 text-2xl md:text-3xl font-bold tracking-tight">{greeting(currentUser?.displayName, new Date(), { fullName: true })}</h1>
         </div>
         <div className="flex gap-2 w-full sm:w-auto">
           <Button
@@ -193,58 +192,55 @@ export default function BrandDashboard() {
       <BrandDashboardTabs activeTab={activeTab} onTabChange={setActiveTab} />
 
       {activeTab === "stats" && (
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-lg font-semibold">Brand Performance</CardTitle>
-            <p className="text-sm text-muted-foreground">
-              Your products across all creator videos
-            </p>
-          </CardHeader>
-          <CardContent>
-            <div className="stat-panel grid grid-cols-2 lg:grid-cols-5 gap-4">
-              <div data-testid="stat-brand-views">
-                <StatCard
-                  title="Total Views"
-                  value={brandStats.totalViews.toLocaleString()}
-                  subtitle="Product impressions"
-                  icon={Eye}
-                />
-              </div>
-              <div data-testid="stat-brand-clicks">
-                <StatCard
-                  title="Total Clicks"
-                  value={brandStats.totalClicks.toLocaleString()}
-                  subtitle="Product clicks"
-                  icon={MousePointer}
-                />
-              </div>
-              <div data-testid="stat-brand-conversions">
-                <StatCard
-                  title="Conversions"
-                  value={brandStats.totalConversions}
-                  subtitle="Purchases made"
-                  icon={TrendingUp}
-                />
-              </div>
-              <div data-testid="stat-brand-revenue">
-                <StatCard
-                  title="Revenue Generated"
-                  value={`$${brandStats.totalRevenue.toLocaleString()}`}
-                  subtitle="From creator sales"
-                  icon={DollarSign}
-                />
-              </div>
-              <div data-testid="stat-brand-creators">
-                <StatCard
-                  title="Active Creators"
-                  value={brandStats.activeCreators}
-                  subtitle="Featuring your products"
-                  icon={Users}
-                />
-              </div>
+        // A section, not a card holding cards; revenue leads as the hero.
+        <section className="space-y-3" aria-labelledby="brand-stats-heading">
+          <div className="flex items-baseline justify-between gap-3">
+            <h2 id="brand-stats-heading" className="text-base font-semibold tracking-tight">This month</h2>
+            <span className="text-xs text-muted-foreground tabular-nums">{monthToDateLabel()}</span>
+          </div>
+          <div className="stat-panel grid grid-cols-2 lg:grid-cols-5">
+            <div data-testid="stat-brand-revenue">
+              <StatCard
+                title="Revenue from creators"
+                value={`$${brandStats.totalRevenue.toLocaleString()}`}
+                subtitle="Sales that started in a creator's video"
+                icon={DollarSign}
+              />
             </div>
-          </CardContent>
-        </Card>
+            <div data-testid="stat-brand-views">
+              <StatCard
+                title="Views"
+                value={brandStats.totalViews.toLocaleString()}
+                subtitle="Times your products were seen in videos"
+                icon={Eye}
+              />
+            </div>
+            <div data-testid="stat-brand-clicks">
+              <StatCard
+                title="Clicks to store"
+                value={brandStats.totalClicks.toLocaleString()}
+                subtitle="Taps through to your shop"
+                icon={MousePointer}
+              />
+            </div>
+            <div data-testid="stat-brand-conversions">
+              <StatCard
+                title="Orders"
+                value={brandStats.totalConversions.toLocaleString()}
+                subtitle="Purchases after a click"
+                icon={TrendingUp}
+              />
+            </div>
+            <div data-testid="stat-brand-creators">
+              <StatCard
+                title="Active creators"
+                value={brandStats.activeCreators.toLocaleString()}
+                subtitle="Creators featuring your products"
+                icon={Users}
+              />
+            </div>
+          </div>
+        </section>
       )}
 
       {activeTab === "stats" && (

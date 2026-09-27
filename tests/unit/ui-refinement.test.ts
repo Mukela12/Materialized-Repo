@@ -96,3 +96,38 @@ describe("round 5: nav, theme switch, type", () => {
     expect(read("client/src/main.tsx")).toMatch(/@fontsource-variable\/geist/);
   });
 });
+
+describe("round 6: professional dashboards", () => {
+  it("no stat trend is ever a hard-coded number", () => {
+    for (const p of ["client/src/pages/affiliate-dashboard.tsx", "client/src/pages/dashboard.tsx", "client/src/pages/brand-dashboard.tsx"]) {
+      expect(code(p)).not.toMatch(/trend=\{[^}]*value:\s*\d+/);
+    }
+  });
+
+  it("stat cards lead with the number, not a tinted icon chip", () => {
+    const card = code("client/src/components/StatCard.tsx");
+    expect(card).not.toMatch(/rounded-(lg|xl) bg-primary\/10/);
+    expect(card).toMatch(/stat-card__value/);
+  });
+
+  it("on phones the stat panel is a hero plus a label/value list", () => {
+    const css = read("client/src/index.css");
+    expect(css).toMatch(/\.stat-panel \{ grid-template-columns: 1fr !important; \}/);
+    expect(css).toMatch(/\.stat-panel > :first-child \.stat-card__value/);
+  });
+
+  it("dashboards greet by name instead of generic filler", () => {
+    for (const p of ["client/src/pages/dashboard.tsx", "client/src/pages/brand-dashboard.tsx", "client/src/pages/affiliate-dashboard.tsx"]) {
+      const src = code(p);
+      expect(src).toMatch(/greeting\(/);
+      expect(src).not.toMatch(/Manage your video commerce platform|Welcome back,|Your key performance metrics and analytics overview/);
+    }
+  });
+
+  it("brands are greeted by their full company name", async () => {
+    const { greeting } = await import("../../client/src/lib/greeting");
+    const afternoon = new Date(2026, 8, 27, 14, 0);
+    expect(greeting("Maison Demo", afternoon, { fullName: true })).toBe("Good afternoon, Maison Demo");
+    expect(greeting("Miro Misljen", afternoon)).toBe("Good afternoon, Miro");
+  });
+});

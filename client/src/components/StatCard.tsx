@@ -1,3 +1,15 @@
+/**
+ * One metric. Designed after the professional dashboards (Stripe, Linear,
+ * Shopify) rather than the AI-dashboard default it replaced:
+ *
+ *  - No tinted icon chip. A small monochrome icon sits beside the label, so
+ *    the NUMBER is what the eye lands on.
+ *  - Captions add information instead of restating the label.
+ *  - Zero is shown quietly (muted), so a new account is not greeted by a
+ *    wall of loud zeros.
+ *  - Inside a .stat-panel on a phone, the first card is the hero and the
+ *    rest collapse into label/value rows (see .stat-panel in index.css).
+ */
 import { Card, CardContent } from "@/components/ui/card";
 import { LucideIcon } from "lucide-react";
 
@@ -12,31 +24,33 @@ interface StatCardProps {
   };
 }
 
+function isZero(value: string | number): boolean {
+  if (typeof value === "number") return value === 0;
+  const n = Number(String(value).replace(/[^0-9.\-]/g, ""));
+  return String(value).trim() !== "" && Number.isFinite(n) && n === 0;
+}
+
 export function StatCard({ title, value, subtitle, icon: Icon, trend }: StatCardProps) {
+  const zero = isZero(value);
   return (
-    <Card className="relative overflow-visible">
-      <CardContent className="p-3.5 sm:p-4 md:p-6">
-        <div className="flex items-start justify-between gap-2 sm:gap-4">
-          <div className="min-w-0 space-y-1">
-            <p className="text-sm font-medium leading-snug text-muted-foreground">{title}</p>
-            {/* Fluid size + tabular figures: large on desktop, never wider than
-                a phone card, and digits that do not shift as values update. */}
-            <p className="text-[clamp(1.5rem,5.5vw,1.875rem)] font-bold leading-tight tracking-tight tabular-nums" data-testid={`stat-${title.toLowerCase().replace(/\s/g, "-")}`}>
-              {value}
-            </p>
-            <p className="line-clamp-2 text-xs text-muted-foreground">{subtitle}</p>
-          </div>
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 sm:h-10 sm:w-10 sm:rounded-xl">
-            <Icon className="h-4 w-4 text-primary sm:h-5 sm:w-5" />
-          </div>
+    <Card className="stat-card relative overflow-visible">
+      <CardContent className="stat-card__body p-4 md:p-5">
+        <div className="stat-card__head flex min-w-0 items-center gap-1.5 text-muted-foreground">
+          <Icon className="stat-card__icon h-3.5 w-3.5 shrink-0 opacity-70" strokeWidth={2} aria-hidden="true" />
+          <p className="stat-card__label truncate text-[12.5px] font-medium">{title}</p>
         </div>
+        <p
+          className={`stat-card__value mt-2 text-[clamp(1.5rem,5vw,1.875rem)] font-semibold leading-none tracking-[-0.03em] tabular-nums ${zero ? "text-foreground/40" : "text-foreground"}`}
+          data-testid={`stat-${title.toLowerCase().replace(/\s/g, "-")}`}
+        >
+          {value}
+        </p>
+        <p className="stat-card__meta mt-2 line-clamp-2 text-xs text-muted-foreground">{subtitle}</p>
         {trend && (
-          <div className={`mt-3 flex items-center text-xs font-medium ${
-            trend.isPositive ? "text-green-500" : "text-red-500"
-          }`}>
-            <span>{trend.isPositive ? "+" : "-"}{Math.abs(trend.value)}%</span>
-            <span className="ml-1 text-muted-foreground">vs last month</span>
-          </div>
+          <p className={`stat-card__trend mt-2 text-xs font-medium tabular-nums ${trend.isPositive ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
+            {trend.isPositive ? "▲" : "▼"} {Math.abs(trend.value)}%
+            <span className="ml-1 font-normal text-muted-foreground">vs last month</span>
+          </p>
         )}
       </CardContent>
     </Card>

@@ -571,3 +571,44 @@ main :where(p, h1, h2, h3, h4, li, dd, td) {
 @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
   .mz-dock-surface, .mz-dock-more { background: hsl(var(--card)); backdrop-filter: none; -webkit-backdrop-filter: none; }
 }
+
+/*
+ * Stat panel on phones: a hero metric, then a compact list.
+ * Two-column stat grids on a 375px screen wrapped every label ("Attributed /
+ * Sales") and gave revenue the same weight as click counts. Here the first
+ * card is the hero (full width, large figure, caption), and the rest become
+ * label/value rows with a hairline between them, the way banking and
+ * commerce apps present many metrics on a phone.
+ */
+@media (max-width: 639px) {
+  .stat-panel { grid-template-columns: 1fr !important; }
+  .stat-panel > * { box-shadow: 0 -1px 0 hsl(var(--border)); }
+  .stat-panel .stat-card__body {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 13px 16px !important;
+  }
+  .stat-panel .stat-card__label { font-size: 13.5px; }
+  .stat-panel .stat-card__icon { width: 15px; height: 15px; }
+  .stat-panel .stat-card__value { margin: 0; font-size: 1.0625rem; letter-spacing: -0.01em; }
+  .stat-panel .stat-card__meta, .stat-panel .stat-card__trend { display: none; }
+
+  .stat-panel > :first-child .stat-card__body { display: block; padding: 16px 16px 15px !important; }
+  .stat-panel > :first-child .stat-card__value { margin-top: 8px; font-size: 2.125rem; letter-spacing: -0.035em; }
+  .stat-panel > :first-child .stat-card__meta, .stat-panel > :first-child .stat-card__trend { display: block; }
+}
+/* The hero leads on larger screens too: a slightly larger figure. */
+@media (min-width: 640px) {
+  .stat-panel > :first-child .stat-card__value { font-size: clamp(1.75rem, 3vw, 2.125rem); }
+}
+
+/* Tabs on touch screens: 36px targets (they were 28-32px). */
+@media (pointer: coarse) {
+  main [role="tablist"] { height: auto; min-height: 2.75rem; }
+  main [role="tab"] { min-height: 2.25rem; }
+}
+
+/* `scrollbar-hide` was used in several places but never defined (it comes
+   from a Tailwind plugin this project does not install), so horizontal chip
+   and tab rows showed a bare scrollbar under them. */
+.scrollbar-hide { scrollbar-width: none; -ms-overflow-style: none; }
+.scrollbar-hide::-webkit-scrollbar { display: none; }
