@@ -13,6 +13,7 @@ export interface CurrentUser {
   stripeCustomerId?: string;
   stripeConnectAccountId?: string;
   stripeConnectOnboarded?: boolean;
+  createdAt?: string;
 }
 
 export function useCurrentUser() {

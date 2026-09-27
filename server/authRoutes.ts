@@ -466,6 +466,8 @@ export function registerAuthRoutes(app: Express) {
       stripeCustomerId: user.stripeCustomerId,
       stripeConnectAccountId: user.stripeConnectAccountId,
       stripeConnectOnboarded: user.stripeConnectOnboarded,
+      // Lets the client offer the first-run tour only to genuinely new accounts.
+      createdAt: user.createdAt,
     });
   });
 }

@@ -260,3 +260,14 @@ export function BrandAppSidebar({ user }: BrandAppSidebarProps) {
     </Sidebar>
   );
 }
+
+/** The brand navigation, grouped as the sidebar shows it (see CREATOR_NAV_GROUPS). */
+export const BRAND_NAV_GROUPS = [
+  { heading: "Overview", items: overviewItems },
+  { heading: "Products", items: inventoryItems },
+  { heading: "Creator Network", items: creatorsItems },
+  { heading: "Analytics", items: analyticsItems },
+  { heading: "Branding", items: brandingItems },
+  { heading: "Communication", items: communicationItems },
+  { heading: "Settings", items: otherItems },
+];

@@ -7,10 +7,12 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { AppSidebar } from "@/components/AppSidebar";
-import { BrandAppSidebar } from "@/components/BrandAppSidebar";
-import { AffiliateAppSidebar } from "@/components/AffiliateAppSidebar";
+import { AppSidebar, CREATOR_NAV_GROUPS } from "@/components/AppSidebar";
+import { BrandAppSidebar, BRAND_NAV_GROUPS } from "@/components/BrandAppSidebar";
+import { AffiliateAppSidebar, PUBLISHER_NAV_GROUPS } from "@/components/AffiliateAppSidebar";
 import { MobileNav } from "@/components/MobileNav";
+import { CommandPalette } from "@/components/CommandPalette";
+import { FirstRunTour } from "@/components/FirstRunTour";
 import { BrandMobileNav } from "@/components/BrandMobileNav";
 import { AffiliateMobileNav } from "@/components/AffiliateMobileNav";
 import NotFound from "@/pages/not-found";
@@ -449,6 +451,7 @@ function AppContent() {
               />
             </div>
             <div className="flex items-center gap-2">
+              <CommandPalette groups={isBrandRoute ? BRAND_NAV_GROUPS : isAffiliateRoute ? PUBLISHER_NAV_GROUPS : CREATOR_NAV_GROUPS} />
               {user?.isAdmin && <AdminPortalSwitcher />}
               <ThemeToggle />
               {user && (
@@ -535,6 +538,7 @@ function AppContent() {
         </div>
       </div>
       {getMobileNav()}
+      <FirstRunTour portal={isBrandRoute ? "brand" : isAffiliateRoute ? "affiliate" : "creator"} user={user} />
     </AuthGuard>
   );
 }

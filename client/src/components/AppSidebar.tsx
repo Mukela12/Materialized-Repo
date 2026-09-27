@@ -320,3 +320,17 @@ export function AppSidebar({ user }: AppSidebarProps) {
     </Sidebar>
   );
 }
+
+/** The creator navigation, grouped as the sidebar shows it: the single source
+ *  the command palette reads, so the two can never list different pages. */
+export const CREATOR_NAV_GROUPS = [
+  { heading: "Overview", items: overviewItems },
+  { heading: "Content", items: contentItems },
+  { heading: "Analytics", items: analyticsItems },
+  { heading: "Affiliates", items: affiliateItems },
+  { heading: "Branding", items: brandItems },
+  { heading: "Wallet", items: walletItems },
+  { heading: "Account", items: accountItems },
+  { heading: "Communication", items: communicationItems },
+  { heading: "Support", items: otherItems },
+];

@@ -199,3 +199,9 @@ export function AffiliateAppSidebar({ user }: AffiliateAppSidebarProps) {
     </Sidebar>
   );
 }
+
+/** The publisher navigation, in the shape the command palette reads. */
+export const PUBLISHER_NAV_GROUPS = [
+  { heading: "Main", items: affiliateMenuItems.map((i) => ({ path: i.url, label: i.title, icon: i.icon })) },
+  { heading: "Support", items: bottomMenuItems.map((i) => ({ path: i.url, label: i.title, icon: i.icon })) },
+];
