@@ -9,9 +9,16 @@
  *    wall of loud zeros.
  *  - Inside a .stat-panel on a phone, the first card is the hero and the
  *    rest collapse into label/value rows (see .stat-panel in index.css).
+ *
+ * `hero` marks the one metric the page leads with: it gets the larger figure,
+ * a faint brand wash, a trend line when real daily data has a trend, and when
+ * it is zero, the next step (`action`) in place of its caption.
  */
+import type { ReactNode } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import { LucideIcon } from "lucide-react";
+import { Sparkline } from "@/components/Sparkline";
+import { cn } from "@/lib/utils";
 
 interface StatCardProps {
   title: string;
@@ -22,6 +29,12 @@ interface StatCardProps {
     value: number;
     isPositive: boolean;
   };
+  hero?: boolean;
+  /** Daily values for the hero's trend line. Drawn only when it has a trend. */
+  sparkline?: number[];
+  /** Shown in place of the caption when the hero's value is zero. */
+  action?: ReactNode;
+  className?: string;
 }
 
 function isZero(value: string | number): boolean {
@@ -30,10 +43,11 @@ function isZero(value: string | number): boolean {
   return String(value).trim() !== "" && Number.isFinite(n) && n === 0;
 }
 
-export function StatCard({ title, value, subtitle, icon: Icon, trend }: StatCardProps) {
+export function StatCard({ title, value, subtitle, icon: Icon, trend, hero, sparkline, action, className }: StatCardProps) {
   const zero = isZero(value);
+  const showAction = hero && zero && action;
   return (
-    <Card className="stat-card relative overflow-visible">
+    <Card className={cn("stat-card relative overflow-visible", hero && "stat-card--hero", className)}>
       <CardContent className="stat-card__body p-4 md:p-5">
         <div className="stat-card__head flex min-w-0 items-center gap-1.5 text-muted-foreground">
           <Icon className="stat-card__icon h-3.5 w-3.5 shrink-0 opacity-70" strokeWidth={2} aria-hidden="true" />
@@ -45,13 +59,18 @@ export function StatCard({ title, value, subtitle, icon: Icon, trend }: StatCard
         >
           {value}
         </p>
-        <p className="stat-card__meta mt-2 line-clamp-2 text-xs text-muted-foreground">{subtitle}</p>
+        {showAction ? (
+          <div className="stat-card__meta stat-card__action mt-2 text-xs text-muted-foreground">{action}</div>
+        ) : (
+          <p className="stat-card__meta mt-2 line-clamp-2 text-xs text-muted-foreground">{subtitle}</p>
+        )}
         {trend && (
           <p className={`stat-card__trend mt-2 text-xs font-medium tabular-nums ${trend.isPositive ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"}`}>
             {trend.isPositive ? "▲" : "▼"} {Math.abs(trend.value)}%
             <span className="ml-1 font-normal text-muted-foreground">vs last month</span>
           </p>
         )}
+        {hero && <Sparkline values={sparkline} label={`${title}, running total by day this month`} />}
       </CardContent>
     </Card>
   );

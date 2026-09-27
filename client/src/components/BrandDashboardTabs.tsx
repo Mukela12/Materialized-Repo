@@ -1,5 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { BarChart3, Package, Users, TrendingUp, Zap, Target } from "lucide-react";
+import { useEffect, useRef } from "react";
+import { useScrollEdges, mergeRefs } from "@/hooks/useScrollEdges";
 
 interface BrandDashboardTabsProps {
   activeTab: string;
@@ -16,8 +18,28 @@ const tabs = [
 ];
 
 export function BrandDashboardTabs({ activeTab, onTabChange }: BrandDashboardTabsProps) {
+  const edges = useScrollEdges<HTMLDivElement>();
+  const row = useRef<HTMLDivElement | null>(null);
+  const setRow = useRef(mergeRefs(row, edges)).current;
+
+  // Keep the active pill in view however the tab changed (a pill tap, or a
+  // link elsewhere on the page such as the hero's "Invite a creator").
+  // Scrolls the row only, never the page.
+  useEffect(() => {
+    const el = row.current;
+    const pill = el?.querySelector<HTMLElement>(`[data-testid="tab-brand-${activeTab}"]`);
+    if (!el || !pill) return;
+    const p = pill.getBoundingClientRect();
+    const r = el.getBoundingClientRect();
+    const target = el.scrollLeft + (p.left - r.left) - (el.clientWidth - p.width) / 2;
+    el.scrollTo({ left: Math.max(0, target), behavior: "smooth" });
+  }, [activeTab]);
+
   return (
-    <div className="flex gap-2 overflow-x-auto pb-2 -mx-4 px-4 md:mx-0 md:px-0 scrollbar-hide">
+    // Bleeds to the screen edge on phones so pills scroll under the gutter;
+    // scroll-fade fades whichever side has more, so the row reads as
+    // scrollable instead of as cut off.
+    <div ref={setRow} className="scroll-fade flex gap-2 overflow-x-auto pb-2 -mx-4 px-4 md:mx-0 md:px-0 scrollbar-hide">
       {tabs.map((tab) => {
         const Icon = tab.icon;
         const isActive = activeTab === tab.id;

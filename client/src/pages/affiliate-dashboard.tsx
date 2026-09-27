@@ -88,12 +88,23 @@ export default function AffiliateDashboard() {
       {/* No trend on earnings: this used to show a hard-coded "+15% vs last
           month" to every publisher with any earnings. A trend appears only
           when it is computed from real history. */}
-      <div className="stat-panel grid grid-cols-2 lg:grid-cols-4">
+      <div className="stat-panel grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
         <StatCard
+          hero
+          className="col-span-2 sm:col-span-3 lg:col-span-2"
           title="Earnings"
           value={`${CURRENCY_SYMBOL}${totalEarnings.toFixed(2)}`}
-          subtitle="Commission from every sale your pages drove"
+          subtitle="Commission from every sale your pages drove, all time"
           icon={DollarSign}
+          action={
+            <>
+              <span className="block">Nothing earned yet.</span>
+              <Link href="/affiliate/campaigns" className="stat-card__cta" data-testid="link-stat-find-campaign">
+                Put a campaign on your site
+                <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+              </Link>
+            </>
+          }
         />
         <StatCard
           title="Live campaigns"

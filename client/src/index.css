@@ -612,3 +612,68 @@ main :where(p, h1, h2, h3, h4, li, dd, td) {
    and tab rows showed a bare scrollbar under them. */
 .scrollbar-hide { scrollbar-width: none; -ms-overflow-style: none; }
 .scrollbar-hide::-webkit-scrollbar { display: none; }
+
+/* ── Scroll fade (round 7) ──────────────────────────────────────────────────
+ * A horizontal scroller fades out on whichever side has more to show, driven
+ * by data-overflow-start / -end from useScrollEdges. A pill row that simply
+ * stopped at the screen edge read as cut off; a fade over a half-visible pill
+ * is the convention people already know means "swipe".
+ */
+@property --fade-start { syntax: "<length>"; inherits: false; initial-value: 0px; }
+@property --fade-end { syntax: "<length>"; inherits: false; initial-value: 0px; }
+.scroll-fade {
+  --fade-start: 0px;
+  --fade-end: 0px;
+  -webkit-mask-image: linear-gradient(to right, transparent 0, #000 var(--fade-start), #000 calc(100% - var(--fade-end)), transparent 100%);
+  mask-image: linear-gradient(to right, transparent 0, #000 var(--fade-start), #000 calc(100% - var(--fade-end)), transparent 100%);
+  transition: --fade-start 0.2s ease, --fade-end 0.2s ease;
+}
+.scroll-fade[data-overflow-start] { --fade-start: 28px; }
+.scroll-fade[data-overflow-end] { --fade-end: 56px; }
+
+/* ── Hero metric (round 7) ──────────────────────────────────────────────────
+ * The one number a dashboard leads with gets more than a bigger font: a
+ * faint brand wash from its corner, an eyebrow label, room for a trend line
+ * drawn from real daily data, and a next step when it is zero.
+ */
+.stat-panel .stat-card.stat-card--hero {
+  background:
+    radial-gradient(130% 150% at 0% 0%, hsl(var(--primary) / 0.11), transparent 58%),
+    linear-gradient(180deg, hsl(var(--primary) / 0.025), transparent 70%);
+}
+.dark .stat-panel .stat-card.stat-card--hero {
+  background:
+    radial-gradient(130% 150% at 0% 0%, hsl(var(--primary) / 0.22), transparent 58%),
+    linear-gradient(180deg, hsl(var(--primary) / 0.05), transparent 70%);
+}
+.stat-panel .stat-card--hero .stat-card__body { display: flex; flex-direction: column; height: 100%; }
+.stat-panel .stat-card--hero .stat-card__label { font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; }
+.stat-panel .stat-card--hero .stat-card__value { margin-top: 12px; font-size: clamp(2.25rem, 3.6vw, 2.875rem); letter-spacing: -0.045em; }
+.stat-panel .stat-card--hero .stat-card__meta { margin-top: 8px; font-size: 13px; }
+.stat-card__cta {
+  display: inline-flex; align-items: center; gap: 6px; padding: 0; border: 0; background: none;
+  text-align: left; font: inherit; font-weight: 500; color: hsl(var(--primary)); cursor: pointer;
+}
+.stat-card__cta:hover { text-decoration: underline; text-underline-offset: 3px; }
+.stat-card__cta:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 3px; border-radius: 4px; }
+.stat-card__cta svg { flex: none; transition: transform 0.2s cubic-bezier(0.22, 0.7, 0.26, 1); }
+.stat-card__cta:hover svg { transform: translateX(2px); }
+.stat-spark { display: block; width: 100%; height: 44px; margin-top: auto; padding-top: 14px; overflow: visible; }
+/* Revealed left to right with a clip, not a stroke dash: Chrome measures
+   dashes wrongly on a non-scaling stroke and left the line unfinished. */
+.stat-spark { animation: mz-spark-reveal 0.9s cubic-bezier(0.22, 0.7, 0.26, 1) 0.1s both; }
+@keyframes mz-spark-reveal { from { clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+@media (prefers-reduced-motion: reduce) { .stat-spark { animation: none; } }
+
+@media (max-width: 639px) {
+  /* One column on phones: a hero told to span 2 or 3 columns would otherwise
+     conjure implicit columns and squeeze the list beside it. */
+  .stat-panel > * { grid-column: auto !important; }
+  .stat-panel .stat-card--hero .stat-card__body { display: block; padding: 18px 16px 16px !important; }
+  .stat-panel .stat-card--hero .stat-card__value { margin-top: 10px; font-size: 2.5rem; }
+  .stat-panel .stat-card--hero .stat-spark { height: 40px; padding-top: 12px; }
+}
+
+/* Dock at ≤370px pads 4px, so its items are 26px to stay concentric with the
+   30px surface (inner = outer - padding). */
+@media (max-width: 370px) { .mz-dock-item { border-radius: 26px; } }

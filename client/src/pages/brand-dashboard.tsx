@@ -9,13 +9,14 @@ import { greeting, todayLabel, monthToDateLabel } from "@/lib/greeting";
 import { BrandDashboardTabs } from "@/components/BrandDashboardTabs";
 import { VideoUploadModal } from "@/components/VideoUploadModal";
 import { defaultCarouselSettings } from "@/components/ProductCarouselEditor";
-import { Eye, DollarSign, MousePointer, Users, Package, Link2, TrendingUp, Zap, Mail, Settings, Upload, Calculator } from "lucide-react";
+import { Eye, DollarSign, MousePointer, Users, Package, Link2, TrendingUp, Zap, Mail, Settings, Upload, Calculator, ArrowRight } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Link, useLocation } from "wouter";
 import type { Brand, User, Product } from "@shared/schema";
 import { OVERAGE_RATES } from "@shared/plans";
-import { CURRENCY_SYMBOL } from "@/lib/currency";
+import { CURRENCY_SYMBOL, formatStatMoney } from "@/lib/currency";
+import type { MonthStats } from "@shared/monthStats";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -62,13 +63,9 @@ export default function BrandDashboard() {
     queryKey: ["/api/brands"],
   });
 
-  const { data: stats } = useQuery<{
-    totalViews: number;
-    totalClicks: number;
-    totalConversions: number;
-    totalRevenue: number;
-    activeCreators: number;
-  }>({
+  // Month to date, scoped to this brand's products; money from real orders.
+  // See server/dashboardStats.ts.
+  const { data: stats } = useQuery<MonthStats>({
     queryKey: ["/api/brands/stats"],
   });
 
@@ -153,13 +150,6 @@ export default function BrandDashboard() {
     await referralMutation.mutateAsync(data);
   };
 
-  const brandStats = stats || {
-    totalViews: 0,
-    totalClicks: 0,
-    totalConversions: 0,
-    totalRevenue: 0,
-    activeCreators: 0,
-  };
 
   return (
     <div className="space-y-6 pb-24 md:pb-6">
@@ -198,44 +188,59 @@ export default function BrandDashboard() {
             <h2 id="brand-stats-heading" className="text-base font-semibold tracking-tight">This month</h2>
             <span className="text-xs text-muted-foreground tabular-nums">{monthToDateLabel()}</span>
           </div>
-          <div className="stat-panel grid grid-cols-2 lg:grid-cols-5">
-            <div data-testid="stat-brand-revenue">
+          {/* Hero spans two columns wherever there are columns, so the money
+              leads by size rather than every metric weighing the same. */}
+          <div className="stat-panel grid grid-cols-2 lg:grid-cols-6">
+            <div data-testid="stat-brand-revenue" className="col-span-2">
               <StatCard
+                hero
                 title="Revenue from creators"
-                value={`$${brandStats.totalRevenue.toLocaleString()}`}
-                subtitle="Sales that started in a creator's video"
+                value={formatStatMoney(stats?.revenue ?? 0, stats?.currency)}
+                subtitle={stats?.orders
+                  ? `${stats.orders.toLocaleString()} ${stats.orders === 1 ? "order" : "orders"} that started in a creator's video`
+                  : "Sales that started in a creator's video"}
                 icon={DollarSign}
+                sparkline={stats?.revenueByDay}
+                action={
+                  <>
+                    <span className="block">No sales yet this month.</span>
+                    <button type="button" className="stat-card__cta" onClick={() => setActiveTab("creators")} data-testid="button-stat-invite-creator">
+                      Invite a creator to feature them
+                      <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+                    </button>
+                  </>
+                }
               />
             </div>
             <div data-testid="stat-brand-views">
               <StatCard
                 title="Views"
-                value={brandStats.totalViews.toLocaleString()}
-                subtitle="Times your products were seen in videos"
+                value={(stats?.views ?? 0).toLocaleString()}
+                subtitle="Plays of videos with your products"
                 icon={Eye}
               />
             </div>
             <div data-testid="stat-brand-clicks">
               <StatCard
                 title="Clicks to store"
-                value={brandStats.totalClicks.toLocaleString()}
-                subtitle="Taps through to your shop"
+                value={(stats?.clicks ?? 0).toLocaleString()}
+                subtitle={stats?.views ? `${(stats.ctr ?? 0).toFixed(1)}% of views` : "Taps through to your shop"}
                 icon={MousePointer}
               />
             </div>
             <div data-testid="stat-brand-conversions">
               <StatCard
                 title="Orders"
-                value={brandStats.totalConversions.toLocaleString()}
-                subtitle="Purchases after a click"
+                value={(stats?.orders ?? 0).toLocaleString()}
+                subtitle="Led by a creator's video"
                 icon={TrendingUp}
               />
             </div>
             <div data-testid="stat-brand-creators">
               <StatCard
                 title="Active creators"
-                value={brandStats.activeCreators.toLocaleString()}
-                subtitle="Creators featuring your products"
+                value={(stats?.activeCreators ?? 0).toLocaleString()}
+                subtitle="Creators whose videos got views"
                 icon={Users}
               />
             </div>

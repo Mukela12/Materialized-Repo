@@ -20,31 +20,31 @@ const tabs = [
 
 export function DashboardTabs({ activeTab, onTabChange }: DashboardTabsProps) {
   return (
-    <div className="w-full overflow-x-auto pb-2 -mb-2 scrollbar-hide">
-      <Tabs value={activeTab} onValueChange={onTabChange} className="w-full">
-        <TabsList className="inline-flex h-12 w-max min-w-full items-center justify-start gap-1 rounded-xl bg-muted/50 p-1">
-          {tabs.map((tab) => {
-            const Icon = tab.icon;
-            return (
-              <TabsTrigger
-                key={tab.id}
-                value={tab.id}
-                className="inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap data-[state=active]:bg-background data-[state=active]:shadow-sm"
-                data-testid={`tab-${tab.id}`}
-                onFocus={(e) => e.currentTarget.scrollIntoView({ block: "nearest", inline: "nearest" })}
-                onClick={(e) => e.currentTarget.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" })}
-              >
-                <Icon className="h-4 w-4" />
-                {/* Words on every screen: five bare icons on a phone left people
-                    guessing. Short labels below sm, full labels above; the bar
-                    scrolls when they do not fit. */}
-                <span className="sm:hidden">{tab.short}</span>
-                <span className="hidden sm:inline">{tab.label}</span>
-              </TabsTrigger>
-            );
-          })}
-        </TabsList>
-      </Tabs>
-    </div>
+    <Tabs value={activeTab} onValueChange={onTabChange} className="w-full">
+      {/* The list is the scroller (TabsList fades its hidden edge). 12px
+          radius around 4px padding, so the triggers are 8px. */}
+      <TabsList className="flex h-12 w-full items-center justify-start gap-1 rounded-xl bg-muted/50 p-1">
+        {tabs.map((tab) => {
+          const Icon = tab.icon;
+          return (
+            <TabsTrigger
+              key={tab.id}
+              value={tab.id}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-[8px] text-sm font-medium whitespace-nowrap data-[state=active]:bg-background data-[state=active]:shadow-sm"
+              data-testid={`tab-${tab.id}`}
+              onFocus={(e) => e.currentTarget.scrollIntoView({ block: "nearest", inline: "nearest" })}
+              onClick={(e) => e.currentTarget.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" })}
+            >
+              <Icon className="h-4 w-4" />
+              {/* Words on every screen: five bare icons on a phone left people
+                  guessing. Short labels below sm, full labels above; the bar
+                  scrolls when they do not fit. */}
+              <span className="sm:hidden">{tab.short}</span>
+              <span className="hidden sm:inline">{tab.label}</span>
+            </TabsTrigger>
+          );
+        })}
+      </TabsList>
+    </Tabs>
   );
 }

@@ -10,11 +10,13 @@ import { DashboardTabs } from "@/components/DashboardTabs";
 import { AffiliateTable } from "@/components/AffiliateTable";
 import { VideoUploadModal } from "@/components/VideoUploadModal";
 import { CreatorRewardNotification } from "@/components/EarningsNotification";
-import { Eye, DollarSign, MousePointer, Upload, Play, TrendingUp } from "lucide-react";
+import { Eye, DollarSign, MousePointer, Upload, Play, TrendingUp, ArrowRight } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useLocation } from "wouter";
 import type { Video, Brand, User } from "@shared/schema";
+import type { MonthStats } from "@shared/monthStats";
+import { formatStatMoney } from "@/lib/currency";
 
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState("stats");
@@ -42,13 +44,10 @@ export default function Dashboard() {
     queryKey: ["/api/brands"],
   });
 
-  const { data: stats } = useQuery<{
-    totalViews: number;
-    totalClicks: number;
-    totalRevenue: number;
-    averageCTR: number;
-  }>({
-    queryKey: ["/api/analytics/stats"],
+  // Month to date, from real orders and this creator's own events. The
+  // lifetime /api/analytics/stats is not what a "This month" heading promises.
+  const { data: stats } = useQuery<MonthStats>({
+    queryKey: ["/api/analytics/month"],
   });
 
   const videoMutation = useMutation({
@@ -63,6 +62,7 @@ export default function Dashboard() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/videos"] });
       queryClient.invalidateQueries({ queryKey: ["/api/analytics/stats"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/analytics/month"] });
       toast({
         title: "Video Published!",
         description: "Your video is now being processed for product detection.",
@@ -156,32 +156,46 @@ export default function Dashboard() {
             <h2 id="stats-heading" className="text-base font-semibold tracking-tight">This month</h2>
             <span className="text-xs text-muted-foreground tabular-nums">{monthToDateLabel()}</span>
           </div>
-          <div className="stat-panel grid grid-cols-2 lg:grid-cols-4">
+          <div className="stat-panel grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
             {/* Gross sales the creator's videos drove — NOT a Materialized
                 balance. The platform creator commission rate is 0 by default
                 (brands pay creators directly), so this must never be labelled
                 "Revenue" or "Earnings". See server/feeConfig.ts. */}
             <StatCard
+              hero
+              className="col-span-2 sm:col-span-3 lg:col-span-2"
               title="Attributed Sales"
-              value={`$${(stats?.totalRevenue ?? 0).toFixed(0)}`}
-              subtitle="What your videos sold for the brands in them"
+              value={formatStatMoney(stats?.revenue ?? 0, stats?.currency)}
+              subtitle={stats?.orders
+                ? `${stats.orders.toLocaleString()} ${stats.orders === 1 ? "order" : "orders"} your videos led to`
+                : "What your videos sold for the brands in them"}
               icon={DollarSign}
+              sparkline={stats?.revenueByDay}
+              action={
+                <>
+                  <span className="block">No sales yet this month.</span>
+                  <button type="button" className="stat-card__cta" onClick={() => navigate("/creator/my-videos")} data-testid="button-stat-tag-product">
+                    Tag a brand's product in a video
+                    <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
+                  </button>
+                </>
+              }
             />
             <StatCard
               title="Views"
-              value={(stats?.totalViews ?? 0).toLocaleString()}
+              value={(stats?.views ?? 0).toLocaleString()}
               subtitle="Plays across every page your videos are embedded on"
               icon={Eye}
             />
             <StatCard
               title="Product clicks"
-              value={(stats?.totalClicks ?? 0).toLocaleString()}
+              value={(stats?.clicks ?? 0).toLocaleString()}
               subtitle="Taps through to a brand's store"
               icon={MousePointer}
             />
             <StatCard
               title="Click-through"
-              value={`${(stats?.averageCTR ?? 0).toFixed(2)}%`}
+              value={`${(stats?.ctr ?? 0).toFixed(2)}%`}
               subtitle="Clicks per view"
               icon={MousePointer}
             />

@@ -29,3 +29,19 @@ export function formatMoney(amount: number | string, decimals = 2): string {
   const n = typeof amount === "string" ? parseFloat(amount) : amount;
   return `${CURRENCY_SYMBOL}${(Number.isFinite(n) ? n : 0).toFixed(decimals)}`;
 }
+
+/**
+ * A headline figure in a given currency: "$1,240", "$18.50", "€300".
+ * Whole amounts drop the cents so the number reads at a glance; the currency
+ * comes from the data (a brand's orders may not be in the platform currency).
+ */
+export function formatStatMoney(amount: number, currency: string = CODE): string {
+  const code = currency.toUpperCase();
+  const whole = Math.round(amount * 100) % 100 === 0;
+  const body = amount.toLocaleString("en-US", {
+    minimumFractionDigits: whole ? 0 : 2,
+    maximumFractionDigits: whole ? 0 : 2,
+  });
+  const symbol = SYMBOLS[code];
+  return symbol ? `${symbol}${body}` : `${body} ${code}`;
+}

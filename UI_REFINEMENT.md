@@ -35,6 +35,28 @@ explaining itself. Patterns are borrowed from DegreeDesk
 - First-run tour for accounts under 14 days old, never admins, once per
   user; per-viewport targets, skips invisible steps.
 
+## Shipped 2026-09-27, round 7
+Looked at the actual screens this time (Tolstoy's product footage and site,
+Videowise's site; their dashboards sit behind sign-in, so the in-app
+comparison is from their product videos). What separates them from us:
+colour comes from imagery and one soft wash, the chrome stays near
+monochrome, and the headline figure is visibly bigger than the rest.
+
+- Data first: the "This month" panels were not monthly. The brand panel
+  counted every analytics event on the platform (no brand or date filter)
+  and read revenue from a column ingest never writes; the creator panel was
+  lifetime. Both now come from server/dashboardStats.ts: month to date,
+  scoped to the viewer, money from real orders (platform_fee_accruals,
+  attributed, not voided).
+- Hero metric: two columns wide on desktop, eyebrow label, faint brand wash,
+  a running-total line only when two or more days had sales, and at zero a
+  next step (invite a creator / tag a product / put a campaign live).
+- Scroll affordance: pill rows and tab bars fade on the side with more
+  (useScrollEdges + .scroll-fade); the active brand pill scrolls into view
+  however the tab changed.
+- Concentric corners: tab list 10px/4px/6px, creator tab bar 12px/4px/8px,
+  dock 30px/4px/26px at the narrowest size.
+
 ## Decided against, with reasons
 - PageHeader migration: 26 pages already share the stacked-then-row idiom
   and all 46 routes pass the fit audit; a rewrite would be churn.

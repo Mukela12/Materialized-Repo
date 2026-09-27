@@ -1080,6 +1080,20 @@ export async function registerRoutes(
     }
   });
 
+  // Month-to-date numbers for the creator dashboard's "This month" panel.
+  // /api/analytics/stats above is lifetime and stays as it is for its callers.
+  app.get("/api/analytics/month", async (req, res) => {
+    try {
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ error: "Authentication required" });
+      const { creatorMonthStats } = await import("./dashboardStats");
+      res.json(await creatorMonthStats(sessionUserId));
+    } catch (error) {
+      console.error("Creator month stats error:", error);
+      res.status(500).json({ error: "Failed to get stats" });
+    }
+  });
+
   // Get detailed analytics
   app.get("/api/analytics/detailed", async (req, res) => {
     try {
@@ -2299,48 +2313,15 @@ export async function registerRoutes(
 
   // ==================== BRAND DASHBOARD ROUTES ====================
 
-  // Get brand stats (real data from database)
+  // Month-to-date numbers for the brand dashboard's "This month" panel,
+  // scoped to this brand's products and read from real orders. See
+  // server/dashboardStats.ts for why the previous version was wrong.
   app.get("/api/brands/stats", async (req, res) => {
     try {
       const sessionUserId = (req.session as any)?.userId;
       if (!sessionUserId) return res.status(401).json({ error: "Authentication required" });
-
-      const { db } = await import("./db");
-      const { videos, analyticsEvents, campaigns, campaignAffiliates, brands, creatorInvitations } = await import("@shared/schema");
-      const { sql, eq, count, sum, and } = await import("drizzle-orm");
-
-      // Get user's brand
-      const userBrands = await db.select().from(brands).where(eq(brands.ownerId, sessionUserId));
-      const brandId = userBrands[0]?.id;
-
-      // Aggregate from analytics events for videos associated with user's brands
-      const [viewStats] = await db.select({
-        totalViews: sql<number>`COALESCE(COUNT(CASE WHEN ${analyticsEvents.eventType} = 'view' THEN 1 END), 0)::int`,
-        totalClicks: sql<number>`COALESCE(COUNT(CASE WHEN ${analyticsEvents.eventType} = 'click' THEN 1 END), 0)::int`,
-        totalConversions: sql<number>`COALESCE(COUNT(CASE WHEN ${analyticsEvents.eventType} = 'purchase' THEN 1 END), 0)::int`,
-        totalRevenue: sql<number>`COALESCE(SUM(CASE WHEN ${analyticsEvents.eventType} = 'purchase' THEN ${analyticsEvents.revenue}::numeric ELSE 0 END), 0)::float`,
-      }).from(analyticsEvents);
-
-      // Count active creators (affiliates assigned to campaigns for this brand)
-      let activeCreators = 0;
-      if (brandId) {
-        const brandCampaigns = await db.select({ id: campaigns.id }).from(campaigns).where(eq(campaigns.brandId, brandId));
-        // Count distinct affiliates across all brand campaigns
-        if (brandCampaigns.length > 0) {
-          const [creatorCount] = await db.select({
-            count: sql<number>`COUNT(DISTINCT ${campaignAffiliates.affiliateId})::int`,
-          }).from(campaignAffiliates);
-          activeCreators = creatorCount?.count ?? 0;
-        }
-      }
-
-      res.json({
-        totalViews: viewStats?.totalViews ?? 0,
-        totalClicks: viewStats?.totalClicks ?? 0,
-        totalConversions: viewStats?.totalConversions ?? 0,
-        totalRevenue: viewStats?.totalRevenue ?? 0,
-        activeCreators,
-      });
+      const { brandMonthStats } = await import("./dashboardStats");
+      res.json(await brandMonthStats(sessionUserId));
     } catch (error) {
       console.error("Brand stats error:", error);
       res.status(500).json({ error: "Failed to get brand stats" });

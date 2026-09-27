@@ -131,3 +131,70 @@ describe("round 6: professional dashboards", () => {
     expect(greeting("Miro Misljen", afternoon)).toBe("Good afternoon, Miro");
   });
 });
+
+describe("round 7: scroll affordance, hero metric, concentric corners", () => {
+  it("pill rows that scroll fade on the side with more, so they read as scrollable", () => {
+    const css = read("client/src/index.css");
+    expect(css).toMatch(/\.scroll-fade\[data-overflow-start\] \{ --fade-start: 28px; \}/);
+    expect(css).toMatch(/\.scroll-fade\[data-overflow-end\] \{ --fade-end: 56px; \}/);
+    expect(css).toMatch(/-webkit-mask-image: linear-gradient\(to right/);
+    const brandTabs = code("client/src/components/BrandDashboardTabs.tsx");
+    expect(brandTabs).toMatch(/ref=\{setRow\} className="scroll-fade/);
+    expect(brandTabs).toMatch(/useScrollEdges/);
+    // Changing tab from anywhere (the hero's link) brings the pill into view.
+    expect(brandTabs).toMatch(/useEffect\([\s\S]*scrollTo\([\s\S]*\[activeTab\]\)/);
+    const tabs = code("client/src/components/ui/tabs.tsx");
+    expect(tabs).toMatch(/"scroll-fade inline-flex/);
+    expect(tabs).toMatch(/mergeRefs\(ref, edges\)/);
+  });
+
+  it("the scroll-edge hook marks both edges and watches size changes", () => {
+    const hook = code("client/src/hooks/useScrollEdges.ts");
+    expect(hook).toMatch(/toggleAttribute\("data-overflow-start", el\.scrollLeft > 1\)/);
+    expect(hook).toMatch(/toggleAttribute\("data-overflow-end", max - el\.scrollLeft > 1\)/);
+    expect(hook).toMatch(/new ResizeObserver\(update\)/);
+    expect(hook).toMatch(/removeEventListener\("scroll", update\)/);
+  });
+
+  it("nested rounded shapes are concentric: inner radius = outer - padding", () => {
+    // tailwind: md = 6px. List 10px, padding 4px, trigger 6px.
+    const tabs = code("client/src/components/ui/tabs.tsx");
+    expect(tabs).toMatch(/rounded-\[10px\] bg-muted p-1/);
+    expect(tabs).toMatch(/whitespace-nowrap rounded-md px-3/);
+    // Creator tab bar: 12px (rounded-xl), padding 4px, triggers 8px.
+    const dash = code("client/src/components/DashboardTabs.tsx");
+    expect(dash).toMatch(/rounded-xl bg-muted\/50 p-1/);
+    expect(dash).toMatch(/rounded-\[8px\] text-sm/);
+    // Dock: 30px surface; 5px padding -> 25px items; 4px padding -> 26px.
+    const css = read("client/src/index.css");
+    expect(css).toMatch(/\.mz-dock-surface \{[^}]*padding: 5px; border-radius: 30px;/);
+    expect(css).toMatch(/\.mz-dock-item \{[^}]*border-radius: 25px;/);
+    expect(css).toMatch(/@media \(max-width: 370px\) \{ \.mz-dock-item \{ border-radius: 26px; \} \}/);
+  });
+
+  it("each dashboard leads with exactly one hero that offers a next step at zero", () => {
+    for (const p of ["client/src/pages/dashboard.tsx", "client/src/pages/brand-dashboard.tsx", "client/src/pages/affiliate-dashboard.tsx"]) {
+      const src = code(p);
+      expect(src.match(/<StatCard\s+hero\b/g), p).toHaveLength(1);
+      expect(src, p).toMatch(/action=\{/);
+      expect(src, p).toMatch(/className="stat-card__cta"/);
+    }
+    const card = code("client/src/components/StatCard.tsx");
+    expect(card).toMatch(/const showAction = hero && zero && action;/);
+  });
+
+  it("the hero's trend line is real data or nothing", () => {
+    const spark = code("client/src/components/Sparkline.tsx");
+    expect(spark).toMatch(/if \(!values \|\| !hasTrend\(values\)\) return null;/);
+    expect(spark).toMatch(/sparkPaths\(cumulative\(values\)/);
+    // Only the pages with real daily data pass one; the publisher has none.
+    expect(code("client/src/pages/brand-dashboard.tsx")).toMatch(/sparkline=\{stats\?\.revenueByDay\}/);
+    expect(code("client/src/pages/dashboard.tsx")).toMatch(/sparkline=\{stats\?\.revenueByDay\}/);
+    expect(code("client/src/pages/affiliate-dashboard.tsx")).not.toMatch(/sparkline=/);
+  });
+
+  it("a hero told to span columns cannot conjure columns on a phone", () => {
+    const css = read("client/src/index.css");
+    expect(css).toMatch(/@media \(max-width: 639px\) \{[\s\S]*?\.stat-panel > \* \{ grid-column: auto !important; \}/);
+  });
+});
