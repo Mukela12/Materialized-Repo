@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { EmptyState } from "@/components/EmptyState";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -600,11 +601,20 @@ export default function BrandCreators() {
                 </div>
               </ScrollArea>
             ) : (
-              <div className="text-center py-8 text-muted-foreground">
-                <Users className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                <p>No invitations sent yet</p>
-                <p className="text-sm">Start inviting creators to grow your network</p>
-              </div>
+              <EmptyState
+                variant="inline"
+                icon={Users}
+                title="No invitations sent yet"
+                description="Invite creators who already feature your products. Their videos become your storefront."
+                action={{
+                  label: "Invite your first creator",
+                  onClick: () => {
+                    const el = document.querySelector<HTMLInputElement>('[data-testid="input-invite-creator-name"]');
+                    el?.scrollIntoView({ behavior: "smooth", block: "center" });
+                    el?.focus({ preventScroll: true });
+                  },
+                }}
+              />
             )}
           </CardContent>
         </Card>

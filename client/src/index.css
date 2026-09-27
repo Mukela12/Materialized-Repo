@@ -445,3 +445,32 @@ main .grid > * {
 main :where(p, h1, h2, h3, h4, li, dd, td) {
   overflow-wrap: break-word;
 }
+
+/*
+ * Stat panel: a row of stat cards reads as ONE framed instrument with hairline
+ * dividers instead of separate floating boxes. Each cell draws only its left
+ * and top hairline (inset box-shadows), and the panel clips the outer ones, so
+ * there is never a doubled border whether the grid shows 2, 3, 4 or 5 columns.
+ */
+.stat-panel {
+  gap: 0;
+  overflow: hidden;
+  border: 1px solid hsl(var(--card-border));
+  border-radius: 0.875rem;
+  background: hsl(var(--card));
+}
+.stat-panel > * {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: -1px 0 0 hsl(var(--border)), 0 -1px 0 hsl(var(--border));
+}
+/* Cards wrapped one level deeper (e.g. inside a tooltip trigger) shed their
+   chrome too, so the panel stays one surface. */
+.stat-panel > * > .shadcn-card {
+  height: 100%;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}

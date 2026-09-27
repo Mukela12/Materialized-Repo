@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { categoryBadgeOnThumbnail, SELECTION_CHIP } from "@/lib/categoryColors";
 import { useQuery } from "@tanstack/react-query";
+import { EmptyState } from "@/components/EmptyState";
 import { Card, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -133,15 +134,23 @@ export default function AffiliateLibrary() {
           ))}
         </div>
       ) : filteredListings.length === 0 ? (
-        <Card className="p-12 text-center">
-          <ShoppingBag className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
-          <CardTitle className="mb-2">No Videos Available</CardTitle>
-          <CardDescription>
-            {searchQuery || categoryFilter !== "all"
-              ? "No videos match your search or filter."
-              : "The library is currently empty. Check back soon for new content!"}
-          </CardDescription>
-        </Card>
+        searchQuery || categoryFilter !== "all" ? (
+          <EmptyState
+            icon={ShoppingBag}
+            title="No videos match"
+            description="Try a different search or category."
+            action={{ label: "Clear filters", onClick: () => { setSearchQuery(""); setCategoryFilter("all"); } }}
+            data-testid="empty-library-filtered"
+          />
+        ) : (
+          <EmptyState
+            icon={ShoppingBag}
+            title="The library is empty"
+            description="New creator videos land here as they are listed. Check back soon for content to repost."
+            action={undefined}
+            data-testid="empty-library"
+          />
+        )
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 pt-8">
           {filteredListings.map((listing) => {

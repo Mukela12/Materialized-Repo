@@ -183,12 +183,14 @@ export function AffiliatePublishersTable({ formatMoney }: AffiliatePublishersTab
             <TableHeader>
               <TableRow>
                 <TableHead>Publisher</TableHead>
-                <TableHead className="text-right">Clicks</TableHead>
-                <TableHead className="text-right">Conversions</TableHead>
-                <TableHead className="text-right">Conv. Rate</TableHead>
+                {/* Columns appear in priority order as the screen widens; on
+                    phones their values fold under the publisher name instead. */}
+                <TableHead className="hidden text-right md:table-cell">Clicks</TableHead>
+                <TableHead className="hidden text-right lg:table-cell">Conversions</TableHead>
+                <TableHead className="hidden text-right xl:table-cell">Conv. Rate</TableHead>
                 <TableHead className="text-right">Revenue</TableHead>
-                <TableHead className="text-right">Earnings</TableHead>
-                <TableHead className="text-right">Campaigns</TableHead>
+                <TableHead className="hidden text-right sm:table-cell">Earnings</TableHead>
+                <TableHead className="hidden text-right lg:table-cell">Campaigns</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -196,33 +198,39 @@ export function AffiliatePublishersTable({ formatMoney }: AffiliatePublishersTab
                 <TableRow key={publisher.id} data-testid={`row-publisher-${publisher.id}`}>
                   <TableCell>
                     <div className="flex items-center gap-3">
-                      <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center text-sm font-medium">
+                      <div className="h-8 w-8 shrink-0 rounded-full bg-primary/10 flex items-center justify-center text-sm font-medium">
                         {publisher.affiliateName.charAt(0).toUpperCase()}
                       </div>
-                      <div>
-                        <p className="font-medium">{publisher.affiliateName}</p>
-                        <p className="text-xs text-muted-foreground">{publisher.affiliateEmail}</p>
+                      <div className="min-w-0">
+                        <p className="font-medium truncate" title={publisher.affiliateName}>{publisher.affiliateName}</p>
+                        <p className="text-xs text-muted-foreground truncate" title={publisher.affiliateEmail}>{publisher.affiliateEmail}</p>
+                        <p className="mt-1 text-xs text-muted-foreground tabular-nums md:hidden">
+                          {publisher.totalClicks.toLocaleString()} clicks · {getConversionRate(publisher.totalClicks, publisher.totalConversions)}% conv. · {publisher.campaignCount} campaign{publisher.campaignCount === 1 ? "" : "s"}
+                        </p>
+                        <p className="text-xs font-medium text-chart-2 tabular-nums sm:hidden">
+                          Earned {fmtMoney(parseFloat(publisher.totalEarnings))}
+                        </p>
                       </div>
                     </div>
                   </TableCell>
-                  <TableCell className="text-right">
+                  <TableCell className="hidden text-right tabular-nums md:table-cell">
                     <span className="font-medium">{publisher.totalClicks.toLocaleString()}</span>
                   </TableCell>
-                  <TableCell className="text-right">
+                  <TableCell className="hidden text-right tabular-nums lg:table-cell">
                     <span className="font-medium">{publisher.totalConversions.toLocaleString()}</span>
                   </TableCell>
-                  <TableCell className="text-right">
+                  <TableCell className="hidden text-right xl:table-cell">
                     <Badge variant="secondary">
                       {getConversionRate(publisher.totalClicks, publisher.totalConversions)}%
                     </Badge>
                   </TableCell>
-                  <TableCell className="text-right">
+                  <TableCell className="text-right tabular-nums whitespace-nowrap">
                     <span className="font-medium">{fmtMoney(parseFloat(publisher.totalRevenue))}</span>
                   </TableCell>
-                  <TableCell className="text-right">
+                  <TableCell className="hidden text-right tabular-nums whitespace-nowrap sm:table-cell">
                     <span className="font-medium text-chart-2">{fmtMoney(parseFloat(publisher.totalEarnings))}</span>
                   </TableCell>
-                  <TableCell className="text-right">
+                  <TableCell className="hidden text-right lg:table-cell">
                     <Badge variant="outline">{publisher.campaignCount}</Badge>
                   </TableCell>
                 </TableRow>

@@ -226,7 +226,7 @@ export default function Analytics() {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="stat-panel grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           title={isPublisherView ? "My Views" : "Total Views"}
           value={currentStats.totalViews.toLocaleString()}

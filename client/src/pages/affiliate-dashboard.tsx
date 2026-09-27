@@ -1,5 +1,6 @@
 import { CURRENCY_SYMBOL } from "@/lib/currency";
 import { useQuery } from "@tanstack/react-query";
+import { EmptyState } from "@/components/EmptyState";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -85,7 +86,7 @@ export default function AffiliateDashboard() {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="stat-panel grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           title="Total Earnings"
           value={`${CURRENCY_SYMBOL}${totalEarnings.toFixed(2)}`}
@@ -132,18 +133,14 @@ export default function AffiliateDashboard() {
                 ))}
               </div>
             ) : campaigns.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-12 text-center">
-                <div className="w-16 h-16 rounded-full bg-muted/50 flex items-center justify-center mb-4">
-                  <Video className="h-6 w-6 text-muted-foreground" />
-                </div>
-                <p className="text-sm font-medium text-foreground/70 mb-4">No active campaigns yet</p>
-                <Link href="/affiliate/library">
-                  <Button data-testid="button-browse-library">
-                    <ShoppingBag className="h-4 w-4 mr-2" />
-                    Browse Video Library
-                  </Button>
-                </Link>
-              </div>
+              <EmptyState
+                variant="inline"
+                icon={Video}
+                title="No active campaigns yet"
+                description="License a creator video from the library and repost it on your site to start earning."
+                action={{ label: "Browse the Video Library", href: "/affiliate/library", icon: ShoppingBag }}
+                data-testid="button-browse-library"
+              />
             ) : (
               <div className="space-y-3">
                 {campaigns.slice(0, 3).map((campaign) => (
@@ -185,12 +182,12 @@ export default function AffiliateDashboard() {
           </CardHeader>
           <CardContent>
             {libraryItems.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-12 text-center">
-                <div className="w-16 h-16 rounded-full bg-muted/50 flex items-center justify-center mb-4">
-                  <ShoppingBag className="h-6 w-6 text-muted-foreground" />
-                </div>
-                <p className="text-sm font-medium text-foreground/70">No videos available in the library yet</p>
-              </div>
+              <EmptyState
+                variant="inline"
+                icon={ShoppingBag}
+                title="The library is still filling up"
+                description="New creator videos appear here as they are listed. Check back soon."
+              />
             ) : (
               <div className="space-y-3">
                 {libraryItems.slice(0, 3).map((item) => (

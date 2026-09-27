@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { EmptyState } from "@/components/EmptyState";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -160,18 +161,13 @@ export default function AffiliateCampaigns() {
           ))}
         </div>
       ) : campaigns.length === 0 ? (
-        <Card className="p-12 text-center">
-          <Video className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
-          <CardTitle className="mb-2">No Active Campaigns</CardTitle>
-          <CardDescription>
-            Browse the Global Library to license videos and start earning commissions.
-          </CardDescription>
-          <Link href="/affiliate/library">
-            <Button className="mt-4" data-testid="button-browse-library">
-              Browse Library
-            </Button>
-          </Link>
-        </Card>
+        <EmptyState
+          icon={Video}
+          title="No active campaigns"
+          description="License a video from the Global Library and every sale it drives earns you a commission."
+          action={{ label: "Browse the library", href: "/affiliate/library" }}
+          data-testid="button-browse-library"
+        />
       ) : (
         <div className="space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">

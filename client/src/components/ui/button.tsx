@@ -27,7 +27,10 @@ const buttonVariants = cva(
       // but will expand to fit large amounts of content.
       size: {
         default: "min-h-9 px-[20px] py-[20px]",
-        sm: "min-h-8 rounded-[30px] px-[20px] py-[20px] text-xs",
+        // "sm" means small: it used to share the 20px vertical padding of the
+        // default size, so every small button (row actions, toolbars) was a
+        // 60px pill. Default and lg keep the brand's large pill.
+        sm: "min-h-9 rounded-[30px] px-4 py-1.5 text-xs",
         lg: "min-h-10 rounded-[30px] px-[20px] py-[20px]",
         icon: "h-9 w-9 rounded-[30px]",
       },

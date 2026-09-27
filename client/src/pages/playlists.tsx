@@ -5,6 +5,7 @@ import { TokenPayOption } from "@/components/TokenPayOption";
 import { walletPost, useInvalidateWallet, tokenLabel } from "@/hooks/useWallet";
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { EmptyState } from "@/components/EmptyState";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -266,13 +267,16 @@ export default function PlaylistsPage() {
           ))}
         </div>
       ) : playlists.length === 0 ? (
-        <Card className="p-12 text-center">
-          <ListVideo className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
-          <CardTitle className="mb-2">No playlists yet</CardTitle>
-          <CardDescription>
-            Go to the Video Library, select videos, and click "Add to Playlist" to get started.
-          </CardDescription>
-        </Card>
+        <EmptyState
+          icon={ListVideo}
+          title="No playlists yet"
+          description='In the Video Library, select videos and choose "Add to Playlist" to build your first one.'
+          action={{
+            label: "Open the Video Library",
+            href: `/${(typeof window !== "undefined" ? window.location.pathname.split("/")[1] : "creator") || "creator"}/library`,
+          }}
+          data-testid="empty-playlists"
+        />
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {playlists.map((pl) => (

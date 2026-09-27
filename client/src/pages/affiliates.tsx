@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { EmptyState } from "@/components/EmptyState";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -408,13 +409,13 @@ export default function Affiliates() {
           </CardContent>
         </Card>
       ) : invitations.length === 0 ? (
-        <Card className="p-12 text-center">
-          <Users className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
-          <CardTitle className="mb-2">No Affiliates Yet</CardTitle>
-          <CardDescription>
-            Start building your affiliate network by inviting partners to promote your content.
-          </CardDescription>
-        </Card>
+        <EmptyState
+          icon={Users}
+          title="No affiliates yet"
+          description="Invite partners to promote your content. They earn a commission on every sale they drive."
+          action={{ label: "Invite an affiliate", onClick: () => setIsInviteOpen(true) }}
+          data-testid="empty-affiliates"
+        />
       ) : (
         <Card>
           <CardHeader className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">

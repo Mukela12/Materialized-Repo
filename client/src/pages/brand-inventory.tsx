@@ -687,7 +687,9 @@ export default function BrandInventory() {
                     Pick your store below to unlock the connection fields.
                   </p>
                 )}
-                <div className="flex flex-wrap gap-3">
+                {/* An even grid that fills the row at every width; fixed 112px
+                    tiles in a wrapping flex row left a ragged gap on phones. */}
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
                   {PLATFORMS.map((p) => {
                     const isSelected = selectedPlatform === p.id;
                     return (
@@ -699,7 +701,7 @@ export default function BrandInventory() {
                         aria-disabled={!p.supported}
                         data-testid={`button-platform-${p.id}`}
                         title={p.supported ? p.label : `${p.label} — coming soon`}
-                        className={`relative flex flex-col items-center gap-1.5 w-28 py-2.5 px-1 rounded-xl border-2 transition-all ${
+                        className={`relative flex flex-col items-center gap-1.5 w-full py-3 px-1 rounded-xl border-2 transition-all ${
                           !p.supported
                             ? "border-border bg-card opacity-50 cursor-not-allowed"
                             : isSelected
@@ -997,7 +999,7 @@ export default function BrandInventory() {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="rounded-full h-9 py-0 px-5"
+                      className="rounded-full px-5"
                       onClick={() => setEditingProduct(product)}
                       data-testid={`button-edit-product-${product.id}`}
                     >

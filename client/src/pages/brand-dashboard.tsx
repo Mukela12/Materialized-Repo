@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/EmptyState";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatCard } from "@/components/StatCard";
@@ -200,7 +201,7 @@ export default function BrandDashboard() {
             </p>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+            <div className="stat-panel grid grid-cols-2 lg:grid-cols-5 gap-4">
               <div data-testid="stat-brand-views">
                 <StatCard
                   title="Total Views"
@@ -372,13 +373,13 @@ export default function BrandDashboard() {
                   ))}
                 </div>
               ) : (
-                <div className="flex flex-col items-center justify-center py-12 text-center text-muted-foreground">
-                  <div className="w-16 h-16 rounded-full bg-muted/50 flex items-center justify-center mb-4">
-                    <Package className="h-6 w-6 text-muted-foreground" />
-                  </div>
-                  <p className="text-sm font-medium text-foreground/70">No products synced yet</p>
-                  <p className="text-xs mt-1">Connect your API to import your inventory</p>
-                </div>
+                <EmptyState
+                  variant="inline"
+                  icon={Package}
+                  title="No products yet"
+                  description="Connect your Shopify or WooCommerce store to import your catalog, or add products by hand."
+                  action={{ label: "Add your products", href: "/brand/inventory" }}
+                />
               )}
             </CardContent>
           </Card>
@@ -494,13 +495,13 @@ export default function BrandDashboard() {
               </p>
             </CardHeader>
             <CardContent>
-              <div className="flex flex-col items-center justify-center py-12 text-center text-muted-foreground">
-                <div className="w-16 h-16 rounded-full bg-muted/50 flex items-center justify-center mb-4">
-                  <Users className="h-6 w-6 text-muted-foreground" />
-                </div>
-                <p className="text-sm font-medium text-foreground/70">No creators connected yet</p>
-                <p className="text-xs mt-1">Send invitations to start building your creator network</p>
-              </div>
+              <EmptyState
+                variant="inline"
+                icon={Users}
+                title="No creators yet"
+                description="Invite the creators who already feature your products. Their videos become your storefront."
+                action={{ label: "Invite creators", href: "/brand/creators" }}
+              />
             </CardContent>
           </Card>
         </div>
@@ -598,16 +599,14 @@ export default function BrandDashboard() {
             </p>
           </CardHeader>
           <CardContent>
-            <div className="flex flex-col items-center justify-center py-12 text-center text-muted-foreground">
-              <div className="w-16 h-16 rounded-full bg-muted/50 flex items-center justify-center mb-4">
-                <Zap className="h-6 w-6 text-muted-foreground" />
-              </div>
-              <p className="text-sm font-medium text-foreground/70">No active campaigns</p>
-              <p className="text-xs mt-1">Create your first campaign to boost product visibility</p>
-              <Button className="rounded-full mt-4" data-testid="button-create-campaign" onClick={() => navigate("/brand/campaigns/new")}>
-                Create Campaign
-              </Button>
-            </div>
+            <EmptyState
+              variant="inline"
+              icon={Zap}
+              title="No active campaigns"
+              description="A campaign puts your products in front of publishers who repost creator videos."
+              action={{ label: "Create a campaign", onClick: () => navigate("/brand/campaigns/new") }}
+              data-testid="button-create-campaign"
+            />
           </CardContent>
         </Card>
       )}
