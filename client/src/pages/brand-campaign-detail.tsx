@@ -3,6 +3,7 @@ import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation, useRoute } from "wouter";
 import { format, differenceInDays, addDays, formatDistanceToNow } from "date-fns";
+import { EmptyState } from "@/components/EmptyState";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -28,6 +29,7 @@ import {
   Clock,
   Ban,
   ChevronRight,
+  Users,
 } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -200,9 +202,11 @@ export default function BrandCampaignDetail() {
         </h2>
 
         {!detail.affiliates || detail.affiliates.length === 0 ? (
-          <div className="bg-card border border-border rounded-2xl p-8 text-center">
-            <p className="text-muted-foreground text-sm">No publishers linked to this campaign yet.</p>
-          </div>
+          <EmptyState
+            icon={Users}
+            title="No publishers yet"
+            description="Publishers join by licensing this campaign's video from the Global Library. Their sites will be listed here."
+          />
         ) : (
           <div className="space-y-3">
             {detail.affiliates.map((aff) => {

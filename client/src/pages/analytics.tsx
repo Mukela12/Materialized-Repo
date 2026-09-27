@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
+import { EmptyState } from "@/components/EmptyState";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -359,14 +360,22 @@ export default function Analytics() {
                   </ResponsiveContainer>
                 </div>
               ) : (
-                <div className="h-64 flex items-center justify-center bg-muted/30 rounded-lg">
-                  <div className="flex flex-col items-center text-center text-muted-foreground">
-                    <div className="w-16 h-16 rounded-full bg-muted/50 flex items-center justify-center mb-4">
-                      <BarChart3 className="h-6 w-6 text-muted-foreground" />
-                    </div>
-                    <p className="text-sm font-medium text-foreground/70">No view data yet</p>
-                    <p className="text-xs mt-1">Upload videos to start tracking performance</p>
-                  </div>
+                <div className="flex h-64 items-center justify-center rounded-lg bg-muted/30">
+                  <EmptyState
+                    variant="inline"
+                    icon={BarChart3}
+                    title="No views yet"
+                    description={
+                      dashboardContext === "brand" ? "Views appear as creators publish videos featuring your products."
+                      : dashboardContext === "publisher" ? "Views appear once you repost a video from the library."
+                      : "Views appear here from the first play of your first published video."
+                    }
+                    action={
+                      dashboardContext === "brand" ? { label: "Invite creators", href: "/brand/creators" }
+                      : dashboardContext === "publisher" ? { label: "Browse the library", href: "/affiliate/library" }
+                      : { label: "Upload a video", href: "/creator" }
+                    }
+                  />
                 </div>
               )}
             </CardContent>
@@ -416,13 +425,8 @@ export default function Analytics() {
                   </ResponsiveContainer>
                 </div>
               ) : (
-                <div className="h-64 flex items-center justify-center bg-muted/30 rounded-lg">
-                  <div className="flex flex-col items-center text-center text-muted-foreground">
-                    <div className="w-16 h-16 rounded-full bg-muted/50 flex items-center justify-center mb-4">
-                      <Clock className="h-6 w-6 text-muted-foreground" />
-                    </div>
-                    <p className="text-sm font-medium text-foreground/70">No hourly data yet</p>
-                  </div>
+                <div className="flex h-64 items-center justify-center rounded-lg bg-muted/30">
+                  <EmptyState variant="inline" icon={Clock} title="No hourly pattern yet" description="After a few days of views you will see which hours your audience watches most." />
                 </div>
               )}
             </CardContent>
@@ -520,13 +524,7 @@ export default function Analytics() {
                   </div>
                 </div>
               ) : (
-                <div className="flex flex-col items-center justify-center py-12 text-center text-muted-foreground">
-                  <div className="w-16 h-16 rounded-full bg-muted/50 flex items-center justify-center mb-4">
-                    <Link2 className="h-6 w-6 text-muted-foreground" />
-                  </div>
-                  <p className="text-sm font-medium text-foreground/70">No publishing sources tracked yet</p>
-                  <p className="text-xs mt-1">Embed codes will appear here once deployed</p>
-                </div>
+                <EmptyState variant="inline" icon={Link2} title="No publishing sources yet" description="Each site that embeds your video shows up here, with the views and sales it drove." />
               )}
             </CardContent>
           </Card>
@@ -583,12 +581,7 @@ export default function Analytics() {
                   ))}
                 </div>
               ) : (
-                <div className="flex flex-col items-center justify-center py-12 text-center text-muted-foreground">
-                  <div className="w-16 h-16 rounded-full bg-muted/50 flex items-center justify-center mb-4">
-                    <Globe className="h-6 w-6 text-muted-foreground" />
-                  </div>
-                  <p className="text-sm font-medium text-foreground/70">No geographic data yet</p>
-                </div>
+                <EmptyState variant="inline" icon={Globe} title="No locations yet" description="Where your viewers are, by country, once views start coming in." />
               )}
             </CardContent>
           </Card>
@@ -625,12 +618,7 @@ export default function Analytics() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="flex flex-col items-center justify-center py-12 text-center text-muted-foreground">
-                  <div className="w-16 h-16 rounded-full bg-muted/50 flex items-center justify-center mb-4">
-                    <Smartphone className="h-6 w-6 text-muted-foreground" />
-                  </div>
-                  <p className="text-sm font-medium text-foreground/70">No device data yet</p>
-                </div>
+                <EmptyState variant="inline" icon={Smartphone} title="No device data yet" description="The split between phone, tablet and desktop viewers, once views come in." />
               </CardContent>
             </Card>
           )}

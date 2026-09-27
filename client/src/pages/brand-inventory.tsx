@@ -1,6 +1,7 @@
 import { CURRENCY_SYMBOL } from "@/lib/currency";
 import { useState, useRef, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { EmptyState } from "@/components/EmptyState";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -1021,25 +1022,23 @@ export default function BrandInventory() {
               ))}
             </div>
           ) : products.length > 0 ? (
-            <div className="text-center py-12 text-muted-foreground" data-testid="products-no-match">
-              <Package className="h-16 w-16 mx-auto mb-4 opacity-50" />
-              <p className="text-lg font-medium">No products match your search</p>
-              <p className="text-sm">Try a different search term</p>
-            </div>
+            <EmptyState
+              variant="inline"
+              icon={Package}
+              title="No products match"
+              description="Nothing in your catalog matches that search."
+              action={{ label: "Clear search", onClick: () => setQuery("") }}
+              data-testid="products-no-match"
+            />
           ) : (
-            <div className="text-center py-12 text-muted-foreground">
-              <Package className="h-16 w-16 mx-auto mb-4 opacity-50" />
-              <p className="text-lg font-medium">No products in inventory</p>
-              <p className="text-sm mb-4">Connect your API or add products manually</p>
-              <Button
-                className="rounded-full gap-2"
-                onClick={() => setAddProductOpen(true)}
-                data-testid="button-add-first-product"
-              >
-                <Plus className="h-4 w-4" />
-                Add Your First Product
-              </Button>
-            </div>
+            <EmptyState
+              variant="inline"
+              icon={Package}
+              title="Your catalog is empty"
+              description="Connect your store above to import everything at once, or add a product by hand."
+              action={{ label: "Add your first product", icon: Plus, onClick: () => setAddProductOpen(true) }}
+              data-testid="button-add-first-product"
+            />
           )}
         </CardContent>
       </Card>

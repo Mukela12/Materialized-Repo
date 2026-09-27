@@ -213,9 +213,13 @@ export default function AffiliateCampaigns() {
           </div>
 
           {campaignRows.length === 0 ? (
-            <Card className="p-8 text-center text-muted-foreground" data-testid="campaigns-no-match">
-              <p className="font-medium">No campaigns match your search</p>
-            </Card>
+            <EmptyState
+              icon={Video}
+              title="No campaigns match"
+              description="Nothing matches that UTM code or video title."
+              action={{ label: "Clear search", onClick: () => setQuery("") }}
+              data-testid="campaigns-no-match"
+            />
           ) : (
             campaignRows.map((campaign) => (
             <Card key={campaign.id} data-testid={`card-campaign-${campaign.id}`}>

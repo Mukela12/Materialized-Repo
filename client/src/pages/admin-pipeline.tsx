@@ -10,6 +10,7 @@ import { VoucherManager } from "@/components/VoucherManager";
 import { AllowancesEditor } from "@/components/AllowancesEditor";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/EmptyState";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -53,6 +54,7 @@ import {
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
+  Users,
 } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 
@@ -1485,7 +1487,7 @@ function MoneyRates() {
             </tbody>
           </table>
           {affiliates.length === 0 && (
-            <p className="text-center py-8 text-muted-foreground">No affiliates yet</p>
+            <EmptyState variant="inline" icon={Users} title="No affiliates yet" description="Publisher accounts appear here as they sign up." />
           )}
         </div>
       </div>
@@ -1748,10 +1750,12 @@ export default function AdminPipeline() {
 
         {/* Pipeline rows */}
         {filtered.length === 0 ? (
-          <div className="text-center py-16 text-muted-foreground">
-            <Mail className="h-10 w-10 mx-auto mb-3 opacity-30" />
-            <p>No outreach records yet.</p>
-          </div>
+          <EmptyState
+            variant="inline"
+            icon={Mail}
+            title="No outreach yet"
+            description="When a creator tags a brand, the outreach email and every step after it are tracked here."
+          />
         ) : (
           <div className="space-y-3">
             {filtered.map(entry => {

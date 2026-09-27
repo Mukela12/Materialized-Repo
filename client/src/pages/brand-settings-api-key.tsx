@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
+import { EmptyState } from "@/components/EmptyState";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -131,7 +132,12 @@ export default function BrandSettingsApiKey() {
               {[1,2].map(i => <Skeleton key={i} className="h-14 w-full rounded-lg" />)}
             </div>
           ) : keys.filter(k => k.isActive).length === 0 ? (
-            <p className="text-center text-muted-foreground py-10 text-sm">No active API keys</p>
+            <EmptyState
+              variant="inline"
+              icon={KeyRound}
+              title="No active API keys"
+              description="Create a key to sync products from your own systems into MTRLZD."
+            />
           ) : (
             keys.filter(k => k.isActive).map((k, i, arr) => (
               <div
