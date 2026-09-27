@@ -23,6 +23,31 @@ explaining itself. Patterns are borrowed from DegreeDesk
   referral promo sticks when dismissed, sits above the nav, links to Referrals.
 - Result: 0 of 46 routes overflow at 375px.
 
+## Shipped 2026-09-27, rounds 3 and 4
+- Badge default padding fixed (91 of 104 badges were ~60px pills); small
+  Button size is actually small (79 buttons).
+- EmptyState component; 11 of 27 empty states converted, each with the
+  action that fills the page ("Clear filters" when a filter hid everything).
+- Stat panel: four dashboards' stat rows are one framed instrument with
+  hairline dividers (2-5 columns, including tooltip-wrapped cards).
+- Publishers table folds low-priority columns under the name on phones.
+- Cmd-K command palette (shared nav source, synonyms, theme, sign out, tour).
+- First-run tour for accounts under 14 days old, never admins, once per
+  user; per-viewport targets, skips invisible steps.
+
+## Decided against, with reasons
+- PageHeader migration: 26 pages already share the stacked-then-row idiom
+  and all 46 routes pass the fit audit; a rewrite would be churn.
+- "Skeletons only on first load": every search/filter is client-side and
+  queries never go stale, so pages never re-flash placeholders. Nothing to fix.
+- Global keepPreviousData: would briefly show the previous video's data
+  when switching between videos.
+
+## Still open
+- 16 lower-traffic empty states (analytics charts, admin, API keys, fonts).
+- Brand dashboard still shows an overage estimator ($0.005/view) although
+  the client absorbs all overage through 31 Dec 2026: policy call for Beth.
+
 ## Audit findings (public pages measured at 375 / 820 / 1280)
 - 21 tap targets under 36px on phones.
 - 13 of 44 pages have no max width (stretch edge to edge on wide monitors);
