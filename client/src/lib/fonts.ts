@@ -20,10 +20,38 @@
  *   so the UI can say "not found" rather than showing a silent fallback.
  */
 
-// The stacks and `fontStack` now live in shared/fonts.ts so the server-rendered
-// embed resolves fonts identically. Re-exported here so existing imports of
-// "@/lib/fonts" keep working.
-export { BUILT_IN_FONTS, fontStack } from "@shared/fonts";
+// The stacks live in shared/fonts.ts so the server-rendered embed resolves
+// fonts identically. BUILT_IN_FONTS is re-exported unchanged.
+export { BUILT_IN_FONTS } from "@shared/fonts";
+import { fontStack as sharedFontStack } from "@shared/fonts";
+
+/**
+ * The picker's Google-hosted families, loaded ON DEMAND.
+ *
+ * index.html used to pull 25 Google families (the stock template list) on
+ * every page view so these nine would be ready for the carousel preview.
+ * Now a family is requested the first time something renders with it, and
+ * never on pages that show no carousel. Aileron and Lekton are self-hosted
+ * (@font-face in index.css) and need nothing.
+ */
+export const ON_DEMAND_GOOGLE_FONTS = [
+  "Inter", "Roboto", "Poppins", "Montserrat", "Playfair Display",
+  "DM Sans", "Outfit", "Lora", "Space Grotesk",
+] as const;
+
+export function fontStack(font: string | null | undefined): string {
+  if (typeof document !== "undefined" && font) {
+    const hit = ON_DEMAND_GOOGLE_FONTS.find((f) => f.toLowerCase() === font.trim().toLowerCase());
+    if (hit && !requested.has(hit)) {
+      requested.add(hit);
+      const link = document.createElement("link");
+      link.rel = "stylesheet";
+      link.href = googleFontHref(hit);
+      document.head.appendChild(link);
+    }
+  }
+  return sharedFontStack(font as any);
+}
 // Also imported by value — ensureGoogleFont below reads the list.
 import { BUILT_IN_FONTS } from "@shared/fonts";
 

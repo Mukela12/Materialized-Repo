@@ -440,26 +440,30 @@ function AppContent() {
           {getSidebar()}
         </div>
         <div className="flex flex-col flex-1 min-w-0">
-          <header className="flex items-center justify-between gap-4 p-4 border-b border-border bg-background/95 backdrop-blur-sm sticky top-0 z-50">
-            <div className="flex items-center gap-3">
-              <SidebarTrigger className="hidden md:flex" data-testid="button-sidebar-toggle" />
+          {/* Frosted top bar (Levy's recipe): translucent material belongs to the
+              navigation layer only; content surfaces stay solid. */}
+          <header className="mz-topbar sticky top-0 z-50 flex h-[calc(58px+env(safe-area-inset-top))] items-center justify-between gap-3 px-3 pt-[env(safe-area-inset-top)] sm:px-5 md:h-16 md:px-6">
+            <div className="flex min-w-0 items-center gap-2">
+              <SidebarTrigger className="hidden md:flex rounded-full" data-testid="button-sidebar-toggle" />
               <img
                 src={materializedLogo}
                 alt="Materialized"
                 className="md:hidden invert dark:invert-0"
-                style={{ height: 32, width: "auto" }}
+                style={{ height: 28, width: "auto" }}
               />
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1.5 sm:gap-2.5">
               <CommandPalette groups={isBrandRoute ? BRAND_NAV_GROUPS : isAffiliateRoute ? PUBLISHER_NAV_GROUPS : CREATOR_NAV_GROUPS} />
               {user?.isAdmin && <AdminPortalSwitcher />}
               <ThemeToggle />
               {user && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <Button variant="ghost" size="sm" className="gap-1 h-8" data-testid="button-user-menu">
-                      <User className="h-4 w-4" />
-                      <span className="hidden sm:inline text-xs max-w-24 truncate">{user.displayName}</span>
+                    <Button variant="outline" size="sm" className="h-9 gap-2 pl-1 pr-2.5" data-testid="button-user-menu">
+                      <span className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/15 text-[11px] font-semibold text-primary dark:text-[hsl(215_80%_72%)]" aria-hidden="true">
+                        {(user.displayName || user.email || "?").trim().charAt(0).toUpperCase()}
+                      </span>
+                      <span className="hidden sm:inline text-xs font-medium max-w-28 truncate">{user.displayName}</span>
                       <ChevronDown className="h-3 w-3" />
                     </Button>
                   </DropdownMenuTrigger>
@@ -517,7 +521,7 @@ function AppContent() {
           </header>
           {/* overflow-x-hidden: one wide child (a long URL, an unwrapped table)
               must scroll inside itself, never drag the whole page sideways. */}
-          <main className="flex-1 overflow-y-auto overflow-x-hidden p-4 md:p-6 pb-24 md:pb-6 bg-background">
+          <main className="flex-1 overflow-y-auto overflow-x-hidden p-4 md:p-6 pb-[calc(100px+env(safe-area-inset-bottom))] md:pb-6 bg-background">
             {/* Renders itself only when a Brand or Publisher still owes the
                 one-time fee. Above the router so it is the first thing on the
                 page — a blocked account with no explanation reads as broken. */}

@@ -3,22 +3,21 @@ import { cva, type VariantProps } from "class-variance-authority"
 
 import { cn } from "@/lib/utils"
 
+/**
+ * Badges are tinted tags, not solid blocks: a soft fill of their own colour,
+ * a faint edge in the same hue, compact type. Solid fills are reserved for
+ * the one thing on screen that must shout (a count on a nav item).
+ */
 const badgeVariants = cva(
-  // Whitespace-nowrap: Badges should never wrap.
-  // px-2.5 py-0.5: a badge is a label, not a button. The previous 20px padding
-  // on every side made 91 of 104 badges ~60px tall, larger than most buttons.
-  "whitespace-nowrap inline-flex items-center rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2" +
-  " hover-elevate " ,
+  "inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-2.5 py-0.5 text-[11.5px] font-medium leading-[1.35] tracking-[0.005em] tabular-nums transition-colors" +
+  " focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
   {
     variants: {
       variant: {
-        default:
-          "border-transparent bg-primary text-primary-foreground shadow-xs",
-        secondary: "border-transparent bg-secondary text-secondary-foreground",
-        destructive:
-          "border-transparent bg-destructive text-destructive-foreground shadow-xs",
-
-        outline: " border [border-color:var(--badge-outline)] shadow-xs",
+        default: "border-primary/25 bg-primary/10 text-primary dark:border-primary/35 dark:bg-primary/15 dark:text-[hsl(215_80%_72%)]",
+        secondary: "border-foreground/[0.07] bg-foreground/[0.06] text-foreground/80",
+        destructive: "border-destructive/25 bg-destructive/10 text-destructive",
+        outline: "border-foreground/15 bg-transparent text-foreground/80",
       },
     },
     defaultVariants: {

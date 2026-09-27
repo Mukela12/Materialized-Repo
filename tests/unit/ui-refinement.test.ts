@@ -65,3 +65,34 @@ describe("primitives", () => {
     expect(code("client/src/App.tsx")).toMatch(/h-dvh/);
   });
 });
+
+describe("round 5: nav, theme switch, type", () => {
+  it("the theme control is a real switch, not an icon swap", () => {
+    const t = code("client/src/components/ThemeToggle.tsx");
+    expect(t).toMatch(/role="switch"/);
+    expect(t).toMatch(/aria-checked=\{dark\}/);
+  });
+
+  it("the theme switch honours reduced motion and forced colours", () => {
+    const css = read("client/src/index.css");
+    expect(css).toMatch(/prefers-reduced-motion: reduce\) \{ \.mz-theme-toggle/);
+    expect(css).toMatch(/forced-colors: active\) \{ \.mz-theme-sky/);
+  });
+
+  it("the phone dock floats clear of the home indicator and steps aside for the keyboard", () => {
+    const css = read("client/src/index.css");
+    expect(css).toMatch(/\.mz-dock \{[^}]*bottom: max\(12px, env\(safe-area-inset-bottom\)\)/);
+    expect(css).toMatch(/\[data-keyboard="open"\] \.mz-dock/);
+    expect(code("client/src/components/FloatingDock.tsx")).toMatch(/root\.dataset\.keyboard = "open"/);
+  });
+
+  it("dock links are real links, never a button nested in a link", () => {
+    expect(code("client/src/components/FloatingDock.tsx")).not.toMatch(/<Link[^>]*>\s*<button/);
+  });
+
+  it("no longer loads the template's 25 Google families on every page", () => {
+    const html = read("client/index.html");
+    expect(html).not.toMatch(/Architects\+Daughter|Playfair\+Display.*Poppins/);
+    expect(read("client/src/main.tsx")).toMatch(/@fontsource-variable\/geist/);
+  });
+});

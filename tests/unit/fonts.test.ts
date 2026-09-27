@@ -14,15 +14,21 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "fs";
 import { join } from "path";
 import { FONT_OPTIONS } from "../../shared/schema";
-import { BUILT_IN_FONTS, fontStack } from "../../client/src/lib/fonts";
+import { BUILT_IN_FONTS, fontStack, ON_DEMAND_GOOGLE_FONTS } from "../../client/src/lib/fonts";
 
 const ROOT = join(__dirname, "..", "..");
 const indexHtml = readFileSync(join(ROOT, "client/index.html"), "utf8");
 const indexCss = readFileSync(join(ROOT, "client/src/index.css"), "utf8");
 
-/** A font renders if Google Fonts loads it, or a local @font-face declares it. */
+/**
+ * A font renders if a local @font-face declares it, or if the client loads it
+ * from Google on demand the first time a carousel uses it. (It used to mean
+ * "is in index.html's 25-family Google request", which loaded every offered
+ * font, and 15 never-offered ones, on every page view.)
+ */
 function isLoadable(label: string): boolean {
   if (label === "System Default" || label === "System default") return true;
+  if ((ON_DEMAND_GOOGLE_FONTS as readonly string[]).includes(label)) return true;
   const googleName = label.replace(/\s+/g, "+");
   if (indexHtml.includes(`family=${googleName}`)) return true;
   return new RegExp(`font-family:\\s*['"]${label}['"]`, "i").test(indexCss);

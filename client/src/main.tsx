@@ -1,3 +1,7 @@
+// One variable UI face (plus its mono) instead of the 25 Google families the
+// template loaded on every visit; brand-kit fonts still load on demand.
+import "@fontsource-variable/geist";
+import "@fontsource-variable/geist-mono";
 import { createRoot } from "react-dom/client";
 import * as Sentry from "@sentry/react";
 import { initSentry } from "./sentry";
