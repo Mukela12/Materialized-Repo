@@ -32,6 +32,9 @@ import {
 import { ImageDropField } from "@/components/ImageDropField";
 import { Layers, Plus, Clock, Trash2, ExternalLink, Pencil } from "lucide-react";
 import type { VideoProductOverlay } from "@shared/schema";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { PlacementReview } from "@/components/PlacementReview";
+import type { ReviewJob } from "@/lib/placementReview";
 
 const POSITIONS = [
   { value: "bottom", label: "Bottom Center" },
@@ -139,12 +142,19 @@ export function OverlayComposer({
     onError: () => toast({ title: "Error", description: "Failed to remove overlay.", variant: "destructive" }),
   });
 
-  const importDetections = useMutation({
-    mutationFn: async () =>
-      apiRequest("POST", `/api/videos/${videoId}/overlays/import-detections`, { position: "bottom" }),
-    onSuccess: () => { invalidate(); toast({ title: "Imported", description: "AI-detected products added as overlays." }); },
-    onError: () => toast({ title: "Error", description: "Failed to import detections.", variant: "destructive" }),
+  // AI placements go through review, never straight onto the carousel. This
+  // used to be "Import AI", which made every detection a live overlay.
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const { data: detections } = useQuery<ReviewJob>({
+    queryKey: ["/api/videos", videoId, "detections"],
+    enabled,
   });
+  const { data: video } = useQuery<{ videoUrl: string }>({
+    queryKey: ["/api/videos", videoId],
+    enabled: enabled && reviewOpen,
+  });
+  const toReview = detections?.counts?.pending ?? 0;
+  const hasPlacements = (detections?.results?.length ?? 0) > 0;
 
   return (
     <div className="space-y-3 border border-border rounded-xl p-4 bg-muted/30">
@@ -157,15 +167,19 @@ export function OverlayComposer({
           )}
         </div>
         <div className="flex gap-1">
-          <Button
-            variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1"
-            onClick={() => importDetections.mutate()}
-            disabled={importDetections.isPending}
-            data-testid="button-import-detections"
-            title="Import AI-detected products as overlays"
-          >
-            {importDetections.isPending ? "Importing…" : "Import AI"}
-          </Button>
+          {hasPlacements && (
+            <Button
+              variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1"
+              onClick={() => setReviewOpen(true)}
+              data-testid="button-review-placements"
+              title="Review the products AI found in this video"
+            >
+              Review AI
+              {toReview > 0 && (
+                <span className="ml-0.5 rounded-full bg-amber-500 px-1.5 text-[10px] font-semibold leading-4 text-white tabular-nums">{toReview}</span>
+              )}
+            </Button>
+          )}
           <Button
             variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1"
             onClick={() => setShowAdd((p) => !p)}
@@ -340,6 +354,19 @@ export function OverlayComposer({
           </p>
         )
       )}
+      <Dialog open={reviewOpen} onOpenChange={setReviewOpen}>
+        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Review placements</DialogTitle>
+            <DialogDescription>Check each product the AI found. Accept the right ones; delete the rest.</DialogDescription>
+          </DialogHeader>
+          {video?.videoUrl ? (
+            <PlacementReview videoId={videoId} videoUrl={video.videoUrl} onImported={() => invalidate()} />
+          ) : (
+            <p className="py-10 text-center text-sm text-muted-foreground">Loading the video…</p>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

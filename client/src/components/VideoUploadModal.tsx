@@ -51,6 +51,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { Brand } from "@shared/schema";
 import { OverlayComposer } from "@/components/OverlayComposer";
+import { PlacementReview } from "@/components/PlacementReview";
 import { videoTooLargeMessage, MAX_VIDEO_UPLOAD_LABEL } from "@shared/uploadLimits";
 
 const videoUploadSchema = z.object({
@@ -75,14 +76,16 @@ type DetectionResult = {
   productId: string;
   brandId: string;
   confidence: string;
-  product?: { name: string; category: string | null };
-  brand?: { name: string };
+  reviewStatus?: "pending" | "accepted" | "rejected";
+  importedAt?: string | null;
+  product?: { name: string } | null;
 };
 
 type DetectionJob = {
   id: string;
   status: "pending" | "processing" | "completed" | "failed";
   results: DetectionResult[];
+  counts?: { pending: number; accepted: number; rejected: number; readyToImport: number };
 };
 
 interface VideoUploadModalProps {
@@ -93,7 +96,9 @@ interface VideoUploadModalProps {
   onReferBrand: (data: ReferralForm) => Promise<void>;
 }
 
-type Step = "upload" | "details" | "detecting" | "carousel" | "refer";
+type Step = "upload" | "details" | "detecting" | "review" | "carousel" | "refer";
+
+const STEP_ORDER = ["upload", "details", "detecting", "review", "carousel"] as const;
 
 const SCAN_MESSAGES = [
   "Uploading video metadata…",
@@ -405,12 +410,25 @@ export function VideoUploadModal({
           clearIntervals();
           setScanProgress(100);
           setDetectionJob(job);
-          setTimeout(() => setStep("carousel"), 600);
+          // Placements go to review first: nothing reaches the carousel until
+          // someone accepts it. No placements, nothing to review.
+          setTimeout(() => setStep(job.status === "completed" && job.results.length > 0 ? "review" : "carousel"), 600);
         }
       } catch {
         // keep polling
       }
     }, 1500);
+  };
+
+  /** Leave review for the carousel with the latest decisions in hand. */
+  const leaveReview = async () => {
+    if (createdVideoId) {
+      try {
+        const res = await fetch(`/api/videos/${createdVideoId}/detections`);
+        if (res.ok) setDetectionJob(await res.json());
+      } catch { /* keep what we have */ }
+    }
+    setStep("carousel");
   };
 
   const handleDetailsSubmit = async (formData: VideoUploadForm) => {
@@ -573,6 +591,7 @@ export function VideoUploadModal({
     upload: "Upload Video",
     details: "Campaign Details",
     detecting: "AI Product Scan",
+    review: "Review Placements",
     carousel: "Carousel Settings",
     refer: videoUrl ? "Brand Outreach" : "Refer a Brand",
   };
@@ -581,6 +600,7 @@ export function VideoUploadModal({
     upload: "Upload your video to start building a shoppable campaign",
     details: "Name your campaign, select featured brands and enable AI product detection",
     detecting: "Gemini AI is scanning your video for brand products",
+    review: "Check each product the AI found. Accept the right ones; delete the rest",
     carousel: "Customize how the product carousel appears on your video",
     refer: videoUrl
       ? "Can't find a brand? Send them a direct outreach email with your video"
@@ -589,7 +609,7 @@ export function VideoUploadModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className={`${step === "review" ? "max-w-5xl" : "max-w-2xl"} max-h-[90vh] overflow-y-auto`}>
         <DialogHeader>
           <DialogTitle className="text-xl font-bold">{stepTitles[step]}</DialogTitle>
           <DialogDescription>{stepDescriptions[step]}</DialogDescription>
@@ -598,14 +618,14 @@ export function VideoUploadModal({
         {/* Step indicator */}
         {step !== "refer" && (
           <div className="flex items-center gap-1.5 mb-2">
-            {(["upload", "details", "detecting", "carousel"] as const).map((s, i) => (
+            {STEP_ORDER.map((s, i) => (
               <div key={s} className="flex items-center gap-1.5">
                 <div className={`h-2 w-2 rounded-full transition-colors ${
                   s === step ? "bg-primary" :
-                  (["upload", "details", "detecting", "carousel"].indexOf(step) > i) ? "bg-primary/40" :
+                  (STEP_ORDER.indexOf(step as (typeof STEP_ORDER)[number]) > i) ? "bg-primary/40" :
                   "bg-muted"
                 }`} />
-                {i < 3 && <div className="h-px w-6 bg-muted" />}
+                {i < STEP_ORDER.length - 1 && <div className="h-px w-6 bg-muted" />}
               </div>
             ))}
             <span className="text-xs text-muted-foreground ml-1 capitalize">{step}</span>
@@ -935,39 +955,75 @@ export function VideoUploadModal({
           </div>
         )}
 
+        {/* ── STEP: REVIEW ── */}
+        {step === "review" && createdVideoId && (
+          <div className="space-y-5">
+            <PlacementReview
+              videoId={createdVideoId}
+              videoUrl={videoUrl}
+              onImported={() => leaveReview()}
+            />
+            {/* Undecided placements wait; they can be reviewed later from the
+                video's Timeline Overlays. */}
+            <div className="flex justify-end">
+              <Button type="button" variant="outline" onClick={() => leaveReview()} data-testid="button-review-continue">
+                Continue to carousel
+              </Button>
+            </div>
+          </div>
+        )}
+
         {/* ── STEP: CAROUSEL ── */}
         {step === "carousel" && (
           <div className="space-y-5">
-            {/* Detection summary */}
-            {detectionJob && (
-              <Card className={detectionJob.status === "completed" ? "border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-950/20" : "border-muted"}>
-                <CardContent className="p-3 flex items-start gap-3">
-                  {detectionJob.status === "completed" ? (
-                    <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400 mt-0.5 shrink-0" />
-                  ) : (
-                    <AlertCircle className="h-5 w-5 text-amber-500 mt-0.5 shrink-0" />
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium">
-                      {detectionJob.status === "completed"
-                        ? `AI detected ${detectionJob.results.length} product${detectionJob.results.length !== 1 ? "s" : ""} in your video`
-                        : "AI scan completed — manual carousel setup"}
-                    </p>
-                    {detectionJob.results.length > 0 && (
-                      <div className="flex flex-wrap gap-1.5 mt-2">
-                        {detectionJob.results.map((r) => (
-                          <Badge key={r.id} variant="secondary" className="text-xs gap-1">
-                            <Package className="h-2.5 w-2.5" />
-                            {r.product?.name || r.productId}
-                            <span className="opacity-60">{Math.round(Number(r.confidence) * 100)}%</span>
-                          </Badge>
-                        ))}
-                      </div>
+            {/* Detection summary: what review put on the carousel, and what is
+                still waiting (nothing unaccepted is shown to viewers). */}
+            {detectionJob && (() => {
+              const onCarousel = detectionJob.results.filter((r) => r.importedAt);
+              const waiting = detectionJob.results.filter((r) => r.reviewStatus === "pending").length;
+              const done = detectionJob.status === "completed";
+              return (
+                <Card className={done ? "border-green-200 dark:border-green-800 bg-green-50 dark:bg-green-950/20" : "border-muted"}>
+                  <CardContent className="p-3 flex items-start gap-3">
+                    {done ? (
+                      <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400 mt-0.5 shrink-0" />
+                    ) : (
+                      <AlertCircle className="h-5 w-5 text-amber-500 mt-0.5 shrink-0" />
                     )}
-                  </div>
-                </CardContent>
-              </Card>
-            )}
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium" data-testid="text-detection-summary">
+                        {!done
+                          ? "AI scan completed — manual carousel setup"
+                          : detectionJob.results.length === 0
+                            ? "AI found no products from the tagged brands"
+                            : onCarousel.length > 0
+                              ? `${onCarousel.length} AI placement${onCarousel.length !== 1 ? "s" : ""} on your carousel`
+                              : "No AI placements on your carousel yet"}
+                      </p>
+                      {waiting > 0 && (
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {waiting} still to review. They stay off the carousel until you accept them.{" "}
+                          <button type="button" className="font-medium text-primary underline-offset-2 hover:underline" onClick={() => setStep("review")} data-testid="button-back-to-review">
+                            Review now
+                          </button>
+                        </p>
+                      )}
+                      {onCarousel.length > 0 && (
+                        <div className="flex flex-wrap gap-1.5 mt-2">
+                          {onCarousel.map((r) => (
+                            <Badge key={r.id} variant="secondary" className="text-xs gap-1">
+                              <Package className="h-2.5 w-2.5" />
+                              {r.product?.name || "Product"}
+                              <span className="opacity-60">{Math.round(Number(r.confidence) * 100)}%</span>
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })()}
 
             {/* Carousel editor */}
             <div className="rounded-xl border overflow-hidden">

@@ -677,3 +677,39 @@ main :where(p, h1, h2, h3, h4, li, dd, td) {
 /* Dock at ≤370px pads 4px, so its items are 26px to stay concentric with the
    30px surface (inner = outer - padding). */
 @media (max-width: 370px) { .mz-dock-item { border-radius: 26px; } }
+
+/* ── Placement Review (detection → carousel) ────────────────────────────────
+ * The box the model drew, on the frame it drew it on. White with a brand
+ * halo reads on light and dark footage alike; the tag names the match.
+ */
+/* Frame height cap: lower on phones so Accept/Delete stay within reach. */
+.placement-stage { --placement-stage-h: min(38vh, 20rem); }
+@media (min-width: 1024px) { .placement-stage { --placement-stage-h: min(52vh, 32rem); } }
+.placement-box {
+  border: 2px solid #fff;
+  border-radius: 6px;
+  box-shadow: 0 0 0 2px hsl(var(--primary) / 0.85), 0 0 0 9999px rgb(0 0 0 / 0.28);
+  animation: mz-box-in 0.28s cubic-bezier(0.22, 0.7, 0.26, 1) both;
+}
+.placement-box__tag {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  padding: 2px 8px; border-radius: 999px;
+  background: hsl(var(--primary)); color: hsl(var(--primary-foreground));
+  font: 600 11px/1.5 var(--font-sans);
+  animation: mz-box-in 0.28s cubic-bezier(0.22, 0.7, 0.26, 1) both;
+}
+@keyframes mz-box-in { from { opacity: 0; transform: scale(1.04); } to { opacity: 1; transform: none; } }
+@media (prefers-reduced-motion: reduce) { .placement-box, .placement-box__tag { animation: none; } }
+.placement-grid { display: grid; gap: 1rem; grid-template-areas: "stage" "insp" "seq" "queue"; }
+.placement-grid__stage { grid-area: stage; }
+.placement-grid__seq { grid-area: seq; }
+.placement-grid__insp { grid-area: insp; }
+.placement-grid__queue { grid-area: queue; }
+@media (min-width: 1024px) {
+  .placement-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 22rem);
+    grid-template-rows: auto 1fr auto;
+    grid-template-areas: "stage insp" "stage queue" "seq queue";
+    column-gap: 1.25rem;
+  }
+}

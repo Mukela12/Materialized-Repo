@@ -160,3 +160,69 @@ describe("the routes", () => {
     expect(storage).toMatch(/eq\(videoDetectionResults\.reviewStatus, "accepted"\),\s*isNull\(videoDetectionResults\.importedAt\)/);
   });
 });
+
+describe("the review workspace (phase 2)", () => {
+  it("formats times and match scores for people", async () => {
+    const { formatTime, matchPercent } = await import("../../client/src/lib/placementReview");
+    expect(formatTime(9.5)).toBe("0:09");
+    expect(formatTime("64")).toBe("1:04");
+    expect(formatTime(null)).toBe("0:00");
+    expect(matchPercent("0.916")).toBe(92);
+    expect(matchPercent(1.4)).toBe(100);
+  });
+
+  it("after a decision, moves on to the next placement still waiting", async () => {
+    const { nextPendingId } = await import("../../client/src/lib/placementReview");
+    const q = [
+      { id: "a", reviewStatus: "accepted" as const }, { id: "b", reviewStatus: "pending" as const },
+      { id: "c", reviewStatus: "rejected" as const }, { id: "d", reviewStatus: "pending" as const },
+    ];
+    expect(nextPendingId(q, "b")).toBe("d");
+    expect(nextPendingId(q, "d")).toBe("b"); // wraps round
+    expect(nextPendingId([{ id: "x", reviewStatus: "accepted" as const }], "x")).toBe("x"); // nothing left: stay
+    expect(nextPendingId([], null)).toBeNull();
+  });
+
+  it("places segments on the video's timeline, and a zero-length one still shows", async () => {
+    const { segment } = await import("../../client/src/lib/placementReview");
+    expect(segment("5", "10", 20)).toEqual({ left: 25, width: 25 });
+    expect(segment("0", "0", 20)?.width).toBeGreaterThan(0);
+    expect(segment("30", "40", 20)).toEqual({ left: 98.8, width: 1.2 }); // past the end: pinned inside
+    expect(segment("1", "2", 0)).toBeNull();
+  });
+
+  it("stacks overlapping placements into lanes", async () => {
+    const { assignLanes } = await import("../../client/src/lib/placementReview");
+    const { lanes, count } = assignLanes([
+      { id: "a", startTime: "0", endTime: "5" },
+      { id: "b", startTime: "3", endTime: "8" },
+      { id: "c", startTime: "5", endTime: "9" },
+    ]);
+    expect(count).toBe(2);
+    expect([lanes.get("a"), lanes.get("b"), lanes.get("c")]).toEqual([0, 1, 0]);
+  });
+
+  it("the upload flow reviews before the carousel when the scan found anything", () => {
+    const modal = code("client/src/components/VideoUploadModal.tsx");
+    expect(modal).toMatch(/const STEP_ORDER = \["upload", "details", "detecting", "review", "carousel"\] as const;/);
+    expect(modal).toMatch(/setStep\(job\.status === "completed" && job\.results\.length > 0 \? "review" : "carousel"\)/);
+    expect(modal).toMatch(/<PlacementReview\s+videoId=\{createdVideoId\}/);
+  });
+
+  it("the editing suite reviews instead of importing everything", () => {
+    const composer = code("client/src/components/OverlayComposer.tsx");
+    expect(composer).not.toMatch(/import-detections/);
+    expect(composer).toMatch(/<PlacementReview videoId=\{videoId\}/);
+    // The only client path to import is the workspace's own button.
+    const review = code("client/src/components/PlacementReview.tsx");
+    expect(review.match(/import-detections/g)).toHaveLength(1);
+  });
+
+  it("the label stays inside the frame and Accept stays near it on phones", () => {
+    const review = code("client/src/components/PlacementReview.tsx");
+    expect(review).toMatch(/const anchorRight = b\.x \+ b\.width \/ 2 > 0\.5;/);
+    expect(review).toMatch(/maxWidth: `calc\(\$\{pct\(1 - b\.x\)\} - 8px\)`/);
+    const css = read("client/src/index.css");
+    expect(css).toMatch(/grid-template-areas: "stage" "insp" "seq" "queue";/);
+  });
+});
