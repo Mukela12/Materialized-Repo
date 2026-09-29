@@ -197,42 +197,69 @@ export async function batchAnalyzeFrames(
   );
 }
 
-export function consolidateDetections(
-  frameAnalyses: FrameAnalysis[],
-  minConfidence: number = 0.6,
-  minDuration: number = 2
-): Array<{
+export type BoundingBox = { x: number; y: number; width: number; height: number };
+
+export interface ConsolidatedDetection {
   productId: string;
   brandId: string;
   startTime: number;
   endTime: number;
   avgConfidence: number;
   peakConfidence: number;
-}> {
-  const productTimelines = new Map<string, { timestamps: number[]; confidences: number[]; brandId: string }>();
+  /**
+   * The frame where the product was clearest, and where it was in it. The
+   * review inspector shows exactly this frame with this box, so a person
+   * judges the match on the evidence the model had at its most confident.
+   */
+  peakTimestamp: number;
+  peakBoundingBox: BoundingBox | null;
+}
+
+/** A box is usable only if it is normalized 0-1 and has area. */
+export function cleanBoundingBox(b: BoundingBox | undefined | null): BoundingBox | null {
+  if (!b) return null;
+  const clamp = (n: number) => Math.min(1, Math.max(0, n));
+  const x = clamp(b.x), y = clamp(b.y);
+  const width = Math.min(clamp(b.width), 1 - x), height = Math.min(clamp(b.height), 1 - y);
+  return width > 0.005 && height > 0.005 ? { x, y, width, height } : null;
+}
+
+export function consolidateDetections(
+  frameAnalyses: FrameAnalysis[],
+  minConfidence: number = 0.6,
+  minDuration: number = 2
+): ConsolidatedDetection[] {
+  const productTimelines = new Map<string, {
+    timestamps: number[]; confidences: number[]; brandId: string;
+    peak: { confidence: number; timestamp: number; box: BoundingBox | null };
+  }>();
 
   for (const frame of frameAnalyses) {
     for (const product of frame.detectedProducts) {
       if (product.confidence >= minConfidence) {
         const key = product.productId;
         if (!productTimelines.has(key)) {
-          productTimelines.set(key, { timestamps: [], confidences: [], brandId: product.brandId });
+          productTimelines.set(key, {
+            timestamps: [], confidences: [], brandId: product.brandId,
+            peak: { confidence: -1, timestamp: frame.frameTimestamp, box: null },
+          });
         }
         const timeline = productTimelines.get(key)!;
         timeline.timestamps.push(frame.frameTimestamp);
         timeline.confidences.push(product.confidence);
+        // Strictly greater: on a tie the earlier frame keeps it.
+        if (product.confidence > timeline.peak.confidence) {
+          timeline.peak = {
+            confidence: product.confidence,
+            timestamp: frame.frameTimestamp,
+            box: cleanBoundingBox(product.boundingBox),
+          };
+        }
       }
     }
   }
 
-  const results: Array<{
-    productId: string;
-    brandId: string;
-    startTime: number;
-    endTime: number;
-    avgConfidence: number;
-    peakConfidence: number;
-  }> = [];
+  const results: ConsolidatedDetection[] = [];
 
   const timelineEntries = Array.from(productTimelines.entries());
   for (const [productId, timeline] of timelineEntries) {
@@ -254,6 +281,8 @@ export function consolidateDetections(
         endTime: Math.max(endTime, startTime + 3),
         avgConfidence,
         peakConfidence,
+        peakTimestamp: timeline.peak.timestamp,
+        peakBoundingBox: timeline.peak.box,
       });
     }
   }

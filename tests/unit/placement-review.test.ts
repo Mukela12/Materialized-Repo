@@ -1,0 +1,162 @@
+/**
+ * Placement Review, phase 1 (DETECTION_REVIEW.md).
+ *
+ * The guarantee: a placement nobody has accepted never reaches the carousel.
+ * Detection used to import every result as a live overlay.
+ */
+import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import {
+  parseReviewRequest, reviewLocked, importable, queueOrder, reviewCounts, parseBoundingBox,
+} from "../../server/placementReview";
+import { consolidateDetections, cleanBoundingBox } from "../../server/replit_integrations/detection/client";
+import { insertVideoDetectionResultSchema } from "../../shared/schema";
+
+const read = (p: string) => readFileSync(join(__dirname, "../..", p), "utf8");
+const code = (p: string) => read(p).replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+
+function routeBody(src: string, method: string, path: string): string {
+  const start = src.indexOf(`app.${method}("${path}"`);
+  expect(start, `${method} ${path} exists`).toBeGreaterThan(-1);
+  const next = src.indexOf("\n  app.", start + 10);
+  return src.slice(start, next === -1 ? undefined : next);
+}
+
+type R = { id: string; reviewStatus: "pending" | "accepted" | "rejected"; importedAt: Date | null; confidence: string };
+const r = (id: string, reviewStatus: R["reviewStatus"], confidence = "0.80", importedAt: Date | null = null): R =>
+  ({ id, reviewStatus, importedAt, confidence });
+
+describe("only accepted placements can reach the carousel", () => {
+  it("pending and rejected are never importable", () => {
+    const all = [r("p", "pending"), r("x", "rejected"), r("a", "accepted")];
+    expect(importable(all).map((x) => x.id)).toEqual(["a"]);
+  });
+
+  it("an accepted placement already imported is not imported again", () => {
+    expect(importable([r("a", "accepted", "0.9", new Date())])).toEqual([]);
+  });
+
+  it("a placement on the carousel is locked for review", () => {
+    expect(reviewLocked({ importedAt: new Date() })).toBe(true);
+    expect(reviewLocked({ importedAt: null })).toBe(false);
+  });
+
+  it("the detector cannot create a row as already accepted or imported", () => {
+    const parsed = insertVideoDetectionResultSchema.parse({
+      jobId: "j", videoId: "v", productId: "p", brandId: "b", confidence: "0.9", frameTimestamp: "1",
+      reviewStatus: "accepted", importedAt: new Date(),
+    } as any);
+    expect(parsed).not.toHaveProperty("reviewStatus");
+    expect(parsed).not.toHaveProperty("importedAt");
+  });
+});
+
+describe("the queue", () => {
+  it("puts undecided work first, then by confidence", () => {
+    const q = queueOrder([
+      r("acc-hi", "accepted", "0.99"), r("pen-lo", "pending", "0.55"),
+      r("rej", "rejected", "0.97"), r("pen-hi", "pending", "0.91"),
+    ]);
+    expect(q.map((x) => x.id)).toEqual(["pen-hi", "pen-lo", "acc-hi", "rej"]);
+  });
+
+  it("counts what is left to do", () => {
+    expect(reviewCounts([r("1", "pending"), r("2", "accepted"), r("3", "accepted", "0.8", new Date()), r("4", "rejected")]))
+      .toEqual({ pending: 1, accepted: 2, rejected: 1, readyToImport: 1 });
+  });
+});
+
+describe("a review request", () => {
+  it("takes a status, and timing only as a pair", () => {
+    expect(parseReviewRequest({ status: "accepted" }, 30)).toEqual({ status: "accepted" });
+    expect(parseReviewRequest({ status: "approved" }, 30)).toHaveProperty("error");
+    expect(parseReviewRequest({}, 30)).toHaveProperty("error");
+    expect(parseReviewRequest({ status: "accepted", startTime: 2 }, 30)).toHaveProperty("error");
+  });
+
+  it("refuses a window that ends before it starts or starts after the video", () => {
+    expect(parseReviewRequest({ status: "accepted", startTime: 5, endTime: 3 }, 30)).toHaveProperty("error");
+    expect(parseReviewRequest({ status: "accepted", startTime: -1, endTime: 3 }, 30)).toHaveProperty("error");
+    expect(parseReviewRequest({ status: "accepted", startTime: 31, endTime: 40 }, 30)).toHaveProperty("error");
+    expect(parseReviewRequest({ status: "accepted", startTime: "a", endTime: 3 }, 30)).toHaveProperty("error");
+  });
+
+  it("clamps a window that runs past the end instead of refusing it", () => {
+    expect(parseReviewRequest({ status: "accepted", startTime: 25, endTime: 40 }, 30))
+      .toEqual({ status: "accepted", startTime: "25.00", endTime: "30.00" });
+    expect(parseReviewRequest({ status: "accepted", startTime: 1.5, endTime: 6 }, null))
+      .toEqual({ status: "accepted", startTime: "1.50", endTime: "6.00" });
+  });
+});
+
+describe("the inspector's evidence", () => {
+  const frame = (t: number, confidence: number, box?: any) => ({
+    frameTimestamp: t,
+    detectedProducts: [{ productId: "p1", productName: "Hoops", brandId: "b1", confidence, boundingBox: box }],
+  });
+
+  it("keeps the box and timestamp of the most confident frame", () => {
+    const [d] = consolidateDetections([
+      frame(2, 0.7, { x: 0.1, y: 0.1, width: 0.2, height: 0.2 }),
+      frame(6, 0.93, { x: 0.4, y: 0.3, width: 0.25, height: 0.35 }),
+      frame(10, 0.8, { x: 0.5, y: 0.5, width: 0.1, height: 0.1 }),
+    ], 0.5, 1);
+    expect(d.peakTimestamp).toBe(6);
+    expect(d.peakBoundingBox).toEqual({ x: 0.4, y: 0.3, width: 0.25, height: 0.35 });
+    expect(d.startTime).toBe(2);
+    expect(d.endTime).toBe(10);
+  });
+
+  it("drops boxes that are not normalized or have no area, and clamps edges", () => {
+    const edge = cleanBoundingBox({ x: 0.9, y: 0.9, width: 0.5, height: 0.5 })!;
+    expect(edge.width).toBeCloseTo(0.1);
+    expect(edge.height).toBeCloseTo(0.1);
+    expect(cleanBoundingBox({ x: 0.2, y: 0.2, width: 0, height: 0.3 })).toBeNull();
+    expect(cleanBoundingBox(undefined)).toBeNull();
+  });
+
+  it("reads a stored box back, or nothing", () => {
+    expect(parseBoundingBox('{"x":0.2,"y":0.3,"width":0.25,"height":0.4}')).toEqual({ x: 0.2, y: 0.3, width: 0.25, height: 0.4 });
+    expect(parseBoundingBox("not json")).toBeNull();
+    expect(parseBoundingBox('{"x":"a"}')).toBeNull();
+    expect(parseBoundingBox(null)).toBeNull();
+  });
+});
+
+describe("the routes", () => {
+  const routes = code("server/routes.ts");
+
+  it("import takes accepted placements only and claims each before making its overlay", () => {
+    const body = routeBody(routes, "post", "/api/videos/:id/overlays/import-detections");
+    expect(body).toMatch(/importable\(await storage\.getDetectionResultsByVideo\(req\.params\.id\)\)/);
+    expect(body).toMatch(/if \(!\(await storage\.claimDetectionImport\(r\.id\)\)\) continue;[\s\S]*createVideoProductOverlay/);
+    expect(body).toMatch(/releaseDetectionImport\(r\.id\)/);
+  });
+
+  it("reading and reviewing placements needs the video's editor", () => {
+    expect(routeBody(routes, "get", "/api/videos/:id/detections")).toMatch(/await videoEditorOr403\(req, res\)/);
+    expect(routeBody(routes, "patch", "/api/videos/:id/detections/:resultId")).toMatch(/await videoEditorOr403\(req, res\)/);
+    expect(routeBody(routes, "post", "/api/videos/:id/overlays/import-detections")).toMatch(/await videoEditorOr403\(req, res\)/);
+  });
+
+  it("a review is refused for a placement from another video or already on the carousel", () => {
+    const body = routeBody(routes, "patch", "/api/videos/:id/detections/:resultId");
+    expect(body).toMatch(/result\.videoId !== req\.params\.id/);
+    expect(body).toMatch(/if \(reviewLocked\(result\)\)/);
+  });
+
+  it("detection stores the clearest frame and its box", () => {
+    expect(routes).toMatch(/frameTimestamp: result\.peakTimestamp\.toString\(\)/);
+    expect(routes).toMatch(/boundingBox: result\.peakBoundingBox \? JSON\.stringify\(result\.peakBoundingBox\) : null/);
+  });
+
+  it("a re-scanned video reports its latest job", () => {
+    expect(code("server/storage.ts")).toMatch(/where\(eq\(videoDetectionJobs\.videoId, videoId\)\)\s*\.orderBy\(desc\(videoDetectionJobs\.createdAt\)\)/);
+  });
+
+  it("the claim is atomic: accepted and not yet imported, in the UPDATE itself", () => {
+    const storage = code("server/storage.ts");
+    expect(storage).toMatch(/eq\(videoDetectionResults\.reviewStatus, "accepted"\),\s*isNull\(videoDetectionResults\.importedAt\)/);
+  });
+});

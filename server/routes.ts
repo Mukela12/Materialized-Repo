@@ -24,6 +24,7 @@ import {
 } from "./playlistEmbed";
 import { sanitisePlaylistStyle, styleFromPlaylist } from "@shared/playlistStyle";
 import { parseVoucherDate } from "@shared/voucherDates";
+import { parseReviewRequest, reviewLocked, importable, queueOrder, reviewCounts, parseBoundingBox } from "./placementReview";
 import { checkRedeemable, grantsOf, normaliseCode, generateVoucherCode, mintCodes, MAX_BATCH } from "./vouchers";
 import { isEntitled, hasFreeAccess, owesCardOnFile } from "./entitlement";
 import { owesSetupFee, oweableRole, setupFeeAudience } from "./setupFee";
@@ -3106,18 +3107,73 @@ export async function registerRoutes(
 
   // ==================== DETECTION JOB ROUTES ====================
 
-  // Get detection job for a video
+  /**
+   * The video's editor (its creator) or an admin, else an error response.
+   * Detection results are pre-publication product placements; they used to be
+   * readable by anyone who knew a video id.
+   */
+  async function videoEditorOr403(req: Request, res: Response) {
+    const uid = (req.session as any)?.userId;
+    if (!uid) { res.status(401).json({ error: "Authentication required" }); return null; }
+    const video = await storage.getVideo(req.params.id);
+    if (!video) { res.status(404).json({ error: "Video not found" }); return null; }
+    const actor = await storage.getUser(uid);
+    if (!actor?.isAdmin && video.creatorId !== uid) { res.status(403).json({ error: "Forbidden" }); return null; }
+    return { video, uid };
+  }
+
+  // The latest detection job for a video, with its placements as a review
+  // queue: product and brand joined, undecided first, most confident first.
   app.get("/api/videos/:id/detections", async (req, res) => {
     try {
+      const ok = await videoEditorOr403(req, res);
+      if (!ok) return;
       const job = await storage.getDetectionJobByVideoId(req.params.id);
       if (!job) {
-        return res.json({ status: "none", results: [] });
+        return res.json({ status: "none", results: [], counts: reviewCounts([]) });
       }
-      
+
       const results = await storage.getDetectionResults(job.id);
-      res.json({ ...job, results });
+      const enriched = await Promise.all(results.map(async (r) => {
+        const product = await storage.getProduct(r.productId);
+        const brand = await storage.getBrand(r.brandId);
+        return {
+          ...r,
+          boundingBox: parseBoundingBox(r.boundingBox),
+          product: product
+            ? { id: product.id, name: product.name, imageUrl: product.imageUrl, price: product.price, productUrl: product.productUrl }
+            : null,
+          brandName: brand?.name ?? null,
+        };
+      }));
+      res.json({ ...job, results: queueOrder(enriched), counts: reviewCounts(results) });
     } catch (error) {
       res.status(500).json({ error: "Failed to get detection status" });
+    }
+  });
+
+  // A person's decision on one placement: accept, delete (reject), or send
+  // back to pending, optionally correcting when it shows.
+  app.patch("/api/videos/:id/detections/:resultId", async (req, res) => {
+    try {
+      const ok = await videoEditorOr403(req, res);
+      if (!ok) return;
+      const result = await storage.getDetectionResult(req.params.resultId);
+      if (!result || result.videoId !== req.params.id) {
+        return res.status(404).json({ error: "Placement not found" });
+      }
+      if (reviewLocked(result)) {
+        return res.status(409).json({
+          error: "This placement is already on the carousel. Edit or remove it in the overlay editor.",
+        });
+      }
+      const review = parseReviewRequest(req.body, ok.video.durationSeconds);
+      if ("error" in review) return res.status(400).json({ error: review.error });
+
+      const updated = await storage.reviewDetectionResult(result.id, { ...review, reviewedBy: ok.uid });
+      res.json({ ...updated, boundingBox: parseBoundingBox(updated?.boundingBox ?? null) });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to review placement" });
     }
   });
 
@@ -3293,10 +3349,13 @@ Identify which products from the catalog are most likely to appear or be feature
               productId: result.productId,
               brandId: result.brandId,
               confidence: result.avgConfidence.toString(),
-              frameTimestamp: result.startTime.toString(),
+              // The clearest frame and where the product sits in it: what the
+              // review inspector shows. It used to store the first frame and
+              // throw the model's box away.
+              frameTimestamp: result.peakTimestamp.toString(),
               startTime: result.startTime.toString(),
               endTime: result.endTime.toString(),
-              boundingBox: null,
+              boundingBox: result.peakBoundingBox ? JSON.stringify(result.peakBoundingBox) : null,
             });
           }
 
@@ -3430,38 +3489,43 @@ Identify which products from the catalog are most likely to appear or be feature
     }
   });
 
-  // Import AI-detected products as overlays for a video
+  // Add ACCEPTED placements to the carousel. Pending and rejected ones never
+  // become overlays; each accepted one is claimed before its overlay is made,
+  // so importing twice (or concurrently) cannot duplicate it.
   app.post("/api/videos/:id/overlays/import-detections", async (req, res) => {
-    const uid = (req.session as any)?.userId;
-    if (!uid) return res.status(401).json({ error: "Not authenticated" });
-    const ownerVideo = await storage.getVideo(req.params.id);
-    if (!ownerVideo) return res.status(404).json({ error: "Video not found" });
-    const overlayActor = await storage.getUser(uid);
-    if (!overlayActor?.isAdmin && ownerVideo.creatorId !== uid) return res.status(403).json({ error: "Forbidden" });
+    const ok = await videoEditorOr403(req, res);
+    if (!ok) return;
     try {
-      const results = await storage.getDetectionResultsByVideo(req.params.id);
+      const results = importable(await storage.getDetectionResultsByVideo(req.params.id));
       const created = [];
       for (const r of results) {
-        const product = r.productId ? await storage.getProduct(r.productId) : null;
-        const brand = product?.brandId ? await storage.getBrand(product.brandId) : null;
-        const overlay = await storage.createVideoProductOverlay({
-          videoId: req.params.id,
-          productId: r.productId,
-          name: product?.name ?? "Detected Product",
-          productUrl: product?.productUrl ?? null,
-          imageUrl: product?.imageUrl ?? null,
-          price: product?.price ?? null,
-          // Same derivation as the manual path, so an AI-detected product is
-          // buyable on the same terms — and refused on the same terms.
-          priceCents: parsePriceToCents(product?.price ?? null),
-          currency: getPlatformCurrency(),
-          brandName: brand?.name ?? null,
-          position: (req.body.position ?? "bottom") as any,
-          startTime: r.startTime ?? "0",
-          endTime: r.endTime ?? null,
-          source: "ai",
-        });
-        created.push(overlay);
+        if (!(await storage.claimDetectionImport(r.id))) continue;
+        try {
+          const product = r.productId ? await storage.getProduct(r.productId) : null;
+          const brand = product?.brandId ? await storage.getBrand(product.brandId) : null;
+          const overlay = await storage.createVideoProductOverlay({
+            videoId: req.params.id,
+            productId: r.productId,
+            name: product?.name ?? "Detected Product",
+            productUrl: product?.productUrl ?? null,
+            imageUrl: product?.imageUrl ?? null,
+            price: product?.price ?? null,
+            // Same derivation as the manual path, so an AI-detected product is
+            // buyable on the same terms — and refused on the same terms.
+            priceCents: parsePriceToCents(product?.price ?? null),
+            currency: getPlatformCurrency(),
+            brandName: brand?.name ?? null,
+            position: (req.body?.position ?? "bottom") as any,
+            startTime: r.startTime ?? "0",
+            endTime: r.endTime ?? null,
+            source: "ai",
+          });
+          created.push(overlay);
+        } catch (err) {
+          // Give the claim back so the next import retries this placement.
+          await storage.releaseDetectionImport(r.id);
+          throw err;
+        }
       }
       res.json(created);
     } catch {

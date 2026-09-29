@@ -422,6 +422,9 @@ export const videoCarouselOverrides = pgTable("video_carousel_overrides", {
 });
 
 // Video Detection Jobs - tracks AI product detection processing
+export const detectionReviewStatusEnum = pgEnum("detection_review_status", ["pending", "accepted", "rejected"]);
+export type DetectionReviewStatus = (typeof detectionReviewStatusEnum.enumValues)[number];
+
 export const videoDetectionJobs = pgTable("video_detection_jobs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   videoId: varchar("video_id").notNull().references(() => videos.id),
@@ -449,6 +452,15 @@ export const videoDetectionResults = pgTable("video_detection_results", {
   endTime: decimal("end_time", { precision: 10, scale: 2 }), // when to hide product
   boundingBox: text("bounding_box"), // JSON {x, y, width, height}
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
+  /**
+   * Placement Review (migrations/0037). Nothing reaches the carousel until a
+   * person accepts it: import-detections takes accepted, not-yet-imported
+   * rows only, and stamps importedAt so a second import cannot duplicate.
+   */
+  reviewStatus: detectionReviewStatusEnum("review_status").notNull().default("pending"),
+  reviewedAt: timestamp("reviewed_at"),
+  reviewedBy: varchar("reviewed_by").references(() => users.id),
+  importedAt: timestamp("imported_at"),
 });
 
 // Video Product Overlays - per-product timing and position for the video player
@@ -1041,7 +1053,10 @@ export const insertCampaignSchema = createInsertSchema(campaigns).omit({ id: tru
 export const insertBrandKitSchema = createInsertSchema(brandKits).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertVideoCarouselOverrideSchema = createInsertSchema(videoCarouselOverrides).omit({ id: true, createdAt: true });
 export const insertVideoDetectionJobSchema = createInsertSchema(videoDetectionJobs).omit({ id: true, status: true, totalFrames: true, processedFrames: true, error: true, startedAt: true, completedAt: true, createdAt: true });
-export const insertVideoDetectionResultSchema = createInsertSchema(videoDetectionResults).omit({ id: true, createdAt: true });
+// Review state is set by a person, never by the detector that creates the row.
+export const insertVideoDetectionResultSchema = createInsertSchema(videoDetectionResults).omit({
+  id: true, createdAt: true, reviewStatus: true, reviewedAt: true, reviewedBy: true, importedAt: true,
+});
 export const insertVideoProductOverlaySchema = createInsertSchema(videoProductOverlays).omit({ id: true, createdAt: true });
 export const insertCreatorInvitationSchema = createInsertSchema(creatorInvitations).omit({ id: true, status: true, invitedAt: true });
 export const insertAffiliateInvitationSchema = createInsertSchema(affiliateInvitations).omit({ id: true, status: true, inviteToken: true, acceptedByUserId: true, createdAt: true });

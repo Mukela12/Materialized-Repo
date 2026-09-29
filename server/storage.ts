@@ -38,7 +38,7 @@ import {
   type BrandKit, type InsertBrandKit,
   type VideoCarouselOverride, type InsertVideoCarouselOverride,
   type VideoDetectionJob, type InsertVideoDetectionJob,
-  type VideoDetectionResult, type InsertVideoDetectionResult,
+  type VideoDetectionResult, type InsertVideoDetectionResult, type DetectionReviewStatus,
   type VideoProductOverlay, type InsertVideoProductOverlay,
   type CreatorInvitation, type InsertCreatorInvitation,
   type AffiliateInvitation, type InsertAffiliateInvitation,
@@ -132,6 +132,13 @@ export type AnalyticsScope =
   | { type: "creator"; videoIds: string[] }
   | { type: "publisher"; affiliateId: string }
   | { type: "brand" };
+
+export interface DetectionReview {
+  status: DetectionReviewStatus;
+  reviewedBy: string;
+  startTime?: string | null;
+  endTime?: string | null;
+}
 
 export interface IStorage {
   // Users
@@ -445,6 +452,17 @@ export interface IStorage {
   getDetectionResults(jobId: string): Promise<VideoDetectionResult[]>;
   getDetectionResultsByVideo(videoId: string): Promise<VideoDetectionResult[]>;
   createDetectionResult(result: InsertVideoDetectionResult): Promise<VideoDetectionResult>;
+  getDetectionResult(id: string): Promise<VideoDetectionResult | undefined>;
+  /** A person's decision on one placement, with optional timing correction. */
+  reviewDetectionResult(id: string, review: DetectionReview): Promise<VideoDetectionResult | undefined>;
+  /**
+   * Atomically mark an ACCEPTED, not-yet-imported result as imported. False
+   * when it is not accepted or was already imported, so two concurrent
+   * imports cannot both create its overlay.
+   */
+  claimDetectionImport(id: string): Promise<boolean>;
+  /** Undo a claim whose overlay could not be created, so it can be retried. */
+  releaseDetectionImport(id: string): Promise<void>;
   
   // Video Product Overlays
   getVideoProductOverlays(videoId: string): Promise<VideoProductOverlay[]>;
@@ -1437,7 +1455,10 @@ export class MemStorage implements IStorage {
   }
 
   async getDetectionJobByVideoId(videoId: string): Promise<VideoDetectionJob | undefined> {
-    return Array.from(this.detectionJobs.values()).find((job) => job.videoId === videoId);
+    // The LATEST scan: a re-scanned video must not report its old job.
+    return Array.from(this.detectionJobs.values())
+      .filter((job) => job.videoId === videoId)
+      .sort((a, b) => (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0))[0];
   }
 
   async createDetectionJob(job: InsertVideoDetectionJob): Promise<VideoDetectionJob> {
@@ -1492,9 +1513,44 @@ export class MemStorage implements IStorage {
       endTime: result.endTime ?? null,
       boundingBox: result.boundingBox ?? null,
       createdAt: new Date(),
+      reviewStatus: "pending",
+      reviewedAt: null,
+      reviewedBy: null,
+      importedAt: null,
     };
     this.detectionResults.set(id, newResult);
     return newResult;
+  }
+
+  async getDetectionResult(id: string): Promise<VideoDetectionResult | undefined> {
+    return this.detectionResults.get(id);
+  }
+
+  async reviewDetectionResult(id: string, review: DetectionReview): Promise<VideoDetectionResult | undefined> {
+    const r = this.detectionResults.get(id);
+    if (!r) return undefined;
+    const updated: VideoDetectionResult = {
+      ...r,
+      reviewStatus: review.status,
+      reviewedAt: new Date(),
+      reviewedBy: review.reviewedBy,
+      ...(review.startTime !== undefined ? { startTime: review.startTime } : {}),
+      ...(review.endTime !== undefined ? { endTime: review.endTime } : {}),
+    };
+    this.detectionResults.set(id, updated);
+    return updated;
+  }
+
+  async claimDetectionImport(id: string): Promise<boolean> {
+    const r = this.detectionResults.get(id);
+    if (!r || r.reviewStatus !== "accepted" || r.importedAt) return false;
+    this.detectionResults.set(id, { ...r, importedAt: new Date() });
+    return true;
+  }
+
+  async releaseDetectionImport(id: string): Promise<void> {
+    const r = this.detectionResults.get(id);
+    if (r) this.detectionResults.set(id, { ...r, importedAt: null });
   }
 
   // Video Product Overlays
@@ -3441,7 +3497,12 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getDetectionJobByVideoId(videoId: string): Promise<VideoDetectionJob | undefined> {
-    const [job] = await db.select().from(videoDetectionJobs).where(eq(videoDetectionJobs.videoId, videoId));
+    // The LATEST scan. Without an order a re-scanned video could return its
+    // old completed job, and the upload modal would stop polling at once.
+    const [job] = await db.select().from(videoDetectionJobs)
+      .where(eq(videoDetectionJobs.videoId, videoId))
+      .orderBy(desc(videoDetectionJobs.createdAt))
+      .limit(1);
     return job;
   }
 
@@ -3467,6 +3528,43 @@ export class DatabaseStorage implements IStorage {
   async createDetectionResult(result: InsertVideoDetectionResult): Promise<VideoDetectionResult> {
     const [newResult] = await db.insert(videoDetectionResults).values(result).returning();
     return newResult;
+  }
+
+  async getDetectionResult(id: string): Promise<VideoDetectionResult | undefined> {
+    const [row] = await db.select().from(videoDetectionResults).where(eq(videoDetectionResults.id, id));
+    return row;
+  }
+
+  async reviewDetectionResult(id: string, review: DetectionReview): Promise<VideoDetectionResult | undefined> {
+    const [row] = await db
+      .update(videoDetectionResults)
+      .set({
+        reviewStatus: review.status,
+        reviewedAt: new Date(),
+        reviewedBy: review.reviewedBy,
+        ...(review.startTime !== undefined ? { startTime: review.startTime } : {}),
+        ...(review.endTime !== undefined ? { endTime: review.endTime } : {}),
+      })
+      .where(eq(videoDetectionResults.id, id))
+      .returning();
+    return row;
+  }
+
+  async claimDetectionImport(id: string): Promise<boolean> {
+    const rows = await db
+      .update(videoDetectionResults)
+      .set({ importedAt: new Date() })
+      .where(and(
+        eq(videoDetectionResults.id, id),
+        eq(videoDetectionResults.reviewStatus, "accepted"),
+        isNull(videoDetectionResults.importedAt),
+      ))
+      .returning({ id: videoDetectionResults.id });
+    return rows.length === 1;
+  }
+
+  async releaseDetectionImport(id: string): Promise<void> {
+    await db.update(videoDetectionResults).set({ importedAt: null }).where(eq(videoDetectionResults.id, id));
   }
 
   // Video Product Overlays
