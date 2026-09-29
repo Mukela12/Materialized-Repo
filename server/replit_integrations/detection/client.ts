@@ -1,13 +1,28 @@
 import { GoogleGenAI } from "@google/genai";
 import { batchProcess } from "../batch/utils";
 
-export const ai = new GoogleGenAI({
-  apiKey: process.env.AI_INTEGRATIONS_GEMINI_API_KEY,
-  httpOptions: {
-    apiVersion: "",
-    baseUrl: process.env.AI_INTEGRATIONS_GEMINI_BASE_URL,
-  },
-});
+/**
+ * Gemini client settings.
+ *
+ * On Replit the key AND a proxy base URL came from Replit's AI integration,
+ * and that proxy wants no API-version segment (apiVersion ""). After the move
+ * to Railway neither variable was set, so detection never ran in production.
+ * A plain Google AI Studio key is now accepted under GEMINI_API_KEY too, and
+ * the proxy settings apply only when the proxy URL is present: with Google's
+ * own endpoint an empty apiVersion would send every request to the wrong path.
+ */
+export function geminiConfig(env: Record<string, string | undefined> = process.env) {
+  const apiKey = env.AI_INTEGRATIONS_GEMINI_API_KEY || env.GEMINI_API_KEY || undefined;
+  const baseUrl = env.AI_INTEGRATIONS_GEMINI_BASE_URL || undefined;
+  return { apiKey, ...(baseUrl ? { httpOptions: { apiVersion: "", baseUrl } } : {}) };
+}
+
+/** Whether AI detection can run at all on this server. */
+export function geminiConfigured(env: Record<string, string | undefined> = process.env): boolean {
+  return !!geminiConfig(env).apiKey;
+}
+
+export const ai = new GoogleGenAI(geminiConfig());
 
 export interface ProductInfo {
   id: string;

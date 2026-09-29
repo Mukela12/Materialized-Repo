@@ -147,8 +147,11 @@ describe("the routes", () => {
   });
 
   it("detection stores the clearest frame and its box", () => {
-    expect(routes).toMatch(/frameTimestamp: result\.peakTimestamp\.toString\(\)/);
-    expect(routes).toMatch(/boundingBox: result\.peakBoundingBox \? JSON\.stringify\(result\.peakBoundingBox\) : null/);
+    const runner = code("server/detectionRunner.ts");
+    expect(runner).toMatch(/frameTimestamp: result\.peakTimestamp\.toString\(\)/);
+    expect(runner).toMatch(/boundingBox: result\.peakBoundingBox \? JSON\.stringify\(result\.peakBoundingBox\) : null/);
+    // The route runs the same pipeline the script does.
+    expect(routes).toMatch(/void runDetectionJob\(job, req\.params\.id, \{ brandIds, videoTitle, videoDescription \}, isBrandInventoryDiscoverable\);/);
   });
 
   it("a re-scanned video reports its latest job", () => {
@@ -224,5 +227,31 @@ describe("the review workspace (phase 2)", () => {
     expect(review).toMatch(/maxWidth: `calc\(\$\{pct\(1 - b\.x\)\} - 8px\)`/);
     const css = read("client/src/index.css");
     expect(css).toMatch(/grid-template-areas: "stage" "insp" "seq" "queue";/);
+  });
+});
+
+describe("Gemini configuration (production had no key for two months)", () => {
+  it("uses Replit's proxy settings only when the proxy URL is set", async () => {
+    const { geminiConfig } = await import("../../server/replit_integrations/detection/client");
+    expect(geminiConfig({ AI_INTEGRATIONS_GEMINI_API_KEY: "k", AI_INTEGRATIONS_GEMINI_BASE_URL: "https://proxy" }))
+      .toEqual({ apiKey: "k", httpOptions: { apiVersion: "", baseUrl: "https://proxy" } });
+    // A plain Google key must go to Google's endpoint WITH its version path.
+    expect(geminiConfig({ GEMINI_API_KEY: "g" })).toEqual({ apiKey: "g" });
+    expect(geminiConfig({})).toEqual({ apiKey: undefined });
+  });
+
+  it("with no key, a scan says detection is not set up instead of dying on Google credentials", async () => {
+    const { geminiConfigured } = await import("../../server/replit_integrations/detection/client");
+    expect(geminiConfigured({})).toBe(false);
+    expect(geminiConfigured({ GEMINI_API_KEY: "g" })).toBe(true);
+    const runner = code("server/detectionRunner.ts");
+    expect(runner).toMatch(/if \(!geminiConfigured\(\)\) \{\s*await storage\.updateDetectionJob\(job\.id, \{\s*status: "failed",[\s\S]*?error: DETECTION_NOT_CONFIGURED,/);
+    expect(read("server/index.ts")).toMatch(/AI product detection is OFF: set GEMINI_API_KEY/);
+  });
+
+  it("a failed scan is not reported as completed", () => {
+    const modal = code("client/src/components/VideoUploadModal.tsx");
+    expect(modal).not.toMatch(/AI scan completed — manual carousel setup/);
+    expect(modal).toMatch(/AI detection isn't switched on yet/);
   });
 });

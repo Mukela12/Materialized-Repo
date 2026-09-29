@@ -86,6 +86,7 @@ type DetectionJob = {
   status: "pending" | "processing" | "completed" | "failed";
   results: DetectionResult[];
   counts?: { pending: number; accepted: number; rejected: number; readyToImport: number };
+  error?: string | null;
 };
 
 interface VideoUploadModalProps {
@@ -993,7 +994,11 @@ export function VideoUploadModal({
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium" data-testid="text-detection-summary">
                         {!done
-                          ? "AI scan completed — manual carousel setup"
+                          // It used to say "AI scan completed" here when the
+                          // scan had FAILED. Say what happened.
+                          ? (detectionJob.error?.startsWith("AI detection is not set up")
+                              ? "AI detection isn't switched on yet. Add your products below."
+                              : "The AI scan didn't finish. Add your products below.")
                           : detectionJob.results.length === 0
                             ? "AI found no products from the tagged brands"
                             : onCarousel.length > 0

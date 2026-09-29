@@ -29,7 +29,7 @@ declare module "express-session" {
 
 // ── Validate required env vars ───────────────────────────────────────────────
 const requiredEnvVars = ['DATABASE_URL', 'SESSION_SECRET'];
-const optionalEnvVars = ['RESEND_API_KEY', 'CLOUDINARY_CLOUD_NAME', 'STRIPE_SECRET_KEY', 'ADMIN_EMAIL', 'AI_INTEGRATIONS_GEMINI_API_KEY'];
+const optionalEnvVars = ['RESEND_API_KEY', 'CLOUDINARY_CLOUD_NAME', 'STRIPE_SECRET_KEY', 'ADMIN_EMAIL'];
 for (const envVar of requiredEnvVars) {
   if (!process.env[envVar]) {
     console.error(`[FATAL] Missing required environment variable: ${envVar}`);
@@ -41,6 +41,11 @@ for (const envVar of requiredEnvVars) {
 const missing = optionalEnvVars.filter(v => !process.env[v]);
 if (missing.length) {
   console.log(`[Config] Optional env vars not set: ${missing.join(', ')} — some features will be disabled`);
+}
+// Either name works (see geminiConfig). Named on its own line: this was lost
+// in the list above for two months while every AI scan in production failed.
+if (!process.env.AI_INTEGRATIONS_GEMINI_API_KEY && !process.env.GEMINI_API_KEY) {
+  console.warn('[Config] AI product detection is OFF: set GEMINI_API_KEY to enable it');
 }
 
 /**

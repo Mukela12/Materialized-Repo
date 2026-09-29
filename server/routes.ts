@@ -24,6 +24,8 @@ import {
 } from "./playlistEmbed";
 import { sanitisePlaylistStyle, styleFromPlaylist } from "@shared/playlistStyle";
 import { parseVoucherDate } from "@shared/voucherDates";
+import { runDetectionJob } from "./detectionRunner";
+import { isBrandInventoryDiscoverable } from "./inventoryAccess";
 import { parseReviewRequest, reviewLocked, importable, queueOrder, reviewCounts, parseBoundingBox } from "./placementReview";
 import { checkRedeemable, grantsOf, normaliseCode, generateVoucherCode, mintCodes, MAX_BATCH } from "./vouchers";
 import { isEntitled, hasFreeAccess, owesCardOnFile } from "./entitlement";
@@ -87,9 +89,6 @@ import {
   isEmailConfigured,
 } from "./emailService";
 import { setupPdfAnalysisRoutes } from "./replit_integrations/pdf_analysis";
-import { ai, batchAnalyzeFrames, consolidateDetections, type ProductInfo } from "./replit_integrations/detection/client";
-import { detectAiGeneratedContent } from "./replit_integrations/detection/aiContentDetector";
-import { sampleVideoFrames } from "./frameSampler";
 // Object storage removed — using Cloudinary instead
 import type Stripe from "stripe";
 import { stripeService, PLAN_CONFIG, PLAN_KEYS, isPlanKey, isAllowedPlan, BRAND_PLANS, CREATOR_PLANS, isEligibleForIntroOffer, setupFeeMajor, TRIAL_DAYS, type PlanKey } from "./stripeService";
@@ -371,40 +370,7 @@ export async function registerRoutes(
 
   // ==================== PRODUCT ROUTES ====================
 
-  /**
-   * Is a brand's INVENTORY discoverable to other users?
-   *
-   * Client rule (28 Jul 2026): "their inventory is discoverable while tag a brand
-   * is selected from the drop-down list" — i.e. any brand can be TAGGED whether or
-   * not it subscribes (that is the acquisition funnel: tag -> $29 setup + 30-day
-   * trial -> subscribe), but its products only become available to creators once
-   * the brand is subscribed. Subscribing is what makes a brand's videos shoppable.
-   *
-   * 'active' covers Stripe's `trialing` too (see mapStripeStatus), so a brand in
-   * its 30-day trial is discoverable — which is the point of the trial.
-   *
-   * This gates DISCOVERY only. Already-published videos are unaffected: the public
-   * embed renders stored video_product_overlays rows, never a live product query,
-   * so a lapsed subscription cannot retroactively break a creator's live video or
-   * their tracked sales.
-   */
-  async function isBrandInventoryDiscoverable(brandId: string): Promise<boolean> {
-    const brand = await storage.getBrand(brandId);
-    if (!brand) return false;
-
-    // (a) Admin-granted window. Checked FIRST and independently of ownership: the
-    // whole point is to switch on a brand that has accepted and paid the $29 but
-    // has no subscription — and possibly no owner account yet. Compared at read
-    // time, so the window self-expires with no scheduler.
-    if (brand.inventoryAccessUntil && brand.inventoryAccessUntil.getTime() > Date.now()) {
-      return true;
-    }
-
-    // (b) Active subscription. Unchanged.
-    if (!brand.ownerId) return false;
-    const sub = await storage.getBrandSubscription(brand.ownerId);
-    return sub?.status === "active";
-  }
+  // isBrandInventoryDiscoverable: server/inventoryAccess.ts
 
   // Get products (optionally by brand). A caller may always see their OWN brand's
   // inventory; another brand's inventory requires that brand to be subscribed.
@@ -3204,179 +3170,8 @@ export async function registerRoutes(
       // Return immediately so the client can start polling
       res.status(201).json(job);
 
-      // Run Gemini detection asynchronously
-      (async () => {
-        try {
-          await storage.updateDetectionJob(job.id, {
-            status: "processing",
-            startedAt: new Date(),
-          });
-
-          // Gather product catalog from selected brands. An UNSUBSCRIBED brand can
-          // still be tagged — that is how it gets pulled onto the platform — but its
-          // inventory is not discoverable, so detection has nothing to match against
-          // and the video simply is not shoppable until the brand subscribes.
-          const allProducts: ProductInfo[] = [];
-          for (const brandId of (brandIds || [])) {
-            const brand = await storage.getBrand(brandId);
-            if (!(await isBrandInventoryDiscoverable(brandId))) {
-              console.log(
-                `[Detection] Skipping catalog for brand ${brandId} (${brand?.name ?? "unknown"}) — not subscribed`,
-              );
-              continue;
-            }
-            const products = await storage.getProducts(brandId);
-            for (const product of products) {
-              allProducts.push({
-                id: product.id,
-                name: product.name,
-                description: product.description || null,
-                category: product.category || null,
-                brandId: product.brandId || brandId,
-                brandName: brand?.name || "Unknown Brand",
-              });
-            }
-          }
-
-          // Fallback path — today's metadata-only "text guess". Behavior is
-          // byte-for-byte identical to before: same prompt, same parsing, same
-          // zeroed timestamps. `note` records why we ended up here for the badge.
-          const runTextGuess = async (note?: string) => {
-            let detectedProducts: Array<{ productId: string; confidence: number }> = [];
-
-            if (allProducts.length > 0) {
-              const catalogJson = JSON.stringify(allProducts.map(p => ({
-                id: p.id, name: p.name, category: p.category, description: p.description, brand: p.brandName,
-              })));
-              const prompt = `You are a video product placement analyst. Given a video with the following metadata:
-Title: "${videoTitle || "Untitled Video"}"
-Description: "${videoDescription || "No description provided"}"
-
-And the following product catalog:
-${catalogJson}
-
-Identify which products from the catalog are most likely to appear or be featured in this video. Return a JSON array with objects like: { "productId": "<id>", "confidence": <0.0-1.0> }. Only include products with confidence > 0.5. Return ONLY valid JSON, no explanation.`;
-
-              const result = await ai.models.generateContent({
-                model: "gemini-2.5-flash",
-                contents: [{ role: "user", parts: [{ text: prompt }] }],
-              });
-
-              const rawText = result.candidates?.[0]?.content?.parts?.[0]?.text ?? "[]";
-              const jsonMatch = rawText.match(/\[[\s\S]*\]/);
-              if (jsonMatch) {
-                detectedProducts = JSON.parse(jsonMatch[0]);
-              }
-            }
-
-            // Store detection results
-            for (const det of detectedProducts) {
-              const product = allProducts.find(p => p.id === det.productId);
-              if (product) {
-                await storage.createDetectionResult({
-                  jobId: job.id,
-                  videoId: req.params.id,
-                  productId: det.productId,
-                  brandId: product.brandId,
-                  confidence: det.confidence.toString(),
-                  frameTimestamp: "0",
-                  startTime: "0",
-                  endTime: "0",
-                  boundingBox: null,
-                });
-              }
-            }
-
-            await storage.updateDetectionJob(job.id, {
-              status: "completed",
-              completedAt: new Date(),
-              totalFrames: 30,
-              processedFrames: 30,
-              ...(note ? { error: note } : {}),
-            });
-          };
-
-          // Real path — frame-based vision. Runs only when the Gemini key is set
-          // AND we can actually sample frames from the stored video; otherwise we
-          // degrade to the text guess above so behavior matches today exactly.
-          const hasGeminiKey = !!process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
-
-          if (!hasGeminiKey) {
-            await runTextGuess();
-            return;
-          }
-
-          const video = await storage.getVideo(req.params.id);
-          const frames = video?.videoUrl
-            ? await sampleVideoFrames(video.videoUrl, {
-                count: 4,
-                durationSeconds: video.durationSeconds ?? null,
-              })
-            : [];
-
-          if (frames.length === 0) {
-            // Key present but no frames (unconfigured Cloudinary, non-Cloudinary
-            // URL, or every frame fetch failed). Fall back — never fail the job.
-            await runTextGuess("Frame sampling unavailable — used metadata heuristic");
-            return;
-          }
-
-          await storage.updateDetectionJob(job.id, {
-            totalFrames: frames.length,
-            processedFrames: 0,
-          });
-
-          // Real per-frame product detection with true timestamps/bounding boxes.
-          const frameData = frames.map((f) => ({
-            base64: f.base64!,
-            mimeType: f.mimeType,
-            timestamp: f.timestamp,
-          }));
-
-          const frameAnalyses = await batchAnalyzeFrames(
-            frameData,
-            allProducts,
-            (completed) => {
-              storage.updateDetectionJob(job.id, { processedFrames: completed }).catch(() => {});
-            }
-          );
-          const consolidated = consolidateDetections(frameAnalyses, 0.5, 1);
-
-          for (const result of consolidated) {
-            await storage.createDetectionResult({
-              jobId: job.id,
-              videoId: req.params.id,
-              productId: result.productId,
-              brandId: result.brandId,
-              confidence: result.avgConfidence.toString(),
-              // The clearest frame and where the product sits in it: what the
-              // review inspector shows. It used to store the first frame and
-              // throw the model's box away.
-              frameTimestamp: result.peakTimestamp.toString(),
-              startTime: result.startTime.toString(),
-              endTime: result.endTime.toString(),
-              boundingBox: result.peakBoundingBox ? JSON.stringify(result.peakBoundingBox) : null,
-            });
-          }
-
-          // Real AI-generated-content judgment across the same sampled frames.
-          const aiVerdict = await detectAiGeneratedContent(frames);
-          const note = aiVerdict
-            ? `AI-content: ${aiVerdict.label} (score ${aiVerdict.score.toFixed(2)}, confidence ${aiVerdict.confidence.toFixed(2)}) — ${aiVerdict.reason}`
-            : undefined;
-
-          await storage.updateDetectionJob(job.id, {
-            status: "completed",
-            completedAt: new Date(),
-            totalFrames: frames.length,
-            processedFrames: frames.length,
-            ...(note ? { error: note } : {}),
-          });
-        } catch (err) {
-          console.error("Gemini detection error:", err);
-          await storage.updateDetectionJob(job.id, { status: "failed" } as any).catch(() => {});
-        }
-      })();
+      // Run Gemini detection asynchronously (server/detectionRunner.ts).
+      void runDetectionJob(job, req.params.id, { brandIds, videoTitle, videoDescription }, isBrandInventoryDiscoverable);
     } catch (error) {
       res.status(500).json({ error: "Failed to start detection" });
     }
