@@ -23,6 +23,7 @@ import {
   playlistBootstrapScript, playlistRenderScript,
 } from "./playlistEmbed";
 import { sanitisePlaylistStyle, styleFromPlaylist } from "@shared/playlistStyle";
+import { parseVoucherDate } from "@shared/voucherDates";
 import { checkRedeemable, grantsOf, normaliseCode, generateVoucherCode, mintCodes, MAX_BATCH } from "./vouchers";
 import { isEntitled, hasFreeAccess, owesCardOnFile } from "./entitlement";
 import { owesSetupFee, oweableRole, setupFeeAudience } from "./setupFee";
@@ -5691,10 +5692,12 @@ Identify which products from the catalog are most likely to appear or be feature
       if (cap != null && (!Number.isInteger(cap) || cap < 1)) {
         return res.status(400).json({ error: "maxRedemptions must be a whole number of 1 or more" });
       }
-      const expiry = expiresAt ? new Date(expiresAt) : null;
-      if (expiry && Number.isNaN(expiry.getTime())) {
+      // A bare day is the LAST day the code works; see shared/voucherDates.ts.
+      const parsedExpiry = parseVoucherDate(expiresAt ?? null, "end");
+      if (parsedExpiry && "error" in parsedExpiry) {
         return res.status(400).json({ error: "expiresAt must be a valid date" });
       }
+      const expiry = parsedExpiry ?? null;
 
       // Festival codes are cut weeks before the doors open, so a mint needs to be
       // able to say when the batch starts working — not only when it stops.
@@ -5703,10 +5706,11 @@ Identify which products from the catalog are most likely to appear or be feature
         return res.status(400).json({ error: "freeDays must be a whole number of days between 1 and 365" });
       }
 
-      const activeFrom = req.body?.activeFrom ? new Date(req.body.activeFrom) : null;
-      if (activeFrom && Number.isNaN(activeFrom.getTime())) {
+      const parsedFrom = parseVoucherDate(req.body?.activeFrom ?? null, "start");
+      if (parsedFrom && "error" in parsedFrom) {
         return res.status(400).json({ error: "activeFrom must be a valid date" });
       }
+      const activeFrom = parsedFrom ?? null;
       if (activeFrom && expiry && activeFrom.getTime() >= expiry.getTime()) {
         return res.status(400).json({ error: "The activation date must be before the expiry date" });
       }
@@ -5803,18 +5807,11 @@ Identify which products from the catalog are most likely to appear or be feature
 
       // `null` clears, a string sets, absent leaves alone — so the three cases
       // have to survive as three, rather than collapsing to truthy/falsy.
-      const parseEdge = (raw: unknown, name: string): Date | null | undefined | { error: string } => {
-        if (raw === undefined) return undefined;
-        if (raw === null || raw === "") return null;
-        if (typeof raw !== "string") return { error: `${name} must be a date string or null` };
-        const d = new Date(raw);
-        return Number.isNaN(d.getTime()) ? { error: `${name} must be a valid date` } : d;
-      };
-
-      const activeFrom = parseEdge(req.body?.activeFrom, "activeFrom");
-      const expiresAt = parseEdge(req.body?.expiresAt, "expiresAt");
-      for (const v of [activeFrom, expiresAt]) {
-        if (v && typeof v === "object" && "error" in v) return res.status(400).json({ error: v.error });
+      // A bare day means that whole day; see shared/voucherDates.ts.
+      const activeFrom = parseVoucherDate(req.body?.activeFrom, "start");
+      const expiresAt = parseVoucherDate(req.body?.expiresAt, "end");
+      for (const [name, v] of [["activeFrom", activeFrom], ["expiresAt", expiresAt]] as const) {
+        if (v && "error" in v) return res.status(400).json({ error: `${name} ${v.error}` });
       }
 
       const from = activeFrom as Date | null | undefined;

@@ -22,6 +22,7 @@
  * pure part; storage.redeemVoucher is where the guarantee lives.
  */
 import { randomBytes } from "crypto";
+import { voucherInstantToDay } from "@shared/voucherDates";
 
 export interface VoucherRecord {
   id: string;
@@ -147,7 +148,7 @@ export function checkRedeemable(
   if (voucher.activeFrom && voucher.activeFrom.getTime() > now.getTime()) {
     return {
       ok: false, reason: "not_yet_active",
-      message: `That voucher is not active until ${voucher.activeFrom.toISOString().slice(0, 10)}.`,
+      message: `That voucher is not active until ${voucherInstantToDay(voucher.activeFrom, "start")}.`,
     };
   }
   if (voucher.expiresAt && voucher.expiresAt.getTime() <= now.getTime()) {

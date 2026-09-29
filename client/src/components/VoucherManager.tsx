@@ -21,6 +21,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { voucherInstantToDay } from "@shared/voucherDates";
 import {
   Dialog,
   DialogContent,
@@ -346,7 +347,7 @@ export function VoucherManager() {
               />
             </div>
             <div>
-              <Label>Expires (optional)</Label>
+              <Label title="Last day the code works, through midnight New York time">Expires (optional)</Label>
               <Input
                 type="date"
                 value={form.expiresAt}
@@ -431,8 +432,8 @@ export function VoucherManager() {
                 { header: "Who can use", value: (v) => v.roleRestriction ?? "any" },
                 { header: "Uses left", value: (v) => v.seatsRemaining == null ? "unlimited" : String(v.seatsRemaining) },
                 { header: "Redeemed by", value: (v) => v.redeemedBy ?? "" },
-                { header: "Activation", value: (v) => v.activeFrom ? v.activeFrom.slice(0, 10) : "" },
-                { header: "Expires", value: (v) => v.expiresAt ? v.expiresAt.slice(0, 10) : "" },
+                { header: "Activation", value: (v) => v.activeFrom ? voucherInstantToDay(v.activeFrom, "start") : "" },
+                { header: "Expires", value: (v) => v.expiresAt ? voucherInstantToDay(v.expiresAt, "end") : "" },
                 { header: "Status", value: (v) => v.revokedAt ? "Revoked" : v.seatsRemaining === 0 ? "Used" : "Active" },
               ])}
               data-testid="button-export-vouchers"
@@ -474,8 +475,8 @@ export function VoucherManager() {
               onClick={() => {
                 const first = shown[0];
                 setDates({
-                  activeFrom: first?.activeFrom?.slice(0, 10) ?? "",
-                  expiresAt: first?.expiresAt?.slice(0, 10) ?? "",
+                  activeFrom: first?.activeFrom ? voucherInstantToDay(first.activeFrom, "start") : "",
+                  expiresAt: first?.expiresAt ? voucherInstantToDay(first.expiresAt, "end") : "",
                 });
                 setDatesOpen(true);
               }}
@@ -613,8 +614,8 @@ export function VoucherManager() {
             <DialogTitle>Dates for {recipient}'s codes</DialogTitle>
             <DialogDescription>
               Applies to all {shown.length} code{shown.length === 1 ? "" : "s"} given to {recipient}.
-              A code cannot be redeemed before its activation date or after it expires.
-              Leave either blank to remove that limit.
+              Codes work from the start of the activation day through the end of the
+              expiry day, New York time. Leave either blank to remove that limit.
             </DialogDescription>
           </DialogHeader>
           <div className="grid grid-cols-2 gap-4 pt-2">
