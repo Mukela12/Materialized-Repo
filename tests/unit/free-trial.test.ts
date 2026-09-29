@@ -50,7 +50,7 @@ describe("a trial account's lifecycle", () => {
 describe("the wiring, read at the source", () => {
   it("signup grants the trial to every non-voucher account", () => {
     const src = read("server/authRoutes.ts");
-    expect(src).toContain("let startsOnTrial = !voucherGrants.freeAccess");
+    expect(src).toContain("const startsOnTrial = !voucherGrants.freeAccess && trialWithoutVoucher;");
     expect(src).toMatch(/TRIAL_DAYS \* 24 \* 60 \* 60 \* 1000/);
     expect(src).toContain("freeAccess: voucherGrants.freeAccess || startsOnTrial");
   });
@@ -106,10 +106,12 @@ describe("the tag-a-brand exception — the client's only exception to free onbo
 
   it("signup denies the trial to a tagged brand and nobody else", () => {
     const src = read("server/authRoutes.ts");
-    const block = src.slice(src.indexOf("let startsOnTrial"), src.indexOf("const trialUntil"));
+    // Restructured 29 Sep so a voucher lost to a race falls back to the same
+    // rule: trialWithoutVoucher is true for everyone but a tagged brand.
+    const block = src.slice(src.indexOf("let trialWithoutVoucher"), src.indexOf("const trialUntil"));
     expect(block).toContain('role === "brand"');
     expect(block).toContain("findBrandOutreachByContactEmail(email)");
-    expect(block).toContain("startsOnTrial = false");
+    expect(block).toContain("if (tagged) trialWithoutVoucher = false;");
   });
 });
 

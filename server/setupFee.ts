@@ -23,6 +23,8 @@ export type FeeRole = "creator" | "brand" | "affiliate" | string;
 export interface SetupFeeUser {
   role?: FeeRole | null;
   setupFeePaid?: boolean | null;
+  /** Waived by a voucher at sign-up; settled without money changing hands. */
+  setupFeeWaived?: boolean | null;
   isAdmin?: boolean | null;
 }
 
@@ -35,7 +37,7 @@ export function oweableRole(role: FeeRole | null | undefined): boolean {
 export function owesSetupFee(user: SetupFeeUser): boolean {
   if (user?.isAdmin) return false;
   if (!oweableRole(user?.role)) return false;
-  return !user?.setupFeePaid;
+  return !user?.setupFeePaid && !user?.setupFeeWaived;
 }
 
 /**

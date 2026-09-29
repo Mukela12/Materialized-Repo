@@ -144,9 +144,14 @@ export function registerAuthRoutes(app: Express) {
         voucherGrants = { freeAccess: true, waiveSetupFee: false };
       } else {
         const voucher = await storage.getVoucherByCode(code);
-        // Count read for the message only; the CAP is enforced inside
-        // redeemVoucher's transaction, where it cannot be raced.
-        const check = checkRedeemable(voucher, { role, redemptionCount: 0 });
+        // The real count, so a code that is already used up is refused HERE,
+        // before an account exists. It used to pass 0, so a used single-use
+        // code created the account and then failed to redeem, leaving it
+        // verified but with no trial and no benefit (QA, 29 Sep 2026). The CAP
+        // is still enforced inside redeemVoucher's transaction, where it
+        // cannot be raced.
+        const used = voucher ? await storage.countVoucherRedemptions(voucher.id) : 0;
+        const check = checkRedeemable(voucher, { role, redemptionCount: used });
         if (!check.ok) {
           return res.status(400).json({ error: check.message, reason: check.reason });
         }
@@ -183,11 +188,15 @@ export function registerAuthRoutes(app: Express) {
      * that signup gets no trial window, and the fee meets them at the door
      * exactly as promised. Everyone else starts the 14-day trial.
      */
-    let startsOnTrial = !voucherGrants.freeAccess;
-    if (startsOnTrial && role === "brand") {
+    // Whether this signup would get the trial WITHOUT a voucher: everyone
+    // except a tagged brand. Also what a signup falls back to if its voucher
+    // is lost to a race below.
+    let trialWithoutVoucher = true;
+    if (role === "brand") {
       const tagged = await storage.findBrandOutreachByContactEmail(email).catch(() => undefined);
-      if (tagged) startsOnTrial = false;
+      if (tagged) trialWithoutVoucher = false;
     }
+    const startsOnTrial = !voucherGrants.freeAccess && trialWithoutVoucher;
     const trialUntil = new Date(Date.now() + TRIAL_DAYS * 24 * 60 * 60 * 1000);
 
     const user = await storage.createUser({
@@ -197,6 +206,13 @@ export function registerAuthRoutes(app: Express) {
       displayName,
       role,
       freeAccess: voucherGrants.freeAccess || startsOnTrial,
+      /**
+       * A waive_setup_fee voucher waives the setup fee. It used to be read
+       * into voucherGrants and then dropped: nothing ever set it, so every
+       * holder of a "waive setup fee" code still owed the $29 once their
+       * trial ended (found in QA, 29 Sep 2026; the Brooklyn brand codes).
+       */
+      setupFeeWaived: voucherGrants.waiveSetupFee,
       freeAccessUntil: voucherGrants.freeAccess ? freeAccessUntil : trialUntil,
       /**
        * Overage accountability is stamped on every free window — voucher or
@@ -235,20 +251,26 @@ export function registerAuthRoutes(app: Express) {
       await ensureOwnBrand(user).catch((err) => console.error("[Auth] Could not create brand for new account:", err));
     }
 
+    let voucherLost: string | null = null;
     if (voucherToRedeem) {
       // Now that the user row exists. If the last seat went to somebody else
       // between the check above and here, the account still exists but WITHOUT
       // the grant — reported honestly rather than quietly handing out seat 21.
       const r = await storage.redeemVoucher(voucherToRedeem.id, user.id, voucherToRedeem.maxRedemptions);
       if (!r.redeemed) {
-        await storage.updateUser(user.id, { freeAccess: false, freeAccessUntil: null } as any).catch(() => {});
-        return res.status(409).json({
-          error: r.reason === "exhausted"
-            ? "That voucher was fully used moments ago. Your account was created, but without the voucher benefit."
-            : "That voucher has already been used on this account.",
-          reason: r.reason,
-          accountCreated: true,
-        });
+        // Lost the last seat to someone at the same moment: an ordinary signup
+        // after all. The standard trial (not nothing, which left a locked
+        // account), no waiver, and the email check a voucher would have skipped.
+        await storage.updateUser(user.id, {
+          freeAccess: trialWithoutVoucher,
+          freeAccessUntil: trialWithoutVoucher ? trialUntil : null,
+          setupFeeWaived: false,
+          emailVerified: false,
+        } as any).catch(() => {});
+        // Carry on so the verification email still goes out; answered below.
+        // No longer a voucher signup, so no instant session either.
+        voucherLost = r.reason ?? "exhausted";
+        voucherToRedeem = null;
       }
     }
 
@@ -264,6 +286,16 @@ export function registerAuthRoutes(app: Express) {
       } catch (err) {
         console.error("[Auth] Failed to send verification email:", err);
       }
+    }
+
+    if (voucherLost) {
+      return res.status(409).json({
+        error: voucherLost === "exhausted"
+          ? "That voucher was fully used moments ago. Your account was created with the standard free trial instead; check your email to verify it."
+          : "That voucher has already been used on this account.",
+        reason: voucherLost,
+        accountCreated: true,
+      });
     }
 
     /**

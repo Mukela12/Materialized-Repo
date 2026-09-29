@@ -242,10 +242,10 @@ export async function registerRoutes(
        * mere existence is a durable record that this user has transacted before,
        * whatever state they are in now.
        *
-       * The setup fee is never waived here. Comped accounts are a decision for an
-       * admin, and a creator must not be able to zero their own fee by posting a
-       * flag — stripeService.createTrialWithSetupFeeCheckout takes waiveSetupFee
-       * for that future admin-driven path, and this route always leaves it false.
+       * The setup fee is waived here only for an account whose sign-up voucher
+       * waived it (users.setup_fee_waived, set server-side at registration).
+       * Nothing in the request can waive it: a creator must not be able to
+       * zero their own fee by posting a flag.
        */
       const session = await (async () => {
         if (req.body?.withTrial !== true) {
@@ -259,8 +259,11 @@ export async function registerRoutes(
           return null;
         }
 
+        // Waived only by the account's own voucher, set server-side at sign-up
+        // (never by anything in this request), so it cannot be self-granted.
         return stripeService.createTrialWithSetupFeeCheckout(
           customerId, plan, successUrl, cancelUrl, { userId, plan, offer: "trial" },
+          !!user.setupFeeWaived,
         );
       })();
 
@@ -6119,6 +6122,7 @@ export async function registerRoutes(
       res.json({
         required: oweableRole(user.role),
         paid: !!user.setupFeePaid,
+        waived: !!user.setupFeeWaived,
         // Deferred, not waived, while a trial or voucher window is active:
         // the banner stands down and returns the day the window lapses.
         outstanding: owesSetupFee(user) && !hasFreeAccess(user),
@@ -6142,7 +6146,8 @@ export async function registerRoutes(
         return res.status(400).json({ error: "Creator accounts do not pay a setup fee" });
       }
       // Idempotent by design: a double click must not open a second charge.
-      if (user.setupFeePaid) return res.json({ alreadyPaid: true });
+      // Waived by a voucher counts as settled: never charge it.
+      if (user.setupFeePaid || user.setupFeeWaived) return res.json({ alreadyPaid: true });
 
       let customerId = user.stripeCustomerId;
       if (!customerId) {

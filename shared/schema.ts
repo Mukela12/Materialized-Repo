@@ -91,6 +91,9 @@ export const users = pgTable("users", {
    */
   setupFeePaid: boolean("setup_fee_paid").notNull().default(false),
   setupFeePaidAt: timestamp("setup_fee_paid_at"),
+  // Waived by a waive_setup_fee voucher at sign-up (migrations/0039). Kept
+  // apart from setupFeePaid so "paid" still means money was received.
+  setupFeeWaived: boolean("setup_fee_waived").notNull().default(false),
   /**
    * Free access requires a card. Stamped at voucher redemption — the client's
    * rule is that overage accountability is "the single requirement of having
