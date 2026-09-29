@@ -5,6 +5,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const generate = vi.fn();
 vi.mock('../../server/replit_integrations/detection/client', () => ({
   ai: { models: { generateContent: (...args: any[]) => generate(...args) } },
+  GEMINI_MODEL: 'test-model',
 }));
 
 import {
