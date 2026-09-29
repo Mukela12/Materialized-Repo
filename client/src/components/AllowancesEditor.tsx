@@ -14,7 +14,7 @@
  */
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, serverMessage } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { formatMoney } from "@/lib/currency";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -83,8 +83,7 @@ export function AllowancesEditor() {
       qc.invalidateQueries({ queryKey: ["/api/admin/allowances"] });
     },
     onError: async (err: any) => {
-      let detail = "";
-      try { detail = (await err?.response?.json?.())?.error ?? ""; } catch { /* generic */ }
+      const detail = serverMessage(err);
       toast({ title: "Could not save", description: detail, variant: "destructive" });
     },
   });

@@ -14,7 +14,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Check, Trash2, Undo2, Loader2, Package, ScanSearch, Plus } from "lucide-react";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, serverMessage } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -95,8 +95,7 @@ export function PlacementReview({ videoId, videoUrl, onImported }: PlacementRevi
       await qc.invalidateQueries({ queryKey: key });
     },
     onError: async (err: any) => {
-      let detail = "";
-      try { detail = (await err?.response?.json?.())?.error ?? ""; } catch { /* generic */ }
+      const detail = serverMessage(err);
       toast({ title: "Could not save that", description: detail || err?.message, variant: "destructive" });
     },
   });

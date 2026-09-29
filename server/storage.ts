@@ -140,6 +140,28 @@ export interface DetectionReview {
   endTime?: string | null;
 }
 
+/**
+ * Bulk actions in the voucher admin. Codes someone has already signed up with
+ * are treated carefully: their role is not changed (the account exists with the
+ * role it has), and "delete" revokes them instead, so the history of who
+ * redeemed what, and the account itself, stay intact.
+ */
+export type VoucherBulkAction =
+  | { kind: "role"; role: "creator" | "brand" | "affiliate" }
+  | { kind: "dates"; activeFrom?: Date | null; expiresAt?: Date | null }
+  | { kind: "revoke" }
+  | { kind: "delete" };
+
+export interface VoucherBulkResult {
+  updated: number;
+  deleted: number;
+  revoked: number;
+  /** Codes left alone, e.g. a used code whose role was not changed. */
+  skipped: number;
+  /** Accounts whose free access now ends on the new expiry. */
+  accountsUpdated: number;
+}
+
 export interface IStorage {
   // Users
   getUser(id: string): Promise<User | undefined>;
@@ -405,6 +427,8 @@ export interface IStorage {
     target: { batchId?: string; assignedTo?: string },
     window: { activeFrom?: Date | null; expiresAt?: Date | null },
   ): Promise<number>;
+  /** One action across many codes at once (admin bulk actions). */
+  bulkVoucherAction(ids: string[], action: VoucherBulkAction): Promise<VoucherBulkResult>;
   setVoucherPartners(
     entries: Array<{ code: string; partner: string | null }>,
   ): Promise<{ updated: number; unmatched: string[] }>;
@@ -2276,6 +2300,29 @@ export class MemStorage implements IStorage {
       n++;
     }
     return n;
+  }
+
+  async bulkVoucherAction(ids: string[], action: VoucherBulkAction): Promise<VoucherBulkResult> {
+    const out: VoucherBulkResult = { updated: 0, deleted: 0, revoked: 0, skipped: 0, accountsUpdated: 0 };
+    const used = (id: string) => this.voucherRedemptionsList.some((r) => r.voucherId === id);
+    for (const id of ids) {
+      const v = this.vouchersMap.get(id);
+      if (!v) { out.skipped++; continue; }
+      if (action.kind === "role") {
+        if (used(id)) { out.skipped++; continue; }
+        v.roleRestriction = action.role; out.updated++;
+      } else if (action.kind === "dates") {
+        if (action.activeFrom !== undefined) v.activeFrom = action.activeFrom;
+        if (action.expiresAt !== undefined) v.expiresAt = action.expiresAt;
+        out.updated++;
+      } else if (action.kind === "revoke" || (action.kind === "delete" && used(id))) {
+        if (v.revokedAt) { out.skipped++; continue; }
+        v.revokedAt = new Date(); out.revoked++;
+      } else {
+        this.vouchersMap.delete(id); out.deleted++;
+      }
+    }
+    return out;
   }
 
   async setVoucherPartners(
@@ -4406,7 +4453,83 @@ export class DatabaseStorage implements IStorage {
     // checkRedeemable regardless, and excluding them would leave the export
     // showing a batch with inconsistent dates.
     const rows = await db.update(vouchers).set(patch).where(where).returning({ id: vouchers.id });
+    if (window.expiresAt !== undefined) {
+      await this.syncFreeAccessToVoucherExpiry(db, rows.map((r) => r.id));
+    }
     return rows.length;
+  }
+
+  /**
+   * A free-access code with no free_days frees its holder until the code's own
+   * expiry, and sign-up COPIES that date onto the account. So moving the expiry
+   * later (as with Brooklyn's extra weeks) used to change nothing for anyone who
+   * had already signed up. This carries the new date to them: accounts still on
+   * that voucher's free window get the code's current expiry.
+   */
+  private async syncFreeAccessToVoucherExpiry(exec: { execute: typeof db.execute }, voucherIds: string[]): Promise<number> {
+    if (voucherIds.length === 0) return 0;
+    const res = (await exec.execute(sql`
+      UPDATE users u
+         SET free_access_until = v.expires_at
+        FROM voucher_redemptions r
+        JOIN vouchers v ON v.id = r.voucher_id
+       WHERE r.user_id = u.id
+         AND v.id IN (${sql.join(voucherIds.map((id) => sql`${id}`), sql`, `)})
+         AND v.grant_type = 'free_access'
+         AND v.free_days IS NULL
+         AND u.free_access = true
+         AND u.free_access_until IS DISTINCT FROM v.expires_at
+    `)) as unknown as { rowCount?: number };
+    return res.rowCount ?? 0;
+  }
+
+  async bulkVoucherAction(ids: string[], action: VoucherBulkAction): Promise<VoucherBulkResult> {
+    const out: VoucherBulkResult = { updated: 0, deleted: 0, revoked: 0, skipped: 0, accountsUpdated: 0 };
+    if (ids.length === 0) return out;
+    return db.transaction(async (tx) => {
+      const usedRows = await tx
+        .selectDistinct({ id: voucherRedemptions.voucherId })
+        .from(voucherRedemptions)
+        .where(inArray(voucherRedemptions.voucherId, ids));
+      const used = new Set(usedRows.map((r) => r.id));
+      const unused = ids.filter((id) => !used.has(id));
+
+      if (action.kind === "role") {
+        const rows = unused.length
+          ? await tx.update(vouchers).set({ roleRestriction: action.role }).where(inArray(vouchers.id, unused)).returning({ id: vouchers.id })
+          : [];
+        out.updated = rows.length;
+        out.skipped = ids.length - rows.length;
+      } else if (action.kind === "dates") {
+        const patch: Record<string, unknown> = {};
+        if (action.activeFrom !== undefined) patch.activeFrom = action.activeFrom;
+        if (action.expiresAt !== undefined) patch.expiresAt = action.expiresAt;
+        const rows = Object.keys(patch).length
+          ? await tx.update(vouchers).set(patch).where(inArray(vouchers.id, ids)).returning({ id: vouchers.id })
+          : [];
+        out.updated = rows.length;
+        out.skipped = ids.length - rows.length;
+        if (action.expiresAt !== undefined) {
+          out.accountsUpdated = await this.syncFreeAccessToVoucherExpiry(tx, rows.map((r) => r.id));
+        }
+      } else {
+        // Revoke: everything asked for. Delete: unused codes go; used codes are
+        // revoked instead, so the account and its redemption record survive.
+        const toRevoke = action.kind === "revoke" ? ids : Array.from(used);
+        if (toRevoke.length) {
+          const rows = await tx.update(vouchers).set({ revokedAt: new Date() })
+            .where(and(inArray(vouchers.id, toRevoke), isNull(vouchers.revokedAt)))
+            .returning({ id: vouchers.id });
+          out.revoked = rows.length;
+        }
+        if (action.kind === "delete" && unused.length) {
+          const rows = await tx.delete(vouchers).where(inArray(vouchers.id, unused)).returning({ id: vouchers.id });
+          out.deleted = rows.length;
+        }
+        out.skipped = ids.length - out.revoked - out.deleted;
+      }
+      return out;
+    });
   }
 
   /**

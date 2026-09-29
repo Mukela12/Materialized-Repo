@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { formatMoney } from "@/lib/currency";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, serverMessage } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useTableControls, type SortDir } from "@/hooks/useTableControls";
 import { exportToCsv } from "@/lib/exportCsv";
@@ -1101,8 +1101,7 @@ function MoneyFeeInvoices() {
     onError: async (err: any) => {
       // The zero-total trap and "no payment method" both land here, and both
       // need the real message rather than a generic failure.
-      let detail = "";
-      try { detail = (await err?.response?.json?.())?.error ?? ""; } catch { /* keep generic */ }
+      const detail = serverMessage(err);
       toast({ title: "Could not finalise", description: detail || String(err?.message ?? ""), variant: "destructive" });
     },
   });

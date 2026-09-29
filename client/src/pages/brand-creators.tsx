@@ -11,7 +11,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Mail, Users, Send, Clock, CheckCircle, XCircle, Upload, FileText, AlertCircle, Download, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, serverMessage } from "@/lib/queryClient";
 import {
   Form,
   FormControl,
@@ -25,7 +25,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import type { CreatorInvitation } from "@shared/schema";
 import { formatDistanceToNow } from "date-fns";
-import Papa from "papaparse";
+import { parseContactCsv, isCsvFile } from "@/lib/csvImport";
+import { CsvFormatHint } from "@/components/CsvFormatHint";
 
 /**
  * The invitation a brand sends a creator, supplied by the client verbatim.
@@ -133,7 +134,9 @@ export default function BrandCreators() {
 
   const bulkInviteMutation = useMutation({
     mutationFn: async (data: { invitations: ParsedCSVRow[] }) => {
-      return apiRequest("POST", "/api/brands/invite-creators/bulk", {
+      // The JSON, not the Response: this returned the raw response, so the
+      // success message read "undefined invitations sent successfully."
+      const res = await apiRequest("POST", "/api/brands/invite-creators/bulk", {
         invitations: data.invitations.filter(row => row.isValid).map(row => ({
           creatorName: row.creatorName,
           email: row.email,
@@ -141,20 +144,27 @@ export default function BrandCreators() {
           message: row.message,
         })),
       });
+      return (await res.json()) as { created: number; errors?: { index: number; error: string }[] };
     },
-    onSuccess: (response: { created: number; errors?: { index: number; error: string }[] }) => {
+    onSuccess: (response) => {
       queryClient.invalidateQueries({ queryKey: ["/api/brands/creator-invites"] });
+      const notSent = response.errors ?? [];
+      const reasons = Array.from(new Set(notSent.map((e) => e.error))).join(", ");
       toast({
-        title: "Bulk Import Complete",
-        description: `${response.created} invitations sent successfully.`,
+        title: `${response.created} ${response.created === 1 ? "invitation" : "invitations"} sent`,
+        description: notSent.length
+          ? `${notSent.length} not sent (${reasons}).`
+          : "Each creator gets an email with their own free pass.",
+        variant: notSent.length && response.created === 0 ? "destructive" : undefined,
       });
       setCsvData([]);
       setActiveTab("single");
     },
-    onError: () => {
+    onError: async (err: any) => {
+      const detail = serverMessage(err);
       toast({
-        title: "Bulk Import Failed",
-        description: "There was an error processing the invitations.",
+        title: "Invitations not sent",
+        description: detail || "Something went wrong. Please try again.",
         variant: "destructive",
       });
     },
@@ -164,87 +174,35 @@ export default function BrandCreators() {
     inviteMutation.mutate(data);
   };
 
+  // One reader for every import (lib/csvImport.ts): a bad row is marked on
+  // its own row instead of failing the whole file, and headings are matched
+  // loosely ("Full Name", "Email Address", First/Last columns).
   const parseCSV = (content: string): ParsedCSVRow[] => {
-    const result = Papa.parse<Record<string, string>>(content, {
-      header: true,
-      skipEmptyLines: true,
-      transformHeader: (header: string) => header.toLowerCase().trim(),
+    const { rows, problem } = parseContactCsv(content, {
+      extras: {
+        category: ["category", "contentcategory", "niche"],
+        message: ["message", "personalmessage", "note", "notes"],
+      },
     });
-
-    if (result.errors.length > 0) {
-      toast({
-        title: "CSV Parse Error",
-        description: result.errors[0].message,
-        variant: "destructive",
-      });
+    if (problem) {
+      toast({ title: "Couldn't read that file", description: problem, variant: "destructive" });
       return [];
     }
-
-    const data = result.data;
-    if (data.length === 0) {
-      toast({
-        title: "Empty CSV",
-        description: "The CSV file has no data rows.",
-        variant: "destructive",
-      });
-      return [];
-    }
-
-    if (data.length > 200) {
-      toast({
-        title: "Too Many Rows",
-        description: "Maximum 200 rows allowed per import.",
-        variant: "destructive",
-      });
-      return [];
-    }
-
-    const headers = result.meta.fields?.map(f => f.toLowerCase()) || [];
-    const nameKey = headers.find(h => h === "name" || h === "creator_name" || h === "creatorname");
-    const emailKey = headers.find(h => h === "email" || h === "creator_email" || h === "creatoremail");
-    const categoryKey = headers.find(h => h === "category" || h === "content_category");
-    const messageKey = headers.find(h => h === "message" || h === "personal_message");
-
-    if (!nameKey || !emailKey) {
-      toast({
-        title: "Invalid CSV Format",
-        description: "CSV must have 'name' and 'email' columns.",
-        variant: "destructive",
-      });
-      return [];
-    }
-
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-    return data.map(row => {
-      const creatorName = (row[nameKey] || "").trim();
-      const email = (row[emailKey] || "").trim();
-      const category = categoryKey ? (row[categoryKey] || "").trim() || undefined : undefined;
-      const message = messageKey ? (row[messageKey] || "").trim() || undefined : undefined;
-
-      let error: string | undefined;
-      let isValid = true;
-
-      if (!creatorName) {
-        error = "Name is required";
-        isValid = false;
-      } else if (!email) {
-        error = "Email is required";
-        isValid = false;
-      } else if (!emailRegex.test(email)) {
-        error = "Invalid email format";
-        isValid = false;
-      }
-
-      return { creatorName, email, category, message, error, isValid };
-    });
+    return rows.map((r) => ({
+      creatorName: r.name,
+      email: r.email,
+      category: r.extras.category,
+      message: r.extras.message,
+      error: r.error,
+      isValid: !r.error,
+    }));
   };
 
   const handleFileSelect = (file: File) => {
-    if (!file.name.endsWith(".csv")) {
+    if (!isCsvFile(file)) {
       toast({
-        title: "Invalid File",
-        description: "Please upload a CSV file.",
+        title: "That isn't a CSV file",
+        description: "Save your spreadsheet as CSV first. Tap the (i) for how.",
         variant: "destructive",
       });
       return;
@@ -270,7 +228,7 @@ export default function BrandCreators() {
   };
 
   const downloadTemplate = () => {
-    const template = "name,email,category,message\nJohn Doe,john@example.com,Fashion,Welcome to our brand\nJane Smith,jane@example.com,Tech,";
+    const template = 'Name,Email,Category,Message\nJohn Doe,john@example.com,Fashion,"Hi John, welcome to our brand"\nJane Smith,jane@example.com,Beauty,';
     const blob = new Blob([template], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -440,6 +398,8 @@ export default function BrandCreators() {
                         onChange={(e) => {
                           const file = e.target.files?.[0];
                           if (file) handleFileSelect(file);
+                          // So choosing the same file again (after fixing it) still loads.
+                          e.target.value = "";
                         }}
                         data-testid="input-csv-file"
                       />
@@ -455,18 +415,26 @@ export default function BrandCreators() {
                       </Button>
                     </div>
                     <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
-                      <Button
+                      {/* A plain text link: Button's "link" variant was removed with
+                          the button rework, so this had been rendering as a full
+                          primary button. */}
+                      <button
                         type="button"
-                        variant="link"
-                        className="text-sm p-0 h-auto"
+                        className="inline-flex items-center font-medium text-primary underline-offset-4 hover:underline"
                         onClick={downloadTemplate}
                         data-testid="button-download-template"
                       >
                         <Download className="h-3 w-3 mr-1" />
                         Download template
-                      </Button>
+                      </button>
                       <span>|</span>
-                      <span>Max 200 rows</span>
+                      <span>Up to 200 people</span>
+                      <CsvFormatHint
+                        required={["Name", "Email"]}
+                        optional={["Category", "Message"]}
+                        example={["Name,Email,Category", "Jane Smith,jane@example.com,Fashion", "Leo Park,leo@example.com,Beauty"]}
+                        note="Each creator gets their own invitation with a free pass."
+                      />
                     </div>
                   </div>
                 ) : (

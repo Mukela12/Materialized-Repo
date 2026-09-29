@@ -1,7 +1,7 @@
 import express from "express";
 import type { Express, Request, Response } from "express";
 import { createServer, type Server } from "http";
-import { storage } from "./storage";
+import { storage, type VoucherBulkAction } from "./storage";
 import { sanitizeUser, toPublicBrand } from "./serializers";
 import { viewerHash, isUniqueViolation } from "./viewerIdentity";
 import { canAccessUserResource } from "./authz";
@@ -2363,6 +2363,37 @@ export async function registerRoutes(
   });
 
   // Invite creator (brand to creator invitation)
+  /**
+   * The free pass a brand's invitation promises: one single-use creator code,
+   * ending when the inviting brand's own offer ends. Shared by the single and
+   * the CSV invite, because the CSV path used to send the same promise with a
+   * bare /register link and no code at all.
+   */
+  async function mintInvitePass(a: { brandId: string; brandName: string; creatorEmail: string; invitedBy: string | null }): Promise<string> {
+    const ownVoucher = a.invitedBy ? await storage.getRedeemedVoucherForUser(a.invitedBy) : null;
+    const [code] = await mintCodes(1, async (c) => !!(await storage.getVoucherByCode(c)));
+    await storage.createVoucher(inviteVoucherFields({
+      code,
+      brandId: a.brandId,
+      brandName: a.brandName,
+      creatorEmail: a.creatorEmail,
+      invitedByUserId: a.invitedBy,
+      offerEnd: ownVoucher?.expiresAt ?? null,
+    }) as any);
+    return code;
+  }
+
+  function inviteAcceptUrl(req: Request, code: string | null): string {
+    return code
+      ? `${publicOrigin(req)}/register?code=${encodeURIComponent(code)}&role=creator`
+      : `${publicOrigin(req)}/register`;
+  }
+
+  /** How many more passes this brand can hand out under the per-brand limit. */
+  async function invitePassesLeft(brandId: string): Promise<number> {
+    return Math.max(0, inviteCapPerBrand() - (await storage.countVouchersInBatch(inviteBatchId(brandId))));
+  }
+
   app.post("/api/brands/invite-creator", async (req, res) => {
     try {
       // Sends an email — must be gated so it can't be used to spam invitations
@@ -2412,9 +2443,7 @@ export async function registerRoutes(
       const brandName = brands.find(b => b.id === useBrandId)?.name || "A brand";
       let voucherCode: string | null = null;
       try {
-        const batchId = inviteBatchId(useBrandId);
-        const minted = await storage.countVouchersInBatch(batchId);
-        if (minted >= inviteCapPerBrand()) {
+        if ((await invitePassesLeft(useBrandId)) === 0) {
           return res.status(429).json({
             error: `Invitation limit reached (${inviteCapPerBrand()}). Contact Materialized to raise it.`,
             reason: "invite_cap",
@@ -2422,17 +2451,7 @@ export async function registerRoutes(
         }
         // The inviting brand's own offer decides the date, so a Liverpool brand
         // invites to 30 November and a Brooklyn brand to 31 October.
-        const ownVoucher = sessionUserId ? await storage.getRedeemedVoucherForUser(sessionUserId) : null;
-        const [code] = await mintCodes(1, async (c) => !!(await storage.getVoucherByCode(c)));
-        await storage.createVoucher(inviteVoucherFields({
-          code,
-          brandId: useBrandId,
-          brandName,
-          creatorEmail,
-          invitedByUserId: sessionUserId ?? null,
-          offerEnd: ownVoucher?.expiresAt ?? null,
-        }) as any);
-        voucherCode = code;
+        voucherCode = await mintInvitePass({ brandId: useBrandId, brandName, creatorEmail, invitedBy: sessionUserId ?? null });
       } catch (voucherErr) {
         // Recorded, not fatal: the invitation exists and can be re-sent. Sending
         // an invitation with no code is the thing worth shouting about.
@@ -2441,9 +2460,7 @@ export async function registerRoutes(
 
       if (isEmailConfigured()) {
         try {
-          const acceptUrl = voucherCode
-            ? `${publicOrigin(req)}/register?code=${encodeURIComponent(voucherCode)}&role=creator`
-            : `${publicOrigin(req)}/register`;
+          const acceptUrl = inviteAcceptUrl(req, voucherCode);
           await sendCreatorInvitationEmail({
             creatorName,
             creatorEmail,
@@ -2500,7 +2517,7 @@ export async function registerRoutes(
       }
 
       // Validate each invitation using the shared insert schema
-      const validInvitations: Array<{ brandId: string; creatorName: string; email: string; category: string | null; message: string | null }> = [];
+      const validInvitations: Array<{ brandId: string; creatorName: string; email: string; category: string | null; message: string | null; index: number }> = [];
       const errors: Array<{ index: number; error: string }> = [];
 
       // Create a schema for validating invitation rows (matches insertCreatorInvitationSchema)
@@ -2520,28 +2537,48 @@ export async function registerRoutes(
           email: parsed.data.email,
           category: parsed.data.category || null,
           message: parsed.data.message || null,
+          index,
         });
       });
 
-      const created = await storage.createCreatorInvitationsBulk(validInvitations);
+      // Each invitation carries a free pass, and passes are limited per brand.
+      // Rows past the limit are reported, not sent a promise with no pass.
+      const room = await invitePassesLeft(useBrandId);
+      if (room === 0 && validInvitations.length > 0) {
+        return res.status(429).json({
+          error: `Invitation limit reached (${inviteCapPerBrand()}). Contact Materialized to raise it.`,
+          reason: "invite_cap",
+        });
+      }
+      for (const over of validInvitations.slice(room)) {
+        errors.push({ index: over.index, error: "Pass limit reached" });
+      }
+      const toInvite = validInvitations.slice(0, room);
+      const created = await storage.createCreatorInvitationsBulk(toInvite.map(({ index: _i, ...row }) => row));
 
-      // Notify each invited creator (best-effort; a failed send never fails the row).
-      if (isEmailConfigured()) {
-        const brandName = brands.find(b => b.id === useBrandId)?.name || "A brand";
-        const acceptUrl = `${publicOrigin(req)}/register`;
-        for (const inv of created) {
-          try {
-            await sendCreatorInvitationEmail({
-              creatorName: inv.creatorName,
-              creatorEmail: inv.email,
-              brandName,
-              category: inv.category,
-              message: inv.message,
-              acceptUrl,
-            });
-          } catch (emailErr) {
-            console.error(`Creator invitation email failed for ${inv.email}:`, emailErr);
-          }
+      // Mint each creator's pass, then notify them (best-effort; a failed send
+      // never fails the row). Minted first so no email promises a missing pass.
+      const brandName = brands.find(b => b.id === useBrandId)?.name || "A brand";
+      for (const inv of created) {
+        let code: string | null = null;
+        try {
+          code = await mintInvitePass({ brandId: useBrandId, brandName, creatorEmail: inv.email, invitedBy: sessionUserId });
+        } catch (voucherErr) {
+          console.error(`Invitation voucher mint failed for ${inv.email}:`, voucherErr);
+        }
+        if (!isEmailConfigured()) continue;
+        try {
+          await sendCreatorInvitationEmail({
+            creatorName: inv.creatorName,
+            creatorEmail: inv.email,
+            brandName,
+            category: inv.category,
+            message: inv.message,
+            acceptUrl: inviteAcceptUrl(req, code),
+            voucherCode: code,
+          });
+        } catch (emailErr) {
+          console.error(`Creator invitation email failed for ${inv.email}:`, emailErr);
         }
       }
 
@@ -5898,6 +5935,57 @@ export async function registerRoutes(
    * Admin: revoke. Sets a timestamp rather than deleting — the accounts already
    * created under this voucher keep their access and stay explicable.
    */
+  /**
+   * Admin: one action across many codes (the client's bulk-actions request,
+   * 29 Sep 2026): change who a code is for, set its dates, revoke, or delete.
+   *
+   * Body: { ids: string[], action: "role" | "dates" | "revoke" | "delete",
+   *         role?, activeFrom?, expiresAt? }. Days mean the whole day, New York
+   * time, as everywhere else (shared/voucherDates.ts). A used code keeps its
+   * role, and "delete" revokes it rather than erasing who signed up with it.
+   */
+  app.post("/api/admin/vouchers/bulk", requireAdmin, async (req, res) => {
+    try {
+      const ids: unknown = req.body?.ids;
+      if (!Array.isArray(ids) || ids.length === 0 || ids.length > 2000 || !ids.every((x) => typeof x === "string")) {
+        return res.status(400).json({ error: "ids must be a list of 1 to 2000 voucher ids" });
+      }
+      const kind = req.body?.action;
+      let action: VoucherBulkAction;
+      if (kind === "role") {
+        const role = req.body?.role;
+        if (!["creator", "brand", "affiliate"].includes(role)) {
+          return res.status(400).json({ error: "role must be creator, brand or affiliate" });
+        }
+        action = { kind: "role", role };
+      } else if (kind === "dates") {
+        const activeFrom = parseVoucherDate(req.body?.activeFrom, "start");
+        const expiresAt = parseVoucherDate(req.body?.expiresAt, "end");
+        for (const [name, v] of [["activeFrom", activeFrom], ["expiresAt", expiresAt]] as const) {
+          if (v && "error" in v) return res.status(400).json({ error: `${name} ${v.error}` });
+        }
+        const from = activeFrom as Date | null | undefined;
+        const until = expiresAt as Date | null | undefined;
+        if (from === undefined && until === undefined) {
+          return res.status(400).json({ error: "Give a start date, an expiry, or both" });
+        }
+        if (from && until && from.getTime() >= until.getTime()) {
+          return res.status(400).json({ error: "The start date must be before the expiry date" });
+        }
+        action = { kind: "dates", activeFrom: from, expiresAt: until };
+      } else if (kind === "revoke" || kind === "delete") {
+        action = { kind };
+      } else {
+        return res.status(400).json({ error: "action must be role, dates, revoke or delete" });
+      }
+      const result = await storage.bulkVoucherAction(Array.from(new Set(ids as string[])), action);
+      res.json({ ok: true, ...result });
+    } catch (error) {
+      console.error("Voucher bulk action error:", error);
+      res.status(500).json({ error: "Failed to update vouchers" });
+    }
+  });
+
   app.post("/api/admin/vouchers/:id/revoke", requireAdmin, async (req, res) => {
     try {
       const done = await storage.revokeVoucher(req.params.id);

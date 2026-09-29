@@ -10,10 +10,10 @@
  * are left" is the question a brand asks, and it needs answering without anyone
  * running a query.
  */
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import Papa from "papaparse";
-import { apiRequest } from "@/lib/queryClient";
+import { readCsvCells, normalizeHeader, findColumn, isCsvFile } from "@/lib/csvImport";
+import { apiRequest, serverMessage } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -31,6 +31,8 @@ import {
 } from "@/components/ui/dialog";
 import { Ticket, Copy, Ban, Check, Download, Upload, CalendarClock } from "lucide-react";
 import { exportToCsv } from "@/lib/exportCsv";
+import { Checkbox } from "@/components/ui/checkbox";
+import { VoucherBulkBar } from "@/components/VoucherBulkBar";
 
 interface VoucherRow {
   id: string;
@@ -93,6 +95,12 @@ export function VoucherManager() {
    * partner would contain every other partner's codes.
    */
   const [recipient, setRecipient] = useState<string>("all");
+  // Narrows the table (and so what "select all" picks) to one kind of code,
+  // e.g. every publisher code given to Brooklyn. The batch "Set dates" button
+  // still acts on everything given to the recipient, as its dialog says.
+  const [typeFilter, setTypeFilter] = useState<"all" | "creator" | "brand" | "affiliate">("all");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  useEffect(() => { setSelected(new Set()); }, [recipient, typeFilter]);
   const [copied, setCopied] = useState<string | null>(null);
   const [datesOpen, setDatesOpen] = useState(false);
   const [dates, setDates] = useState({ activeFrom: "", expiresAt: "" });
@@ -165,23 +173,21 @@ export function VoucherManager() {
   });
 
   const onPartnerFile = (file: File) => {
-    if (!file.name.toLowerCase().endsWith(".csv")) {
-      toast({ title: "That is not a CSV", variant: "destructive" });
+    if (!isCsvFile(file)) {
+      toast({ title: "That isn't a CSV file", variant: "destructive" });
       return;
     }
     const reader = new FileReader();
     reader.onload = () => {
-      const parsed = Papa.parse<Record<string, string>>(String(reader.result ?? ""), {
-        header: true,
-        skipEmptyLines: true,
-        transformHeader: (h) => h.toLowerCase().trim(),
-      });
-      if (parsed.errors.length > 0) {
-        toast({ title: "Could not read that CSV", description: parsed.errors[0].message, variant: "destructive" });
-        return;
-      }
-      const entries = parsed.data
-        .map(r => ({ code: (r.code ?? "").trim(), partner: (r.partner ?? "").trim() }))
+      // lib/csvImport.ts: a stray row with a field too many used to fail the
+      // whole file ("Could not read that CSV"), which is what an organizer's
+      // edited spreadsheet tends to have.
+      const cells = readCsvCells(String(reader.result ?? ""));
+      const headers = (cells[0] ?? []).map(normalizeHeader);
+      const codeCol = findColumn(headers, ["code", "vouchercode", "voucher"]);
+      const partnerCol = findColumn(headers, ["partner", "partnername", "brand", "brandname"]);
+      const entries = codeCol === -1 || partnerCol === -1 ? [] : cells.slice(1)
+        .map(r => ({ code: (r[codeCol] ?? "").trim(), partner: (r[partnerCol] ?? "").trim() }))
         .filter(r => r.code && r.partner);
 
       if (entries.length === 0) {
@@ -208,8 +214,7 @@ export function VoucherManager() {
       toast({ title: `Dates set on ${body.updated} code${body.updated === 1 ? "" : "s"}` });
     },
     onError: async (err: any) => {
-      let detail = "";
-      try { detail = (await err?.response?.json?.())?.error ?? ""; } catch { /* keep generic */ }
+      const detail = serverMessage(err);
       toast({ title: "Could not set dates", description: detail || undefined, variant: "destructive" });
     },
   });
@@ -236,6 +241,17 @@ export function VoucherManager() {
     return acc;
   }, {} as Record<string, number>);
   const redeemed = shown.filter(v => v.redemptionCount > 0).length;
+
+  const visible = typeFilter === "all" ? shown : shown.filter(v => v.roleRestriction === typeFilter);
+  const allVisibleSelected = visible.length > 0 && visible.every(v => selected.has(v.id));
+  const someVisibleSelected = visible.some(v => selected.has(v.id));
+  const toggle = (id: string, on: boolean) => setSelected(prev => {
+    const next = new Set(prev);
+    if (on) next.add(id); else next.delete(id);
+    return next;
+  });
+  const selectedIds = visible.filter(v => selected.has(v.id)).map(v => v.id);
+  const selectedUsed = visible.filter(v => selected.has(v.id) && v.redemptionCount > 0).length;
 
   const status = (v: VoucherRow) => {
     if (v.revokedAt) return <Badge variant="destructive">Revoked</Badge>;
@@ -395,7 +411,18 @@ export function VoucherManager() {
                 </p>
               )}
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <Select value={typeFilter} onValueChange={(v) => setTypeFilter(v as typeof typeFilter)}>
+                <SelectTrigger className="h-9 w-[150px]" data-testid="select-voucher-type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All types</SelectItem>
+                  <SelectItem value="creator">Creator codes</SelectItem>
+                  <SelectItem value="brand">Brand codes</SelectItem>
+                  <SelectItem value="affiliate">Publisher codes</SelectItem>
+                </SelectContent>
+              </Select>
               {recipients.length > 0 && (
                 <Select value={recipient} onValueChange={setRecipient}>
                   <SelectTrigger className="h-9 w-[200px]" data-testid="select-voucher-recipient">
@@ -495,15 +522,31 @@ export function VoucherManager() {
         <CardContent>
           {isLoading ? (
             <p className="text-sm text-muted-foreground">Loading…</p>
-          ) : shown.length === 0 ? (
+          ) : visible.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              {vouchers.length === 0 ? "No vouchers yet." : `No codes for ${recipient}.`}
+              {vouchers.length === 0
+                ? "No vouchers yet."
+                : typeFilter !== "all"
+                  ? "No codes of that type here."
+                  : `No codes for ${recipient}.`}
             </p>
           ) : (
+            <>
+            {selectedIds.length > 0 && (
+              <VoucherBulkBar ids={selectedIds} usedCount={selectedUsed} onDone={() => setSelected(new Set())} />
+            )}
             <div className="overflow-x-auto">
               <table className="w-full text-sm" data-testid="table-vouchers">
                 <thead>
                   <tr className="text-left text-xs uppercase tracking-wide text-muted-foreground border-b">
+                    <th className="py-2 pr-3 w-8">
+                      <Checkbox
+                        checked={allVisibleSelected ? true : someVisibleSelected ? "indeterminate" : false}
+                        onCheckedChange={(on) => setSelected(on ? new Set(visible.map(v => v.id)) : new Set())}
+                        aria-label={`Select all ${visible.length} codes`}
+                        data-testid="checkbox-select-all-vouchers"
+                      />
+                    </th>
                     <th className="py-2 pr-4">Code</th>
                     <th className="py-2 pr-4">Type</th>
                     <th className="py-2 pr-4">Given to</th>
@@ -514,9 +557,17 @@ export function VoucherManager() {
                   </tr>
                 </thead>
                 <tbody>
-                  {shown.map((v) => (
-                    <tr key={v.id} className="border-b last:border-0" data-testid={`voucher-${v.id}`}>
-                      <td className="py-2 pr-4 font-mono text-xs">
+                  {visible.map((v) => (
+                    <tr key={v.id} className={`border-b last:border-0 ${selected.has(v.id) ? "bg-primary/[0.05]" : ""}`} data-testid={`voucher-${v.id}`}>
+                      <td className="py-2 pr-3">
+                        <Checkbox
+                          checked={selected.has(v.id)}
+                          onCheckedChange={(on) => toggle(v.id, on === true)}
+                          aria-label={`Select ${v.code}`}
+                          data-testid={`checkbox-voucher-${v.id}`}
+                        />
+                      </td>
+                      <td className="py-2 pr-4 font-mono text-xs whitespace-nowrap">
                         <button
                           onClick={() => copy(v.code)}
                           className="inline-flex items-center gap-1.5 hover:underline"
@@ -602,6 +653,7 @@ export function VoucherManager() {
                 </tbody>
               </table>
             </div>
+            </>
           )}
         </CardContent>
       </Card>

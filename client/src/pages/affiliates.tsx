@@ -36,7 +36,7 @@ import {
   Percent
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, serverMessage } from "@/lib/queryClient";
 import { useTableControls } from "@/hooks/useTableControls";
 import { exportToCsv } from "@/lib/exportCsv";
 import { TableToolbar, SortableHeader } from "@/components/TableToolbar";
@@ -51,7 +51,8 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import Papa from "papaparse";
+import { parseContactCsv, isCsvFile } from "@/lib/csvImport";
+import { CsvFormatHint } from "@/components/CsvFormatHint";
 
 type AffiliateInvitation = {
   id: string;
@@ -78,6 +79,7 @@ export default function Affiliates() {
   const [isInviteOpen, setIsInviteOpen] = useState(false);
   const [isBulkOpen, setIsBulkOpen] = useState(false);
   const [csvData, setCsvData] = useState<any[]>([]);
+  const [csvSkipped, setCsvSkipped] = useState<{ name: string; email: string; error: string }[]>([]);
 
   const { data: invitations = [], isLoading } = useQuery<AffiliateInvitation[]>({
     queryKey: ['/api/affiliates/invitations'],
@@ -144,45 +146,60 @@ export default function Affiliates() {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['/api/affiliates/invitations'] });
       toast({
-        title: "Bulk Import Complete",
-        description: `${data.created} invitations have been created.`,
+        title: `${data.created} ${data.created === 1 ? "invitation" : "invitations"} created`,
       });
       setIsBulkOpen(false);
       setCsvData([]);
+      setCsvSkipped([]);
     },
-    onError: () => {
+    onError: (err: unknown) => {
       toast({
-        title: "Error",
-        description: "Failed to import affiliates. Please check your CSV format.",
+        title: "Import failed",
+        description: serverMessage(err) || "Please try again.",
         variant: "destructive",
       });
     },
   });
 
+  // lib/csvImport.ts: headings are matched loosely. This used to need a
+  // column called exactly "affiliateName", so an ordinary "Name, Email" file
+  // loaded "0 valid entries" with no hint why.
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
+    event.target.value = ""; // choosing the same file again still loads it
     if (!file) return;
-
-    Papa.parse(file, {
-      header: true,
-      complete: (results) => {
-        const validData = results.data.filter((row: any) => 
-          row.affiliateName && row.email
-        ).slice(0, 200);
-        setCsvData(validData);
-        toast({
-          title: "CSV Loaded",
-          description: `Found ${validData.length} valid entries (max 200).`,
-        });
-      },
-      error: () => {
-        toast({
-          title: "Error",
-          description: "Failed to parse CSV file.",
-          variant: "destructive",
-        });
-      },
-    });
+    if (!isCsvFile(file)) {
+      toast({ title: "That isn't a CSV file", description: "Save your spreadsheet as CSV first. Tap the (i) for how.", variant: "destructive" });
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const { rows, problem } = parseContactCsv(String(reader.result ?? ""), {
+        extras: {
+          commissionRate: ["commissionrate", "commission", "rate", "commissionpercent"],
+          message: ["message", "personalmessage", "note", "notes"],
+        },
+      });
+      if (problem) {
+        setCsvData([]);
+        setCsvSkipped([]);
+        toast({ title: "Couldn't read that file", description: problem, variant: "destructive" });
+        return;
+      }
+      const checked = rows.map((r) => {
+        const rate = (r.extras.commissionRate ?? "").replace("%", "").trim();
+        const badRate = rate !== "" && !/^\d+(\.\d{1,2})?$/.test(rate);
+        return { ...r, rate, error: r.error ?? (badRate ? "Commission isn't a number" : undefined) };
+      });
+      setCsvData(checked.filter((r) => !r.error).map((r) => ({
+        affiliateName: r.name,
+        email: r.email,
+        ...(r.rate ? { commissionRate: r.rate } : {}),
+        ...(r.extras.message ? { message: r.extras.message } : {}),
+      })));
+      setCsvSkipped(checked.filter((r) => r.error).map((r) => ({ name: r.name, email: r.email, error: r.error! })));
+    };
+    reader.readAsText(file);
   };
 
   const getStatusBadge = (status: string) => {
@@ -229,17 +246,36 @@ export default function Affiliates() {
               </DialogHeader>
               <div className="space-y-4">
                 <div className="space-y-2">
-                  <Label>CSV File</Label>
+                  <div className="flex items-center gap-1">
+                    <Label>CSV File</Label>
+                    <CsvFormatHint
+                      required={["Name", "Email"]}
+                      optional={["Commission", "Message"]}
+                      example={["Name,Email,Commission", "Style Weekly,editor@styleweekly.com,12", "Jo Lee,jo@example.com,"]}
+                      note="Commission is a percentage. Leave it empty for 10%."
+                    />
+                  </div>
                   <Input
                     type="file"
-                    accept=".csv"
+                    accept=".csv,text/csv"
                     onChange={handleFileUpload}
                     data-testid="input-csv-upload"
                   />
                   <p className="text-xs text-muted-foreground">
-                    Required columns: affiliateName, email. Optional: commissionRate, message
+                    Needs a Name and an Email column. Commission and Message are optional.
                   </p>
                 </div>
+                {csvSkipped.length > 0 && (
+                  <div className="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-xs" data-testid="csv-skipped">
+                    <p className="font-medium">{csvSkipped.length} {csvSkipped.length === 1 ? "row" : "rows"} will be skipped</p>
+                    <ul className="mt-1 space-y-0.5 text-muted-foreground">
+                      {csvSkipped.slice(0, 4).map((r, i) => (
+                        <li key={i}>{r.name || r.email || "Empty row"}: {r.error}</li>
+                      ))}
+                      {csvSkipped.length > 4 && <li>…and {csvSkipped.length - 4} more</li>}
+                    </ul>
+                  </div>
+                )}
                 {csvData.length > 0 && (
                   <div className="border rounded-lg p-4 max-h-48 overflow-auto">
                     <p className="text-sm font-medium mb-2">Preview ({csvData.length} entries):</p>

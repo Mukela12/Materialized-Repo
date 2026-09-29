@@ -48,6 +48,24 @@ async function throwIfResNotOk(res: Response) {
   }
 }
 
+/**
+ * The server's own explanation from a failed request, for showing to a person.
+ *
+ * ApiError carries the body in its message ("429: {\"error\":\"...\"}"), not a
+ * Response, so the `err.response.json()` several screens reached for was always
+ * undefined and they fell back to a generic "something went wrong".
+ */
+export function serverMessage(err: unknown): string {
+  const msg = err instanceof Error ? err.message : typeof err === "string" ? err : "";
+  const body = msg.replace(/^\d{3}:\s*/, "");
+  try {
+    const parsed = JSON.parse(body);
+    if (typeof parsed?.error === "string") return parsed.error;
+    if (typeof parsed?.message === "string") return parsed.message;
+  } catch { /* not JSON */ }
+  return body.length > 0 && body.length < 200 && !body.startsWith("<") ? body : "";
+}
+
 export async function apiRequest(
   method: string,
   url: string,

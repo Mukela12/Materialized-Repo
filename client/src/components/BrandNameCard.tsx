@@ -7,7 +7,7 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Building2 } from "lucide-react";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, serverMessage } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -28,8 +28,7 @@ export function BrandNameCard() {
       toast({ title: "Brand name saved" });
     },
     onError: async (err: any) => {
-      let detail = "";
-      try { detail = (await err?.response?.json?.())?.error ?? ""; } catch { /* generic */ }
+      const detail = serverMessage(err);
       toast({ title: "Could not save the name", description: detail || undefined, variant: "destructive" });
     },
   });

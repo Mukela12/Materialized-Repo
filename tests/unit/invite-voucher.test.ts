@@ -102,7 +102,7 @@ describe("the promise and the grant agree", () => {
 
   it("the invitation link carries the code", () => {
     const routes = read("server/routes.ts");
-    expect(routes).toContain("/register?code=${encodeURIComponent(voucherCode)}");
+    expect(routes).toContain("/register?code=${encodeURIComponent(code)}");
   });
 
   it("the signup form reads it back out of the link", () => {
