@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { BrandNameCard } from "@/components/BrandNameCard";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -183,6 +184,8 @@ export default function ProfilePage() {
           <p className="text-muted-foreground">Manage your profile information</p>
         </div>
       </div>
+
+      {user?.role === "brand" && <BrandNameCard />}
 
       <div className="grid gap-6 md:grid-cols-2">
         {/* ── Profile Media card ─────────────────────────────────────────── */}

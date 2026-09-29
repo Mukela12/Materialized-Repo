@@ -1,4 +1,5 @@
 import { type Express } from "express";
+import { ensureOwnBrand } from "./brandAccount";
 import { publicOrigin } from "./publicOrigin";
 import { storage } from "./storage";
 import { hashPassword, verifyPassword } from "./auth";
@@ -226,6 +227,13 @@ export function registerAuthRoutes(app: Express) {
       emailVerificationToken: verificationToken,
       emailVerificationExpires: verificationExpires,
     } as any);
+
+    // A brand account gets its brand at once: products, invitations and
+    // campaigns all hang off it, and without it the brand could add nothing.
+    // Not fatal: the routes that need it create it too (server/brandAccount.ts).
+    if (role === "brand") {
+      await ensureOwnBrand(user).catch((err) => console.error("[Auth] Could not create brand for new account:", err));
+    }
 
     if (voucherToRedeem) {
       // Now that the user row exists. If the last seat went to somebody else

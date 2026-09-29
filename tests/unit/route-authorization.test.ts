@@ -83,3 +83,43 @@ describe("links checked when the page opens", () => {
     expect(index).toMatch(/onlyPost\(emailSendLimiter\),\s*authLimiter,/);
   });
 });
+
+describe("every brand account has a brand (found in QA, 29 Sep)", () => {
+  it("sign-up creates the brand for a brand account", () => {
+    const auth = code("server/authRoutes.ts");
+    expect(auth).toMatch(/if \(role === "brand"\) \{\s*await ensureOwnBrand\(user\)/);
+  });
+
+  it("only brand accounts get one, one per account even under concurrent first requests", () => {
+    const helper = code("server/brandAccount.ts");
+    expect(helper).toMatch(/if \(user\.role !== "brand"\) return null;/);
+    expect(helper).toMatch(/pg_advisory_xact_lock\(hashtext\(\$\{"own-brand:" \+ user\.id\}\)\)/);
+    expect(helper).toMatch(/if \(existing\) return existing;/);
+  });
+
+  it("the routes that need a brand make one instead of answering 'No brand available'", () => {
+    const n = (routes.match(/if \(!brandId && actor\) await ensureOwnBrand\(actor\);/g) ?? []).length;
+    expect(n).toBe(3); // add product, invite a creator, invite creators in bulk
+  });
+
+  it("existing brand accounts without one are backfilled", () => {
+    const sql = read("migrations/0038_brand_for_every_brand_account.sql");
+    expect(sql).toMatch(/WHERE u\.role = 'brand'\s+AND NOT EXISTS \(SELECT 1 FROM brands b WHERE b\.owner_id = u\.id\)/);
+  });
+});
+
+describe("a brand can rename itself", () => {
+  it("only its owner or an admin, with a sane length", () => {
+    const body = handler("patch", "/api/brands/:id");
+    expect(body).toMatch(/if \(!actor\?\.isAdmin && brand\.ownerId !== uid\) return res\.status\(403\)/);
+    expect(body).toMatch(/name\.length < 2 \|\| name\.length > 80/);
+  });
+
+  it("'mine' is not swallowed as a brand id", () => {
+    expect(routes).toMatch(/const BRAND_LITERAL_ROUTES = \[[^\]]*"mine"[^\]]*\];/);
+  });
+
+  it("brand accounts see the name card on their profile", () => {
+    expect(code("client/src/pages/profile.tsx")).toMatch(/\{user\?\.role === "brand" && <BrandNameCard \/>\}/);
+  });
+});

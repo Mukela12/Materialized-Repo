@@ -26,6 +26,7 @@ import { sanitisePlaylistStyle, styleFromPlaylist } from "@shared/playlistStyle"
 import { parseVoucherDate } from "@shared/voucherDates";
 import { runDetectionJob } from "./detectionRunner";
 import { isBrandInventoryDiscoverable } from "./inventoryAccess";
+import { ensureOwnBrand } from "./brandAccount";
 import { parseReviewRequest, reviewLocked, importable, queueOrder, reviewCounts, parseBoundingBox } from "./placementReview";
 import { checkRedeemable, grantsOf, normaliseCode, generateVoucherCode, mintCodes, MAX_BATCH } from "./vouchers";
 import { isEntitled, hasFreeAccess, owesCardOnFile } from "./entitlement";
@@ -321,8 +322,8 @@ export async function registerRoutes(
   /**
    * NOT EVERY /api/brands/<word> IS AN ID.
    *
-   * Express matches in declaration order, and three literal routes are declared
-   * later in this file: /stats, /creator-invites and /invite-offer. This handler
+   * Express matches in declaration order, and literal routes are declared
+   * later in this file: /stats, /creator-invites, /invite-offer and /mine. This handler
    * swallowed all of them and answered "Brand not found", so the Brand
    * dashboard's performance panel and the Sent Invitations list were not empty —
    * they were 404ing, and showing zeros because a failed query has no rows.
@@ -331,7 +332,7 @@ export async function registerRoutes(
    * tests/unit/brand-route-shadowing.test.ts fails if a fourth literal route is
    * ever added below without being listed here.
    */
-  const BRAND_LITERAL_ROUTES = ["stats", "creator-invites", "invite-offer"];
+  const BRAND_LITERAL_ROUTES = ["stats", "creator-invites", "invite-offer", "mine"];
 
   app.get("/api/brands/:id", async (req, res, next) => {
     if (BRAND_LITERAL_ROUTES.includes(req.params.id)) return next();
@@ -343,6 +344,46 @@ export async function registerRoutes(
       res.json(toPublicBrand(brand));
     } catch (error) {
       res.status(500).json({ error: "Failed to get brand" });
+    }
+  });
+
+  // The caller's own brand (a brand account always has one; see
+  // server/brandAccount.ts), so the profile page can show and rename it.
+  app.get("/api/brands/mine", async (req, res) => {
+    try {
+      const uid = (req.session as any)?.userId;
+      if (!uid) return res.status(401).json({ error: "Authentication required" });
+      const actor = await storage.getUser(uid);
+      if (!actor) return res.status(401).json({ error: "User not found" });
+      const brand = await ensureOwnBrand(actor);
+      if (!brand) return res.status(404).json({ error: "Not a brand account" });
+      res.json(toPublicBrand(brand));
+    } catch (error) {
+      res.status(500).json({ error: "Failed to get brand" });
+    }
+  });
+
+  // Rename a brand (its owner or an admin). A brand is named from the sign-up
+  // form's "Your name or brand name", so a person who typed their own name
+  // needs a way to put the company's name on it: it is what creators see when
+  // they tag a brand, and what invitations and invoices say.
+  app.patch("/api/brands/:id", async (req, res) => {
+    try {
+      const uid = (req.session as any)?.userId;
+      if (!uid) return res.status(401).json({ error: "Authentication required" });
+      const brand = await storage.getBrand(req.params.id);
+      if (!brand) return res.status(404).json({ error: "Brand not found" });
+      const actor = await storage.getUser(uid);
+      if (!actor?.isAdmin && brand.ownerId !== uid) return res.status(403).json({ error: "Forbidden" });
+
+      const name = typeof req.body?.name === "string" ? req.body.name.trim().replace(/\s+/g, " ") : "";
+      if (name.length < 2 || name.length > 80) {
+        return res.status(400).json({ error: "A brand name is 2 to 80 characters" });
+      }
+      const updated = await storage.updateBrand(brand.id, { name });
+      res.json(toPublicBrand(updated ?? { ...brand, name }));
+    } catch (error) {
+      res.status(500).json({ error: "Failed to rename brand" });
     }
   });
 
@@ -440,8 +481,10 @@ export async function registerRoutes(
       let { brandId, price, ...rest } = req.body;
       // Resolve brandId — prefer explicit, else the caller's own brand (not an
       // arbitrary first brand, which would let anyone add products to it).
-      const brands = await storage.getBrands();
       const actor = await storage.getUser(sessionUserId);
+      // A brand account without its brand yet gets it now (server/brandAccount.ts).
+      if (!brandId && actor) await ensureOwnBrand(actor);
+      const brands = await storage.getBrands();
       if (!brandId) brandId = brands.find(b => b.ownerId === sessionUserId)?.id;
       if (!brandId) return res.status(400).json({ error: "No brand available" });
       const targetBrand = brands.find(b => b.id === brandId);
@@ -2311,8 +2354,10 @@ export async function registerRoutes(
       }
 
       // Resolve to a brand the caller actually owns (or any brand for an admin).
-      const brands = await storage.getBrands();
       const actor = await storage.getUser(sessionUserId);
+      // A brand account without its brand yet gets it now (server/brandAccount.ts).
+      if (!brandId && actor) await ensureOwnBrand(actor);
+      const brands = await storage.getBrands();
       const useBrandId = brandId || brands.find(b => b.ownerId === sessionUserId)?.id;
       if (!useBrandId) {
         return res.status(400).json({ error: "No brand available" });
@@ -2418,8 +2463,10 @@ export async function registerRoutes(
       }
 
       // Resolve to a brand the caller actually owns (or any brand for an admin).
-      const brands = await storage.getBrands();
       const actor = await storage.getUser(sessionUserId);
+      // A brand account without its brand yet gets it now (server/brandAccount.ts).
+      if (!brandId && actor) await ensureOwnBrand(actor);
+      const brands = await storage.getBrands();
       const useBrandId = brandId || brands.find(b => b.ownerId === sessionUserId)?.id;
       if (!useBrandId) {
         return res.status(400).json({ error: "No brand available" });
