@@ -170,7 +170,7 @@ export function VideoDetailSheet({ video, open, onOpenChange }: Props) {
       if (!ok) {
         if (data.balance !== undefined && data.required !== undefined) {
           throw new Error(
-            `You have ${tokenLabel(data.balance)} — listing costs ${tokenLabel(data.required)}.`,
+            `You have ${tokenLabel(data.balance)}, and listing costs ${tokenLabel(data.required)}.`,
           );
         }
         throw new Error(data.error || "Couldn't list this video");
@@ -430,7 +430,7 @@ export function VideoDetailSheet({ video, open, onOpenChange }: Props) {
 
             {isListed ? (
               <p className="text-xs text-muted-foreground">
-                This video is live in the Global Video Library — affiliates and publishers can license
+                This video is live in the Global Video Library, where affiliates and publishers can license
                 it. Nothing further to pay.
               </p>
             ) : TOKENS_TO_LIST === null ? (
@@ -450,7 +450,7 @@ export function VideoDetailSheet({ video, open, onOpenChange }: Props) {
                   title="List with tokens"
                   breakdown={
                     existingListing
-                      ? "This listing was created but never paid for — one token completes it."
+                      ? "This listing was created but never paid for. One token completes it."
                       : undefined
                   }
                   onPay={() => listWithTokensMutation.mutate()}
@@ -461,7 +461,7 @@ export function VideoDetailSheet({ video, open, onOpenChange }: Props) {
                       button that leads nowhere — nothing in the client consumes the
                       clientSecret that /api/library/list returns. */}
                   <p className="text-[11px] text-muted-foreground">
-                    Card checkout for library listings isn't available in the app yet — tokens are the
+                    Card checkout for library listings isn't available in the app yet, so tokens are the
                     self-serve option today.
                   </p>
                 </TokenPayOption>

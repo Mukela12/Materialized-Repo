@@ -60,7 +60,7 @@ export function SubscriptionPrompt() {
         <p className="text-xs text-muted-foreground mt-1">
           {data.roleLabel} accounts are{" "}
           <span className="font-semibold text-foreground">${data.amount}</span> a month. Your account
-          is set up — this is the last step before you can publish.
+          is set up, and this is the last step before you can publish.
         </p>
       </div>
       <Button

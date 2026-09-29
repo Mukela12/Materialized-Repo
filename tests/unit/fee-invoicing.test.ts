@@ -252,7 +252,7 @@ describe("what is never billed", () => {
 describe("the invoice line", () => {
   it("is one line for the period, not one per order", () => {
     const line = describeInvoiceLine(37, new Date("2026-07-01"), new Date("2026-08-01"));
-    expect(line).toBe("Materialized marketplace fee — 37 attributed orders, 2026-07-01 to 2026-08-01");
+    expect(line).toBe("Materialized marketplace fee: 37 attributed orders, 2026-07-01 to 2026-08-01");
   });
 
   it("says 'order' when there is exactly one", () => {

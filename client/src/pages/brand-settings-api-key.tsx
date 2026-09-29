@@ -32,7 +32,7 @@ export default function BrandSettingsApiKey() {
       setRevealedRawKey(data.rawKey);
       setShowRaw(true);
       setNewKeyName("");
-      toast({ title: "API key created", description: "Copy it now — it won't be shown again." });
+      toast({ title: "API key created", description: "Copy it now. It won't be shown again." });
     },
     onError: () => toast({ title: "Error", description: "Could not create API key.", variant: "destructive" }),
   });
@@ -71,7 +71,7 @@ export default function BrandSettingsApiKey() {
         <Card className="border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/20">
           <CardContent className="p-4 space-y-3">
             <p className="text-sm font-medium flex items-center gap-2">
-              <CheckCircle className="h-4 w-4 text-green-500" /> Key created — copy it now, it won't be shown again
+              <CheckCircle className="h-4 w-4 text-green-500" /> Key created. Copy it now, it won't be shown again
             </p>
             <div className="flex items-center gap-2">
               <Input

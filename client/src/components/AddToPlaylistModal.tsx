@@ -50,7 +50,7 @@ const TOKENS_PER_VIDEO = tokensForFee(LICENSE_FEE_PER_VIDEO);
  */
 const CARD_PUBLISH_ENABLED = false;
 const CARD_PUBLISH_NOTE =
-  "Card checkout isn't available yet — the payment form is still being wired up. Publish with tokens above, or save a draft and come back.";
+  "Card checkout isn't available yet. For now, publish with tokens above, or save a draft and come back.";
 
 type PlaylistEntry = { id: number; name: string; description: string | null; itemCount: number; status?: string };
 type Step = "form" | "payment" | "done";
@@ -167,7 +167,7 @@ export function AddToPlaylistModal({ open, onClose, selectedListingIds }: Props)
       if (!ok) {
         if (data.balance !== undefined && data.required !== undefined) {
           throw new Error(
-            `You have ${tokenLabel(data.balance)} — this playlist costs ${tokenLabel(data.required)}. ` +
+            `You have ${tokenLabel(data.balance)}, and this playlist costs ${tokenLabel(data.required)}. ` +
             `Your videos were saved as a draft, so nothing is lost.`,
           );
         }
@@ -278,7 +278,7 @@ export function AddToPlaylistModal({ open, onClose, selectedListingIds }: Props)
             {/* See CARD_PUBLISH_ENABLED: the server now demands a real succeeded
                 PaymentIntent and no card-entry UI exists to produce one. */}
             <p className="text-xs text-muted-foreground" data-testid="text-card-unavailable">
-              {CARD_PUBLISH_NOTE} Your playlist is already saved as a draft — you can publish it with
+              {CARD_PUBLISH_NOTE} Your playlist is already saved as a draft, so you can publish it with
               tokens from My Playlists at any time.
             </p>
 
@@ -436,7 +436,7 @@ export function AddToPlaylistModal({ open, onClose, selectedListingIds }: Props)
                 {existingItemCount > 0 && (
                   <p className="text-xs text-muted-foreground">
                     Includes {existingItemCount} video{existingItemCount !== 1 ? "s" : ""} already in this
-                    playlist — the fee covers the whole playlist, not just the new additions.
+                    playlist. The fee covers the whole playlist, not just the new additions.
                   </p>
                 )}
                 <p className="text-xs text-muted-foreground">

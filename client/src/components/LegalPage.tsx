@@ -124,7 +124,7 @@ export function LegalList({ children }: { children: React.ReactNode }) {
 /** Inline placeholder token the client must replace before launch. */
 export function Placeholder({ children }: { children: React.ReactNode }) {
   return (
-    <span className="text-[#4a7ed6] font-medium" title="Placeholder — replace before launch">
+    <span className="text-[#4a7ed6] font-medium" title="Placeholder: replace before launch">
       {children}
     </span>
   );

@@ -3651,7 +3651,7 @@ export async function registerRoutes(
       }
       const existing = await storage.getUserByEmail(invitation.email);
       if (existing) {
-        return res.status(409).json({ error: "An account with this email already exists — please sign in." });
+        return res.status(409).json({ error: "An account with this email already exists. Please sign in." });
       }
 
       const affiliateUser = await storage.createUser({
@@ -3826,7 +3826,7 @@ export async function registerRoutes(
             error: "Token payment failed",
             reason: spend.error,
             listingId: tokenListing.id,
-            detail: "The listing was saved unpublished — retry with POST /api/library/:id/pay-with-tokens",
+            detail: "The listing was saved unpublished. Retry with POST /api/library/:id/pay-with-tokens",
           });
         }
 
@@ -4224,7 +4224,7 @@ export async function registerRoutes(
           reason: "spend_playlist",
           spendRefType: "playlist",
           spendRefId: String(playlistId),
-          description: `Playlist curation — ${items.length} video(s)`,
+          description: `Playlist curation, ${items.length} video(s)`,
         });
 
         if (!spend.ok && spend.error === "insufficient_tokens") {
@@ -4795,7 +4795,7 @@ export async function registerRoutes(
           // 409, not 200: this key is spent. The client rotates its key on this
           // code, which turns the refusal back into a retry the user can make.
           return res.status(409).json({
-            error: "That attempt failed and your tokens were already refunded. Please try again — it will start a fresh application.",
+            error: "That attempt failed and your tokens were already refunded. Please try again. It will start a fresh application.",
             code: "spend_already_refunded",
             walletEntryId: result.walletEntryId,
             tokensRefunded: result.tokensRefunded,
@@ -5135,7 +5135,7 @@ export async function registerRoutes(
           // invariant is absolute, so this is refused rather than forced through —
           // recovering already-consumed value is a business action, not a ledger edit.
           return res.status(409).json({
-            error: "Cannot revoke — balance would go negative (tokens already spent)",
+            error: "Cannot revoke: balance would go negative (tokens already spent)",
             balance: result.balance,
             required: result.required,
           });
@@ -6204,8 +6204,8 @@ export async function registerRoutes(
       res.json({
         valid: true,
         message: grants.freeAccess
-          ? "Voucher accepted — this account will have free access."
-          : "Voucher accepted — your setup fee will be waived.",
+          ? "Voucher accepted. This account will have free access."
+          : "Voucher accepted. Your setup fee will be waived.",
       });
     } catch (error) {
       console.error("Voucher check error:", error);

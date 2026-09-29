@@ -82,7 +82,7 @@ export function fromOutreach(o: OutreachLike): MailboxNotification {
     id: `outreach-${o.id}`,
     type: status === "authorized" ? "success" : status === "pending" ? "info" : "campaign",
     title: `Brand outreach: ${o.brandName || "Brand"}`,
-    body: `Status: ${status}${o.videoTitle ? ` — Video: ${o.videoTitle}` : ""}`,
+    body: `Status: ${status}${o.videoTitle ? ` · Video: ${o.videoTitle}` : ""}`,
     time: toIso(o.createdAt),
     read: status !== "pending",
   };

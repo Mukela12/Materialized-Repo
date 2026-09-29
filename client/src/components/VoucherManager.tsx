@@ -58,7 +58,7 @@ interface VoucherRow {
 
 /** The GTM offer, prefilled — it is the reason this screen exists. */
 const GTM_DEFAULTS = {
-  label: "GTM — creator seats",
+  label: "GTM: creator seats",
   grantType: "free_access" as const,
   roleRestriction: "creator",
   maxRedemptions: "1",
@@ -264,7 +264,7 @@ export function VoucherManager() {
               <Input
                 value={form.label}
                 onChange={(e) => setForm({ ...form, label: e.target.value })}
-                placeholder="GTM — Nike, 20 creator seats"
+                placeholder="GTM: Nike, 20 creator seats"
                 data-testid="input-voucher-label"
               />
             </div>
@@ -323,7 +323,7 @@ export function VoucherManager() {
                 data-testid="input-voucher-quantity"
               />
               <p className="text-xs text-muted-foreground mt-1">
-                Separate codes, one per recipient — so you can see who used which and
+                Separate codes, one per recipient, so you can see who used which and
                 revoke just one.
               </p>
             </div>
@@ -389,7 +389,7 @@ export function VoucherManager() {
               {shown.length > 0 && (
                 <p className="text-xs text-muted-foreground mt-1" data-testid="text-voucher-tally">
                   {shown.length} code{shown.length === 1 ? "" : "s"}
-                  {" — "}
+                  {": "}
                   {Object.entries(tally).map(([k, n]) => `${n} ${k.toLowerCase()}`).join(", ")}
                   {redeemed > 0 && ` · ${redeemed} redeemed`}
                 </p>

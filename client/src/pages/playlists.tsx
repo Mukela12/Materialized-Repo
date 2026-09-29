@@ -122,7 +122,7 @@ const TOKENS_PER_VIDEO = tokensForFee(LICENSE_FEE_PER_VIDEO);
  */
 const CARD_PUBLISH_ENABLED = false;
 const CARD_PUBLISH_NOTE =
-  "Card checkout isn't available yet — the payment form is still being wired up. Publish with tokens above; your playlist stays saved either way.";
+  "Card checkout isn't available yet. For now, publish with tokens above. Your playlist stays saved either way.";
 
 export default function PlaylistsPage() {
   const { toast } = useToast();
@@ -194,7 +194,7 @@ export default function PlaylistsPage() {
       if (!ok) {
         if (data.balance !== undefined && data.required !== undefined) {
           throw new Error(
-            `You have ${tokenLabel(data.balance)} — this playlist costs ${tokenLabel(data.required)}.`,
+            `You have ${tokenLabel(data.balance)}, and this playlist costs ${tokenLabel(data.required)}.`,
           );
         }
         throw new Error(data.error || "Token payment failed");
@@ -209,8 +209,8 @@ export default function PlaylistsPage() {
       toast({
         title: "Published!",
         description: data.alreadyPaid
-          ? "This playlist was already paid for. It's live — embed code is ready."
-          : `${tokenLabel(data.tokensSpent ?? 0)} used. Your playlist is live — embed code is ready.`,
+          ? "This playlist was already paid for. It's live and the embed code is ready."
+          : `${tokenLabel(data.tokensSpent ?? 0)} used. Your playlist is live and the embed code is ready.`,
       });
     },
     onError: (e: Error) => {
@@ -253,7 +253,7 @@ export default function PlaylistsPage() {
       <div>
         <h1 className="text-2xl font-bold tracking-tight">My Playlists</h1>
         <p className="text-muted-foreground mt-1">
-          Video collections from the Global Library — pay the licensing fee to publish and get your embed code.
+          Video collections from the Global Library. Pay the licensing fee to publish and get your embed code.
         </p>
       </div>
 
@@ -365,7 +365,7 @@ export default function PlaylistsPage() {
                 title="Publish with tokens"
                 breakdown={
                   itemCount > 0
-                    ? `${itemCount} video${itemCount !== 1 ? "s" : ""} × ${tokenLabel(TOKENS_PER_VIDEO)} (${CURRENCY_SYMBOL}${LICENSE_FEE_PER_VIDEO}) each. Tokens are spent whole — there is no part-token.`
+                    ? `${itemCount} video${itemCount !== 1 ? "s" : ""} × ${tokenLabel(TOKENS_PER_VIDEO)} (${CURRENCY_SYMBOL}${LICENSE_FEE_PER_VIDEO}) each. Tokens are spent whole, with no part-tokens.`
                     : undefined
                 }
                 onPay={() => openPlaylistId !== null && tokenPublishMutation.mutate(openPlaylistId)}
@@ -447,7 +447,7 @@ export default function PlaylistsPage() {
                     {confirmPaymentMutation.isPending
                       ? <Loader2 className="h-4 w-4 animate-spin mr-2" />
                       : <CreditCard className="h-4 w-4 mr-2" />}
-                    Confirm Payment — Pay {CURRENCY_SYMBOL}{checkoutTotal}
+                    Confirm and pay {CURRENCY_SYMBOL}{checkoutTotal}
                   </Button>
                 )}
               </div>

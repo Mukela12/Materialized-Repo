@@ -218,7 +218,7 @@ export default function ProfilePage() {
                 {isUploading
                   ? "Uploading…"
                   : mediaPreview
-                  ? mediaType === "video" ? "Video ready — save to apply." : "Image ready — save to apply."
+                  ? mediaType === "video" ? "Video ready. Save to apply." : "Image ready. Save to apply."
                   : "No media uploaded yet."}
               </div>
             </div>
@@ -374,7 +374,7 @@ export default function ProfilePage() {
                 />
               </div>
               <p className="text-xs text-muted-foreground mt-1">
-                Used when you tag a brand — their PR contact sees the handle
+                Used when you tag a brand. Their PR contact sees the handle
                 rather than a display name, so they can look you up.
               </p>
               {form.formState.errors.instagramHandle && (

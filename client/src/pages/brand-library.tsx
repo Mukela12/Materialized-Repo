@@ -73,7 +73,7 @@ export default function BrandLibrary() {
       <div>
         <h1 className="text-2xl font-bold tracking-tight" data-testid="text-page-title">Global Video Library</h1>
         <p className="text-muted-foreground mt-1">
-          Browse creator videos — click to select multiple, then add them to a branded playlist.
+          Browse creator videos. Click to select several, then add them to a branded playlist.
         </p>
       </div>
 

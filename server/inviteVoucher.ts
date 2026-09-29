@@ -94,7 +94,7 @@ export function inviteVoucherFields(args: {
 }) {
   return {
     code: args.code,
-    label: `Invitation — ${args.brandName}`.slice(0, 200),
+    label: `Invitation from ${args.brandName}`.slice(0, 200),
     grantType: "free_access" as const,
     brandUserId: null,
     roleRestriction: "creator",

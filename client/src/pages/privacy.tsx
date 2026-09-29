@@ -124,21 +124,21 @@ export default function Privacy() {
         </p>
         <LegalList>
           <li>
-            <strong className="text-white/80">Performance of a contract</strong> — to
+            <strong className="text-white/80">Performance of a contract</strong>: to
             provide the Service you signed up for, including attribution and payouts.
           </li>
           <li>
-            <strong className="text-white/80">Legitimate interests</strong> — to secure
+            <strong className="text-white/80">Legitimate interests</strong>: to secure
             the platform, prevent fraud, understand aggregate usage, and improve our
             product, balanced against your rights and freedoms.
           </li>
           <li>
-            <strong className="text-white/80">Consent</strong> — for optional marketing
+            <strong className="text-white/80">Consent</strong>: for optional marketing
             communications and any non-essential cookies. You may withdraw consent at
             any time.
           </li>
           <li>
-            <strong className="text-white/80">Legal obligation</strong> — for tax,
+            <strong className="text-white/80">Legal obligation</strong>: for tax,
             accounting, and responses to lawful requests.
           </li>
         </LegalList>
@@ -167,36 +167,36 @@ export default function Privacy() {
         </p>
         <LegalList>
           <li>
-            <strong className="text-white/80">Stripe</strong> — payments, subscriptions,
+            <strong className="text-white/80">Stripe</strong>: payments, subscriptions,
             connected-account onboarding and creator payouts. Stripe acts as an
             independent controller for parts of this processing and applies its own
             privacy policy.
           </li>
           <li>
-            <strong className="text-white/80">Cloudinary</strong> — storage, transcoding
+            <strong className="text-white/80">Cloudinary</strong>: storage, transcoding
             and delivery of video and image assets.
           </li>
           <li>
-            <strong className="text-white/80">Resend</strong> — delivery of
+            <strong className="text-white/80">Resend</strong>: delivery of
             transactional email such as verification and password-reset messages.
           </li>
           <li>
-            <strong className="text-white/80">Google (Gemini API)</strong> — automated
+            <strong className="text-white/80">Google (Gemini API)</strong>: automated
             analysis of uploaded content, including AI-generated-content detection and
             content classification. Submitted material is processed to return a result
             and is not used by us to build advertising profiles.
           </li>
           <li>
-            <strong className="text-white/80">Sentry</strong> — application error
+            <strong className="text-white/80">Sentry</strong>: application error
             monitoring. Our configuration disables performance tracing, disables
             default personal-data capture, and redacts tokens from URLs.
           </li>
           <li>
-            <strong className="text-white/80">Hosting and database providers</strong> —
+            <strong className="text-white/80">Hosting and database providers</strong>:
             our application hosting, content delivery and managed PostgreSQL database.
           </li>
           <li>
-            <strong className="text-white/80">Brands and publishers</strong> — where you
+            <strong className="text-white/80">Brands and publishers</strong>: where you
             participate in a campaign or affiliate relationship, the relevant
             counterparty sees the information necessary to run and settle it, such as
             your display name and attributed performance.
@@ -204,7 +204,7 @@ export default function Privacy() {
         </LegalList>
         <p>
           We may also disclose personal data where required by law, to enforce our
-          terms, or in connection with a merger, acquisition or sale of assets — in
+          terms, or in connection with a merger, acquisition or sale of assets, in
           which case we will notify affected users.
         </p>
       </LegalSection>

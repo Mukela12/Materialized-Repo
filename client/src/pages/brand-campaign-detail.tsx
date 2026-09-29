@@ -55,7 +55,7 @@ export default function BrandCampaignDetail() {
 
   const [disableTarget, setDisableTarget] = useState<string | null>(null);
   const [disableMessage, setDisableMessage] = useState(
-    "Hi, we've noticed your performance metrics are below the campaign threshold. We're temporarily pausing your publisher access. You can request a 48-hour grace period to turn things around — we believe in you!"
+    "Hi, we've noticed your performance metrics are below the campaign threshold. We're temporarily pausing your publisher access. You can request a 48-hour grace period to turn things around. We believe in you!"
   );
 
   const { data: detail, isLoading } = useQuery<CampaignDetail>({

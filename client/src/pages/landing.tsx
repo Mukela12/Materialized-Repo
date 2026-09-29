@@ -1009,7 +1009,7 @@ function SignupSection() {
             Choose your subscription &amp; increase your sales performance
           </p>
           <p className="text-center text-white/50 mb-12 text-sm" data-testid="text-signup-trial-note">
-            Every new account starts with a free 14-day trial — no credit card required
+            Every new account starts with a free 14-day trial. No credit card required
           </p>
 
           {!selectedRole ? (

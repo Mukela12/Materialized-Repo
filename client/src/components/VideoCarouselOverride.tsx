@@ -124,7 +124,7 @@ export function VideoCarouselOverride({ videoId, videoUrl }: {
           <p className="text-sm font-medium">Carousel styling for this video</p>
           <p className="text-xs text-muted-foreground mt-0.5">
             Starts from your Brand Kit. Anything you change here applies to this
-            video only — the rest keeps following your defaults.
+            video only. Everything else keeps following your defaults.
           </p>
         </div>
         {overridden.length > 0 && (

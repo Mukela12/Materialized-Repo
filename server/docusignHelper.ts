@@ -47,7 +47,7 @@ export async function resolveSigningUrl(
       // A stable per-recipient id ties the recipient to the embedded ceremony.
       clientUserId: outreach.id,
       returnUrl,
-      emailSubject: `Please sign the Materialized Brand Agreement — ${outreach.brandName}`,
+      emailSubject: `Please sign the Materialized Brand Agreement for ${outreach.brandName}`,
       brandName: outreach.brandName,
     });
 

@@ -286,7 +286,7 @@ function AdminGuard({ children }: { children: React.ReactNode }) {
           <p className="text-sm text-muted-foreground">
             You are signed in as <strong>{user.email}</strong>, which is a{" "}
             {user.role === "affiliate" ? "publisher" : user.role} account. The admin
-            area — vouchers, payouts, the pipeline — is only visible to an admin
+            area (vouchers, payouts, the pipeline) is only visible to an admin
             account. Sign out and sign back in with yours.
           </p>
           <div className="flex gap-2 flex-wrap">

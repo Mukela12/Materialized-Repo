@@ -139,7 +139,7 @@ export function PricingEstimator({
             data-testid="slider-minutes"
           />
           <p className="text-xs text-muted-foreground mt-1">
-            {rate(OVERAGE_RATES.perMinute)} per minute beyond {allowance.minutes} — uploaded, not watched
+            {rate(OVERAGE_RATES.perMinute)} per minute of video uploaded beyond {allowance.minutes}
           </p>
         </div>
 
@@ -175,12 +175,12 @@ export function PricingEstimator({
           </div>
 
           {!isOver && (
-            <Badge variant="secondary" className="mt-1">Within your plan — nothing extra</Badge>
+            <Badge variant="secondary" className="mt-1">Within your plan, nothing extra</Badge>
           )}
         </div>
 
         <p className="text-xs text-muted-foreground">
-          Estimate only. Usage is not billed automatically yet — this shows what a month
+          Estimate only. Usage is not billed automatically yet. This shows what a month
           would cost at the usage you have chosen.
         </p>
       </CardContent>

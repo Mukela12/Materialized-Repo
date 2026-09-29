@@ -763,7 +763,7 @@ export function VideoUploadModal({
                     <FormLabel>Description</FormLabel>
                     <FormControl>
                       <Textarea
-                        placeholder="Describe your video content — helps AI detect the right products"
+                        placeholder="Describe your video. It helps AI detect the right products"
                         className="min-h-[80px]"
                         {...field}
                         data-testid="input-video-description"
@@ -923,7 +923,7 @@ export function VideoUploadModal({
                 <div className="text-center space-y-1">
                   <p className="font-semibold">{SCAN_MESSAGES[scanMsgIdx]}</p>
                   <p className="text-sm text-muted-foreground">
-                    Scanning {selectedBrands.length} brand{selectedBrands.length !== 1 ? "s" : ""} — {
+                    Scanning {selectedBrands.length} brand{selectedBrands.length !== 1 ? "s" : ""}: {
                       brands.filter(b => selectedBrands.includes(b.id)).map(b => b.name).join(", ")
                     }
                   </p>

@@ -102,7 +102,7 @@ const STAGE_CONFIG: Record<string, { label: string; color: string; icon: any; bg
 const FOLLOW_UP_OPTIONS = [
   { value: "docusign_reminder",   label: "DocuSign Reminder",       icon: FileSignature,  desc: "Nudge the brand to sign the pending agreement" },
   { value: "results_excitement",  label: "Video Results Email",     icon: TrendingUp,     desc: "Share video views/clicks and pitch the platform value" },
-  { value: "global_pitch",        label: "Global Expansion Pitch",  icon: Globe,          desc: "Paint the big picture — global creator marketing at scale" },
+  { value: "global_pitch",        label: "Global Expansion Pitch",  icon: Globe,          desc: "Paint the big picture: global creator marketing at scale" },
   { value: "subscription_nudge",  label: "Subscribe Nudge",         icon: CreditCard,     desc: "Push the brand to subscribe and unlock their dashboard" },
 ];
 
@@ -549,7 +549,7 @@ function AdminBrands() {
                     size="sm" variant="outline"
                     className="h-7 text-xs whitespace-nowrap"
                     disabled={setAccess.isPending}
-                    onClick={() => setAccess.mutate({ id: b.id, days: 30, note: "Admin grant — $29 admin fee settled" })}
+                    onClick={() => setAccess.mutate({ id: b.id, days: 30, note: "Admin grant, $29 admin fee settled" })}
                     data-testid={`button-grant-inventory-${b.id}`}
                   >
                     Switch on 30 days
@@ -1178,7 +1178,7 @@ function MoneyFeeInvoices() {
             <div className="space-y-1">
               {unbillable.map(i => (
                 <p key={i.id} className="text-xs text-muted-foreground" data-testid={`fee-invoice-error-${i.id}`}>
-                  <span className="font-medium text-foreground">{i.brandName}</span> — {i.error ?? "no payment method on file"}
+                  <span className="font-medium text-foreground">{i.brandName}</span>: {i.error ?? "no payment method on file"}
                 </p>
               ))}
             </div>
@@ -1287,7 +1287,7 @@ function MoneyFeeInvoices() {
                   {confirming?.lineCount} sale{confirming?.lineCount === 1 ? "" : "s"} in{" "}
                   {confirming ? period(confirming) : ""}.
                 </p>
-                <p>This is real money and it cannot be undone here — a mistake has to be refunded in Stripe.</p>
+                <p>This is real money and it cannot be undone here. A mistake has to be refunded in Stripe.</p>
               </div>
             </DialogDescription>
           </DialogHeader>
@@ -1695,7 +1695,7 @@ export default function AdminPipeline() {
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Brand Outreach Pipeline</h1>
-            <p className="text-muted-foreground text-sm mt-1">Sales team view — track and action every brand contact</p>
+            <p className="text-muted-foreground text-sm mt-1">Sales team view. Track and follow up every brand contact</p>
           </div>
           <Button variant="outline" size="sm" onClick={() => refetch()} className="gap-2">
             <RefreshCw className="h-4 w-4" /> Refresh
@@ -1919,7 +1919,7 @@ export default function AdminPipeline() {
                       {/* Last follow-up info */}
                       {entry.lastFollowUpAt && (
                         <p className="text-xs text-muted-foreground">
-                          Last follow-up: <strong>{FOLLOW_UP_OPTIONS.find(o => o.value === entry.lastFollowUpType)?.label ?? entry.lastFollowUpType}</strong> — {formatDistanceToNow(new Date(entry.lastFollowUpAt), { addSuffix: true })}
+                          Last follow-up: <strong>{FOLLOW_UP_OPTIONS.find(o => o.value === entry.lastFollowUpType)?.label ?? entry.lastFollowUpType}</strong>, {formatDistanceToNow(new Date(entry.lastFollowUpAt), { addSuffix: true })}
                         </p>
                       )}
                     </div>

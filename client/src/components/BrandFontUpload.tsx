@@ -96,7 +96,7 @@ export function BrandFontUpload() {
     if (file.size > MAX_FONT_BYTES) {
       toast({
         title: "That font is too large",
-        description: `${(file.size / 1024 / 1024).toFixed(1)} MB — the limit is 5 MB, because every visitor to your embed downloads it.`,
+        description: `${(file.size / 1024 / 1024).toFixed(1)} MB. The limit is 5 MB, because every visitor to your embed downloads it.`,
         variant: "destructive",
       });
       return;

@@ -81,7 +81,7 @@ export default function Library() {
       <div>
         <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Global Video Library</h1>
         <p className="text-muted-foreground mt-1">
-          Discover trending videos — click cards to select, then add to a playlist.
+          Discover trending videos. Click cards to select, then add to a playlist.
         </p>
       </div>
 

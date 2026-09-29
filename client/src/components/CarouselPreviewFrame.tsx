@@ -132,7 +132,7 @@ export function CarouselPreviewFrame({
       <div className="flex items-center justify-between">
         <p className="text-xs text-muted-foreground">
           {videoUrl
-            ? `${isVertical ? "Vertical" : "Horizontal"} video, shown at its real shape — the carousel sits exactly where it will on playback.`
+            ? `${isVertical ? "Vertical" : "Horizontal"} video, shown at its real shape, with the carousel exactly where it will sit on playback.`
             : "Upload a video to see the carousel against it."}
         </p>
         <div className="flex items-center gap-1">

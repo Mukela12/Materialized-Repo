@@ -322,7 +322,7 @@ export default function BrandDashboard() {
               </div>
               <p className="text-sm text-muted-foreground">
                 Connect your store to import your products. You'll need your store
-                address and an API credential from your platform — the next page
+                address and an API credential from your platform. The next page
                 walks through where to find them.
               </p>
               <Link href="/brand/inventory">

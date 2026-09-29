@@ -122,7 +122,7 @@ export function AllowancesEditor() {
           </CardTitle>
           <p className="text-xs text-muted-foreground">
             What each tier includes per month. Empty means unlimited. Overage is
-            recorded first and billed only once "Bill automatically" is on —
+            recorded first and billed only once "Bill automatically" is on, so
             review a recorded month below before switching it.
           </p>
         </CardHeader>

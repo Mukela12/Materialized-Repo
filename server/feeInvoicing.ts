@@ -135,7 +135,7 @@ function money(cents: number, currency: string) {
  */
 export function describeInvoiceLine(orderCount: number, periodStart: Date, periodEnd: Date): string {
   const d = (x: Date) => x.toISOString().slice(0, 10);
-  return `Materialized marketplace fee — ${orderCount} attributed ` +
+  return `Materialized marketplace fee: ${orderCount} attributed ` +
     `${orderCount === 1 ? "order" : "orders"}, ${d(periodStart)} to ${d(periodEnd)}`;
 }
 

@@ -64,7 +64,7 @@ const TOKEN_TERMS = [
   },
   {
     q: "How do I earn tokens?",
-    a: `A token is minted when a brand you referred — or were the first creator to tag — pays for a qualifying subscription of ${usdWhole(QUALIFYING_PLAN_PRICE)}/month or above. Materialized may also grant tokens directly to correct an attribution.`,
+    a: `A token is minted when a brand you referred (or were the first creator to tag) pays for a qualifying subscription of ${usdWhole(QUALIFYING_PLAN_PRICE)}/month or above. Materialized may also grant tokens directly to correct an attribution.`,
   },
   {
     q: "What can I spend tokens on?",
@@ -189,7 +189,7 @@ export default function WalletPage() {
           <p className="text-sm font-semibold">Tokens are credit, not money</p>
           <p className="text-xs text-muted-foreground leading-relaxed">{NOT_CASH_STATEMENT}</p>
           <p className="text-xs text-muted-foreground leading-relaxed">
-            Your affiliate commissions are separate and are paid out in cash — nothing on this page
+            Your affiliate commissions are separate and are paid out in cash, and nothing on this page
             affects them.
           </p>
         </div>
@@ -256,7 +256,7 @@ export default function WalletPage() {
               <strong className="text-foreground">first</strong>.
             </p>
             <p className="text-xs text-muted-foreground">
-              Nothing is issued while a brand is on a free trial — the token is minted on the first
+              Nothing is issued while a brand is on a free trial. The token is minted on the first
               real payment. Attribution can be corrected by Materialized if a brand disputes it.
             </p>
             <Separator />
@@ -309,7 +309,7 @@ export default function WalletPage() {
         <CardHeader>
           <CardTitle className="text-base">Token history</CardTitle>
           <CardDescription>
-            Every token earned and spent, oldest first. This record is append-only — entries are never
+            Every token earned and spent, oldest first. This record is append-only. Entries are never
             edited or removed, and a correction appears as its own line.
           </CardDescription>
         </CardHeader>

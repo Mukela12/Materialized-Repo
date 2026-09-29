@@ -40,6 +40,6 @@ export function isPlaylistLocked(status: string | null | undefined): boolean {
 /** The message shown to the user. One wording, server and client. */
 export function playlistLockedMessage(status: string | null | undefined): string {
   return status === "published"
-    ? "This playlist is already published — its license is paid. Create a new playlist to license more videos."
+    ? "This playlist is already published and its license is paid. Create a new playlist to license more videos."
     : "This playlist has a payment in progress, so its videos are locked. Finish or cancel it before changing what it contains.";
 }

@@ -442,7 +442,7 @@ export default function BrandInventory() {
 
   const activePlatform = PLATFORMS.find((p) => p.id === selectedPlatform);
   const inputPlaceholder = activePlatform
-    ? `${activePlatform.label} API key — e.g. ${activePlatform.placeholder}`
+    ? `${activePlatform.label} API key, e.g. ${activePlatform.placeholder}`
     : "Select a platform above, then enter your API key";
 
   const { data: brands = [] } = useQuery<Brand[]>({
@@ -507,7 +507,7 @@ export default function BrandInventory() {
           consumerSecret: secretInput,
         });
       }
-      throw new Error(`${activePlatform?.label ?? "This platform"} isn't supported yet — coming soon.`);
+      throw new Error(`${activePlatform?.label ?? "This platform"} isn't supported yet. It's coming soon.`);
     },
     onSuccess: async (res) => {
       const data = await res.json().catch(() => ({}));
@@ -701,7 +701,7 @@ export default function BrandInventory() {
                         disabled={!p.supported}
                         aria-disabled={!p.supported}
                         data-testid={`button-platform-${p.id}`}
-                        title={p.supported ? p.label : `${p.label} — coming soon`}
+                        title={p.supported ? p.label : `${p.label} (coming soon)`}
                         className={`relative flex flex-col items-center gap-1.5 w-full py-3 px-1 rounded-xl border-2 transition-all ${
                           !p.supported
                             ? "border-border bg-card opacity-50 cursor-not-allowed"
@@ -808,8 +808,8 @@ export default function BrandInventory() {
                       {activeConnection?.platform === "shopify" ? "Shopify" : activeConnection?.platform === "woocommerce" ? "WooCommerce" : "Store"} Connected
                     </p>
                     <p className="text-sm text-green-600 dark:text-green-500">
-                      {activeConnection?.storeDomain || "Store connected"} — {activeConnection?.productCount ?? 0} products
-                      {activeConnection?.lastSyncAt && ` — Last synced ${new Date(activeConnection.lastSyncAt).toLocaleDateString()}`}
+                      {activeConnection?.storeDomain || "Store connected"} · {activeConnection?.productCount ?? 0} products
+                      {activeConnection?.lastSyncAt && ` · Last synced ${new Date(activeConnection.lastSyncAt).toLocaleDateString()}`}
                     </p>
                   </div>
                 </div>
@@ -857,7 +857,7 @@ export default function BrandInventory() {
                   {!activeConnection.hasWebhookSecret && (
                     <p className="text-xs text-amber-600 dark:text-amber-500 flex items-center gap-1">
                       <AlertTriangle className="h-3 w-3" />
-                      No signing secret is set for this connection — verified-sales commissions won't be recorded until one is configured.
+                      No signing secret is set for this connection, so verified-sales commissions won't be recorded until one is configured.
                     </p>
                   )}
                 </div>
@@ -868,7 +868,7 @@ export default function BrandInventory() {
                   <p className="text-sm font-medium">
                     {webhookSetup.status === "registered"
                       ? "Webhook registered automatically."
-                      : "Manual webhook setup — copy these into your store once."}
+                      : "Manual webhook setup. Copy these into your store once."}
                   </p>
                   <div className="space-y-1">
                     <Label className="text-xs text-muted-foreground">Receiver URL</Label>

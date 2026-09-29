@@ -61,7 +61,7 @@ export function PayoutNudgeBanner() {
           <p className="text-sm font-medium">Get your payouts ready</p>
           <p className="text-xs text-muted-foreground mt-1">
             Commissions are paid to your bank through Stripe. Two minutes now means your
-            first sale pays out on the next run — nothing to pay, ever.
+            first sale pays out on the next run. It never costs you anything.
           </p>
         </div>
       </div>

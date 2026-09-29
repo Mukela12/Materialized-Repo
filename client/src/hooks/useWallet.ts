@@ -183,12 +183,12 @@ export function usdWhole(amount: number): string {
 export function reasonLabel(reason: WalletReason): string {
   switch (reason) {
     case "brand_conversion":         return "Brand subscribed";
-    case "admin_grant":              return "Adjustment — credit";
+    case "admin_grant":              return "Adjustment (credit)";
     case "spend_refund":             return "Refund";
     case "spend_library_listing":    return "Global Library listing";
     case "spend_playlist":           return "Playlist published";
     case "spend_subscription_credit":return "Applied to subscription";
-    case "admin_revoke":             return "Adjustment — debit";
+    case "admin_revoke":             return "Adjustment (debit)";
     default:                         return reason;
   }
 }

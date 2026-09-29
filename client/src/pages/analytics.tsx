@@ -292,7 +292,7 @@ export default function Analytics() {
         >
           <span className="font-medium text-foreground/80">Attributed Sales</span> is the value your
           videos generated for brands. Your commission is paid to you directly by the brand you work
-          with, not through Materialized — use this as your performance record when agreeing rates.
+          with, not through Materialized. Use this as your performance record when agreeing rates.
         </p>
       )}
 

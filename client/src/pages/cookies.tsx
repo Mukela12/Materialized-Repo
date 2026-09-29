@@ -53,7 +53,7 @@ const COOKIES: CookieRow[] = [
   },
   {
     name: "theme",
-    provider: "Materialized (first party, localStorage — not a cookie)",
+    provider: "Materialized (first party, stored in localStorage, not a cookie)",
     purpose:
       "Remembers your light or dark appearance choice. Stored in your browser and never sent to our servers.",
     category: "Functional",
@@ -90,7 +90,7 @@ export default function Cookies() {
       <LegalSection heading="1. What cookies are">
         <p>
           A cookie is a small text file a website stores on your device. Cookies let a
-          site recognise your browser between page loads — for example, so you stay
+          site recognise your browser between page loads, for example so you stay
           signed in as you move around the app. We also use related browser features
           such as localStorage, which works similarly but keeps data only in your
           browser.
@@ -136,8 +136,8 @@ export default function Cookies() {
           advertising.
         </p>
         <p>
-          The analytics you see inside the product — video views, clicks, referral and
-          UTM attribution — are recorded server-side against your account and the
+          The analytics you see inside the product (video views, clicks, referral and
+          UTM attribution) are recorded server-side against your account and the
           campaign links you use, not through advertising cookies in your browser.
         </p>
       </LegalSection>
@@ -149,20 +149,20 @@ export default function Cookies() {
         </p>
         <LegalList>
           <li>
-            <strong className="text-white/80">Stripe</strong> — used for checkout,
+            <strong className="text-white/80">Stripe</strong>: used for checkout,
             subscriptions and payouts. Stripe sets cookies for payment processing and
             fraud prevention when you interact with its hosted flows.
           </li>
           <li>
-            <strong className="text-white/80">Cloudinary</strong> — delivers video and
+            <strong className="text-white/80">Cloudinary</strong>: delivers video and
             image assets from its content delivery network.
           </li>
           <li>
-            <strong className="text-white/80">Google Fonts</strong> — serves the
+            <strong className="text-white/80">Google Fonts</strong>: serves the
             typefaces used across the site.
           </li>
           <li>
-            <strong className="text-white/80">Sentry</strong> — captures application
+            <strong className="text-white/80">Sentry</strong>: captures application
             errors so we can fix them. It is configured without performance tracing and
             without default personal-data capture.
           </li>
@@ -176,7 +176,7 @@ export default function Cookies() {
       <LegalSection heading="5. Legal basis and consent">
         <p>
           The <span className="font-mono text-white/70">connect.sid</span> cookie is
-          strictly necessary to deliver a service you have requested — signing in — and
+          strictly necessary to deliver a service you have requested (signing in) and
           under UK and EU rules does not require consent. Functional preferences such as
           sidebar and theme are set only in response to an action you take in the
           interface.

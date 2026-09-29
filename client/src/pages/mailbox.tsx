@@ -64,7 +64,7 @@ function NotifCard({
       type="button"
       onClick={() => { if (clickable) onMarkRead(n.id); }}
       disabled={!clickable}
-      aria-label={clickable ? `${n.title} — mark as read` : n.title}
+      aria-label={clickable ? `${n.title}, mark as read` : n.title}
       data-testid={`notif-${n.id}`}
       className={`w-full text-left flex gap-3 p-4 rounded-2xl transition-all ${
         !n.read

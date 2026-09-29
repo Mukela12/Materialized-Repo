@@ -47,7 +47,7 @@ describe('fromOutreach', () => {
   it('marks authorized as success and pending as info, and includes video title', () => {
     const ok = fromOutreach({ id: 1, brandName: 'B', status: 'authorized', videoTitle: 'V', createdAt: t0 });
     expect(ok.type).toBe('success');
-    expect(ok.body).toBe('Status: authorized — Video: V');
+    expect(ok.body).toBe('Status: authorized · Video: V');
     expect(fromOutreach({ id: 2, brandName: 'B', status: 'pending', createdAt: t0 }).type).toBe('info');
   });
 });

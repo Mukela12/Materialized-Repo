@@ -192,7 +192,7 @@ export function OverlayComposer({
       </div>
 
       <p className="text-xs text-muted-foreground">
-        Pin products to specific timestamps and screen positions. Different from carousel links — overlays control exact timing.
+        Pin products to specific timestamps and screen positions. Unlike carousel links, overlays control exact timing.
       </p>
 
       {showAdd && (
@@ -319,7 +319,7 @@ export function OverlayComposer({
                   {/* The absent Buy button, explained on the row it belongs to. */}
                   {!o.price && (
                     <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5" data-testid={`text-no-price-${o.id}`}>
-                      No price — no Buy button. Edit to add one.
+                      No price, so no Buy button. Edit to add one.
                     </p>
                   )}
                 </div>

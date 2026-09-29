@@ -179,7 +179,7 @@ export default function BrandSettingsSubscription() {
       {isSuccess && (
         <div className="flex items-center gap-3 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl text-green-800 dark:text-green-300 text-sm">
           <CheckCircle className="h-4 w-4 shrink-0" />
-          Subscription activated — welcome aboard!
+          Subscription activated. Welcome aboard!
         </div>
       )}
       {isCancelled && (
@@ -328,7 +328,7 @@ export default function BrandSettingsSubscription() {
                     onClick={() => { setPlanDialogOpen(false); checkoutMut.mutate(plan.id); }}
                     className="w-full rounded-xl"
                   >
-                    {isCurrent ? "Current plan" : checkoutMut.isPending ? "Redirecting…" : `Subscribe — ${plan.price}/mo`}
+                    {isCurrent ? "Current plan" : checkoutMut.isPending ? "Redirecting…" : `Subscribe for ${plan.price}/mo`}
                   </Button>
                 </div>
               );

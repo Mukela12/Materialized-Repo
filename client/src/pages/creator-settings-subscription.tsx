@@ -229,7 +229,7 @@ export default function CreatorSettingsSubscription() {
           invalidateWallet();
         }
         if (data.balance !== undefined && data.required !== undefined) {
-          throw new Error(`You have ${tokenLabel(data.balance)} — ${tokenLabel(data.required)} requested.`);
+          throw new Error(`You have ${tokenLabel(data.balance)}, but ${tokenLabel(data.required)} was requested.`);
         }
         throw new Error(data.error || "Couldn't apply your tokens");
       }
@@ -276,7 +276,7 @@ export default function CreatorSettingsSubscription() {
       {isSuccess && (
         <div className="flex items-center gap-3 p-4 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-xl text-green-800 dark:text-green-300 text-sm">
           <CheckCircle className="h-4 w-4 shrink-0" />
-          Subscription activated — you can now upload unlimited videos!
+          Subscription activated. You can now upload unlimited videos!
         </div>
       )}
       {isCancelled && (
@@ -300,7 +300,7 @@ export default function CreatorSettingsSubscription() {
             <p className="font-semibold text-sm text-foreground">Free Trial</p>
           </div>
           <p className="text-xs text-muted-foreground leading-relaxed">
-            You are on the <strong className="text-foreground">free trial</strong>. You can upload <strong className="text-foreground">1 shoppable video up to 2 minutes</strong> — fully functional with analytics, affiliate tracking, and payouts ledger. Subscribe to upload more and remove the duration limit.
+            You are on the <strong className="text-foreground">free trial</strong>. You can upload <strong className="text-foreground">1 shoppable video up to 2 minutes</strong>, fully functional with analytics, affiliate tracking, and payouts ledger. Subscribe to upload more and remove the duration limit.
           </p>
           <div className="flex items-center gap-4 text-xs">
             <div className="flex items-center gap-1.5">
@@ -337,7 +337,7 @@ export default function CreatorSettingsSubscription() {
               </p>
               <p className="text-xs text-muted-foreground leading-relaxed">
                 A one-off ${trial.introOfferSetupFee} setup fee, then{" "}
-                <strong className="text-foreground">{trial.introOfferTrialDays} days free</strong> — unlimited
+                <strong className="text-foreground">{trial.introOfferTrialDays} days free</strong> with unlimited
                 videos with no duration limit. Your card is saved for usage charges and your
                 first monthly payment is taken after {trial.introOfferTrialDays} days. Cancel any
                 time before then and you pay nothing further.
@@ -351,7 +351,7 @@ export default function CreatorSettingsSubscription() {
               >
                 {checkoutMut.isPending
                   ? "Redirecting…"
-                  : `Start ${trial.introOfferTrialDays} days free — $${trial.introOfferSetupFee} today`}
+                  : `Start ${trial.introOfferTrialDays} days free for $${trial.introOfferSetupFee} today`}
               </Button>
             </div>
           )}
@@ -542,7 +542,7 @@ export default function CreatorSettingsSubscription() {
               ? "Applying…"
               : applying < 1
                 ? "No tokens to apply"
-                : `Apply ${tokenLabel(applying)} — ${CURRENCY_SYMBOL}${creditValue} off`}
+                : `Apply ${tokenLabel(applying)} for ${CURRENCY_SYMBOL}${creditValue} off`}
           </Button>
 
           {subsidyBlockedReason && (
@@ -612,7 +612,7 @@ export default function CreatorSettingsSubscription() {
                     onClick={() => { setPlanDialogOpen(false); checkoutMut.mutate({ plan: plan.id }); }}
                     className="w-full rounded-xl"
                   >
-                    {isCurrent ? "Current plan" : checkoutMut.isPending ? "Redirecting…" : `Subscribe — ${plan.price}/mo`}
+                    {isCurrent ? "Current plan" : checkoutMut.isPending ? "Redirecting…" : `Subscribe for ${plan.price}/mo`}
                   </Button>
                 </div>
               );

@@ -66,7 +66,7 @@ export function ImageDropField({
     if (file.size > MAX_BYTES) {
       toast({
         title: "That image is too large",
-        description: `${(file.size / 1024 / 1024).toFixed(1)} MB — the limit is 10 MB.`,
+        description: `${(file.size / 1024 / 1024).toFixed(1)} MB. The limit is 10 MB.`,
         variant: "destructive",
       });
       return;

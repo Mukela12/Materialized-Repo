@@ -36,7 +36,7 @@ export const NOT_CASH_STATEMENT =
   "Tokens are account credit, not cash. They can only be spent inside Materialized and cannot be withdrawn, transferred, or paid out to a bank account.";
 
 /** Short form, for tight spaces. Same meaning, no softer. */
-export const NOT_CASH_SHORT = "Account credit only — not withdrawable as cash.";
+export const NOT_CASH_SHORT = "Account credit only. It can't be withdrawn as cash.";
 
 /** The inline notice that sits under a spend offer. */
 export function NotCashableNote({ className, short = false }: { className?: string; short?: boolean }) {
@@ -113,7 +113,7 @@ export function TokenPayOption({
   const reason = blockedReason
     ? blockedReason
     : insufficient
-      ? `You have ${tokenLabel(balance)} — this costs ${tokenLabel(required)}. ${short} more needed.`
+      ? `You have ${tokenLabel(balance)}, but this costs ${tokenLabel(required)}. ${short} more needed.`
       : null;
 
   return (

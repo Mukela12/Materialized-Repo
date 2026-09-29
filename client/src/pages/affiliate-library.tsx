@@ -83,7 +83,7 @@ export default function AffiliateLibrary() {
           Global Video Library
         </h1>
         <p className="text-muted-foreground">
-          Browse and license videos from top creators — click to select, then add to a playlist.
+          Browse and license videos from top creators. Click to select, then add to a playlist.
         </p>
       </div>
 

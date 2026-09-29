@@ -931,7 +931,7 @@ export async function mintBrandConversionToken(
         attributionMethod: attribution.method,
         attributedVideoId: attribution.videoId,
         brandReferralId: attribution.brandReferralId,
-        description: "Brand conversion reward — tagged brand completed a paid subscription",
+        description: "Brand conversion reward: a brand you tagged started a paid subscription",
       });
     });
     return { minted: true, entry, attribution };

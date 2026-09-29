@@ -81,10 +81,10 @@ const LOGO_LABELS: Record<string, string> = {
   "bottom-left": "Bottom left",
   "bottom-middle": "Bottom middle",
   "bottom-right": "Bottom right",
-  "watermark-top-left": "Watermark — top left",
-  "watermark-top-right": "Watermark — top right",
-  "watermark-bottom-left": "Watermark — bottom left",
-  "watermark-bottom-right": "Watermark — bottom right",
+  "watermark-top-left": "Watermark, top left",
+  "watermark-top-right": "Watermark, top right",
+  "watermark-bottom-left": "Watermark, bottom left",
+  "watermark-bottom-right": "Watermark, bottom right",
 };
 
 /** The frame as it will appear, drawn from the same values the embed uses. */
@@ -220,7 +220,7 @@ export function PlaylistStyleEditor({
                 <div className="flex items-center gap-2">
                   <RadioGroupItem value="hide" id="frame-hide" data-testid="radio-frame-hide" />
                   <Label htmlFor="frame-hide" className="text-xs font-normal cursor-pointer">
-                    Hide frame — video sits flush, no border or corners
+                    Hide frame (video sits flush, no border or corners)
                   </Label>
                 </div>
               </RadioGroup>
@@ -279,7 +279,7 @@ export function PlaylistStyleEditor({
                   <Label htmlFor="play-auto" className="text-xs font-normal leading-snug cursor-pointer">
                     <span className="font-medium">Automatic playback</span>
                     <span className="block text-muted-foreground">
-                      Starts muted — browsers block video that begins with sound.
+                      Starts muted, since browsers block video that begins with sound.
                     </span>
                   </Label>
                 </div>

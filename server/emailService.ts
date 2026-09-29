@@ -131,7 +131,7 @@ export async function sendPasswordResetEmail(opts: {
     <div class="cta-wrap">
       <a href="${opts.resetUrl}" class="cta">Reset Password</a>
     </div>
-    <p class="note">This link expires in 1 hour. If you didn't request this, you can safely ignore this email &mdash; your password won't change.</p>
+    <p class="note">This link expires in 1 hour. If you didn't request this, you can safely ignore this email. Your password won't change.</p>
   `;
   await sendEmail(opts.email, "Reset your Materialized password", baseTemplate(body));
 }
@@ -182,7 +182,7 @@ export function renderBrandOutreachEmailHtml(opts: BrandOutreachEmailOpts): stri
     <h1>Hey ${firstName},</h1>
     <p>
       <strong>${creator}</strong> would like to make their latest video featuring
-      <strong>${opts.brandName}</strong> products shoppable using MTRLZD &mdash; turning it into
+      <strong>${opts.brandName}</strong> products shoppable using MTRLZD, turning it into
       a fully interactive, commission-tracked experience your customers can shop directly from.
     </p>
     ${opts.creatorMessage ? `<p style="font-style:italic;border-left:3px solid #677A67;padding-left:14px;color:#444;">"${opts.creatorMessage}"</p>` : ""}
@@ -191,7 +191,7 @@ export function renderBrandOutreachEmailHtml(opts: BrandOutreachEmailOpts): stri
          the live shoppable player. -->
     <div style="margin:22px 0;text-align:center;">
       <a href="${opts.videoPreviewUrl}" style="text-decoration:none;">
-        <img src="${opts.videoThumbnailUrl}" alt="${opts.videoTitle || "Campaign video"} — tap to watch"
+        <img src="${opts.videoThumbnailUrl}" alt="${opts.videoTitle || "Campaign video"}. Tap to watch"
              width="480" style="display:block;margin:0 auto;width:100%;max-width:480px;border-radius:12px;border:0;" />
         <span style="display:inline-block;margin-top:12px;background:#202120;color:#ffffff;border-radius:999px;padding:10px 22px;font-weight:700;font-size:14px;">
           &#9654;&nbsp; Watch ${opts.videoTitle || "the campaign preview"}
@@ -212,7 +212,7 @@ export function renderBrandOutreachEmailHtml(opts: BrandOutreachEmailOpts): stri
       <p style="margin:0 0 8px;font-weight:700;color:#202120;">One-time $29 campaign activation</p>
       <p style="margin:0;font-size:14px;color:#555;line-height:1.7;">
         The admin set-up fee covers <strong>30 days of licensing</strong>, and the video can be
-        <strong>embedded on your own eCommerce site</strong> for the duration &mdash; shoppable,
+        <strong>embedded on your own eCommerce site</strong> for the duration, shoppable
         with every click and sale tracked back to it.
       </p>
     </div>
@@ -278,7 +278,7 @@ export async function sendBrandAgreementEmail(opts: {
   `;
   await sendEmail(
     opts.prContactEmail,
-    `Your Materialized Brand Agreement — ${opts.brandName} × ${opts.creatorDisplayName}`,
+    `Your Materialized Brand Agreement: ${opts.brandName} × ${opts.creatorDisplayName}`,
     baseTemplate(body)
   );
 }
@@ -294,8 +294,8 @@ export async function sendDocuSignReminderEmail(opts: {
   const body = `
     <h1>Hey ${firstName}, just a nudge</h1>
     <p>
-      You authorized <strong>${opts.brandName}</strong> to feature in a shoppable video on Materialized &mdash;
-      that's great! The final step is reviewing and signing the <strong>Materialized Brand Agreement</strong>
+      You authorized <strong>${opts.brandName}</strong> to feature in a shoppable video on Materialized.
+      That's great! The final step is reviewing and signing the <strong>Materialized Brand Agreement</strong>
       via DocuSign. It takes less than two minutes.
     </p>
     <div class="cta-wrap">
@@ -305,7 +305,7 @@ export async function sendDocuSignReminderEmail(opts: {
   `;
   await sendEmail(
     opts.prContactEmail,
-    `Reminder: Your Materialized Brand Agreement is waiting — ${opts.brandName}`,
+    `Reminder: your Materialized Brand Agreement for ${opts.brandName} is waiting`,
     baseTemplate(body)
   );
 }
@@ -323,7 +323,7 @@ export async function sendVideoResultsExcitementEmail(opts: {
   const body = `
     <h1>The results are in, ${firstName}!</h1>
     <p>
-      Your shoppable video &mdash; <em>${opts.videoTitle}</em> &mdash; is already making waves.
+      Your shoppable video <em>${opts.videoTitle}</em> is already making waves.
       Here's a snapshot of how <strong>${opts.brandName}</strong> is performing:
     </p>
     <div class="video-box" style="text-align:center;">
@@ -333,7 +333,7 @@ export async function sendVideoResultsExcitementEmail(opts: {
       <p style="margin-top:4px;color:#677A67;font-weight:600;">Product clicks</p>
     </div>
     <p>
-      Imagine scaling this across <strong>hundreds of creator campaigns globally</strong> &mdash; each one driving
+      Imagine scaling this across <strong>hundreds of creator campaigns globally</strong>, each one driving
       tracked, commission-based sales directly attributed to your brand.
     </p>
     <div class="cta-wrap">
@@ -342,7 +342,7 @@ export async function sendVideoResultsExcitementEmail(opts: {
   `;
   await sendEmail(
     opts.prContactEmail,
-    `Your video results are in — here's what Materialized did for ${opts.brandName}`,
+    `Your video results are in: here's what Materialized did for ${opts.brandName}`,
     baseTemplate(body)
   );
 }
@@ -358,14 +358,14 @@ export async function sendGlobalPitchEmail(opts: {
     <h1>Think bigger, ${firstName}.</h1>
     <p>
       One shoppable video is just the beginning. The world's fastest-growing brands are building
-      entire creator ecosystems &mdash; and Materialized is the infrastructure that powers them.
+      entire creator ecosystems, and Materialized is the infrastructure that powers them.
     </p>
     <div class="video-box">
       <p>&#10003; <strong>Unlimited shoppable video campaigns</strong> across any creator, any region</p>
-      <p>&#10003; <strong>Real-time ROI dashboard</strong> &mdash; revenue, clicks, commissions, by creator</p>
-      <p>&#10003; <strong>Affiliate management</strong> &mdash; invite, manage, and pay creators automatically</p>
-      <p>&#10003; <strong>Global product catalog</strong> &mdash; sync your inventory once, sell everywhere</p>
-      <p>&#10003; <strong>Stripe Connect payouts</strong> &mdash; automated, compliant, instant</p>
+      <p>&#10003; <strong>Real-time ROI dashboard</strong>: revenue, clicks, commissions, by creator</p>
+      <p>&#10003; <strong>Affiliate management</strong>: invite, manage, and pay creators automatically</p>
+      <p>&#10003; <strong>Global product catalog</strong>: sync your inventory once, sell everywhere</p>
+      <p>&#10003; <strong>Stripe Connect payouts</strong>: automated, compliant, instant</p>
     </div>
     <div class="cta-wrap">
       <a href="${opts.subscribeUrl}" class="cta">Scale ${opts.brandName} Globally</a>
@@ -373,7 +373,7 @@ export async function sendGlobalPitchEmail(opts: {
   `;
   await sendEmail(
     opts.prContactEmail,
-    `${opts.brandName} × Materialized — let's build your global creator program`,
+    `${opts.brandName} × Materialized: let's build your global creator program`,
     baseTemplate(body)
   );
 }
@@ -388,7 +388,7 @@ export async function sendSubscriptionNudgeEmail(opts: {
   const body = `
     <h1>Ready to unlock everything, ${firstName}?</h1>
     <p>
-      Your shoppable video is live &mdash; and your brand's products are already being discovered by
+      Your shoppable video is live, and your brand's products are already being discovered by
       new audiences through Materialized. Now it's time to take full control.
     </p>
     <p>
@@ -402,7 +402,7 @@ export async function sendSubscriptionNudgeEmail(opts: {
   `;
   await sendEmail(
     opts.prContactEmail,
-    `Unlock your full Brand dashboard — ${opts.brandName} × Materialized`,
+    `${opts.brandName} × Materialized: unlock your full Brand dashboard`,
     baseTemplate(body)
   );
 }
@@ -429,7 +429,7 @@ export async function sendContactEnquiryEmail(opts: {
   `;
   await sendEmail(
     ADMIN_EMAIL,
-    `[Materialized] New ${roleLabel} Enquiry — ${opts.firstName} ${opts.surname}`,
+    `[Materialized] New ${roleLabel} inquiry from ${opts.firstName} ${opts.surname}`,
     baseTemplate(body),
     opts.email
   );
@@ -451,7 +451,7 @@ export async function sendCreatorInvitationEmail(opts: {
   const body = `
     <h1>You're invited, ${firstName}!</h1>
     <p>
-      <strong>${opts.brandName}</strong> would love to collaborate with you on Materialized &mdash;
+      <strong>${opts.brandName}</strong> would love to collaborate with you on Materialized,
       the platform that turns your videos into fully shoppable, commission-earning experiences.
     </p>
     ${opts.category ? `<div class="video-box"><p><strong>Content category:</strong> ${opts.category}</p></div>` : ""}
@@ -495,7 +495,7 @@ export async function sendAffiliateInvitationEmail(opts: {
     <h1>You've been invited, ${firstName}!</h1>
     <p>
       <strong>${opts.inviterName}</strong> has invited you to join their affiliate program on
-      Materialized &mdash; earn commissions by promoting shoppable videos and driving sales.
+      Materialized. Earn commissions by promoting shoppable videos and driving sales.
     </p>
     <div class="video-box">
       <p><strong>Your commission rate:</strong> ${opts.commissionRate}%</p>
@@ -531,7 +531,7 @@ export async function sendReferralEmail(opts: {
     <h1>Hey ${firstName},</h1>
     <p>
       <strong>${opts.creatorDisplayName}</strong> thinks <strong>${opts.brandName}</strong> would be a
-      great fit for Materialized &mdash; the platform that turns creator videos into fully shoppable,
+      great fit for Materialized, the platform that turns creator videos into fully shoppable,
       commission-tracked experiences.
     </p>
     ${opts.message ? `<p style="font-style:italic;border-left:3px solid #677A67;padding-left:14px;color:#444;">"${opts.message}"</p>` : ""}
@@ -564,7 +564,7 @@ export async function sendPayoutExecutedEmail(opts: {
   const body = `
     <h1>You've been paid, ${firstName}!</h1>
     <p>
-      Great news &mdash; your Materialized affiliate payout has been processed and is on its way to
+      Great news! Your Materialized affiliate payout has been processed and is on its way to
       your connected account.
     </p>
     <div class="video-box" style="text-align:center;">
@@ -664,7 +664,7 @@ export interface TrialFollowupEmailOpts {
  */
 export function renderTrialFollowupEmailHtml(opts: TrialFollowupEmailOpts): string {
   const body = `
-    <h1>You're set up, ${opts.brandDisplayName} — now bring your creators</h1>
+    <h1>You're set up, ${opts.brandDisplayName}. Now bring your creators</h1>
     <p>
       Two days in, and the best part of your trial is still ahead: as part of your
       free trial, for the next ${opts.trialDaysLeft} days you can put
@@ -673,25 +673,25 @@ export function renderTrialFollowupEmailHtml(opts: TrialFollowupEmailOpts): stri
     <div style="background:#f7f7f5;border:1px solid #e8e8e8;border-radius:10px;padding:18px;margin:22px 0;">
       <p style="margin:0 0 10px;font-weight:700;color:#202120;">Included in your trial:</p>
       <p style="margin:0 0 8px;font-size:14px;color:#555;line-height:1.7;">
-        <strong>Connect your existing affiliate program</strong> — your current
+        <strong>Connect your existing affiliate program</strong>. Your current
         partners and commission terms carry straight over, and every click and sale
         from video is tracked back to the creator who made it.
       </p>
       <p style="margin:0;font-size:14px;color:#555;line-height:1.7;">
-        <strong>Invite five content creators</strong> to your account — they tag your
+        <strong>Invite five content creators</strong> to your account. They tag your
         products in their videos, and their audiences shop what they see, on your
         site, at your prices.
       </p>
     </div>
     <p>
       Brands using creator video turn an audience's attention into store revenue
-      without making a single ad. Your shelf is already in their videos — this
+      without making a single ad. Your shelf is already in their videos, and this
       makes it shoppable.
     </p>
     <div class="cta-wrap">
       <a href="${opts.dashboardUrl}" class="cta">Invite Your Creators</a>
     </div>
-    <p class="note">You're on a free trial with ${opts.trialDaysLeft} day${opts.trialDaysLeft === 1 ? "" : "s"} to go — no card on file, nothing charged.</p>
+    <p class="note">You're on a free trial with ${opts.trialDaysLeft} day${opts.trialDaysLeft === 1 ? "" : "s"} to go. No card on file, nothing charged.</p>
   `;
   return baseTemplate(body);
 }

@@ -9,7 +9,7 @@ const DEFAULT_MESSAGE_TEMPLATE = `Hey [First_Name],
 
 I want to make my recent video for [Brand] shoppable using revolutionary video commerce, so my audience can shop your products instantly.
 
-Click this link to create your account — Subscription FREE for 30 days — and sync your inventory. My video will then be published as shoppable with direct links to your POS.
+Click this link to create your account (subscription FREE for 30 days) and sync your inventory. My video will then be published as shoppable with direct links to your POS.
 
 I'm sure you'll love this!
 

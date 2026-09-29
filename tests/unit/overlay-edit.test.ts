@@ -83,6 +83,6 @@ describe("the price rule is stated where it is decided", () => {
 
   it("and on any row that has no price", () => {
     expect(composer).toContain("text-no-price-");
-    expect(composer).toMatch(/No price — no Buy button/);
+    expect(composer).toMatch(/No price, so no Buy button/);
   });
 });
