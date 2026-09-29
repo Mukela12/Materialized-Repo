@@ -243,7 +243,10 @@ export default function BrandSettingsSubscription() {
 
             {/* Surplus fee calculator */}
             {/* Shared estimator — see the note on the creator page. */}
-            <PricingEstimator plan={(currentPlan as any) || "starter"} className="border-0 shadow-none bg-muted/30" />
+            {/* The plan's KEY. This passed the plan object itself, which PLAN_ALLOWANCES
+                could not look up, and the whole page crashed to "Something went
+                wrong" for every brand from 5 Aug to 29 Sep 2026. */}
+            <PricingEstimator plan={currentPlan.id as PlanKey} className="border-0 shadow-none bg-muted/30" />
 
             {/* Plan action buttons */}
             <div className="flex gap-2">

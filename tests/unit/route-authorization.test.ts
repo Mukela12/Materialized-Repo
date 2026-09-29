@@ -134,3 +134,13 @@ describe("health check", () => {
     expect(handler("get", "/api/health")).toMatch(/res\.status\(503\)/);
   });
 });
+
+describe("brand Subscription page (crashed for every brand, 5 Aug to 29 Sep)", () => {
+  it("prices the plan by its key, not the plan object", async () => {
+    const page = code("client/src/pages/brand-settings-subscription.tsx");
+    expect(page).toMatch(/<PricingEstimator plan=\{currentPlan\.id as PlanKey\}/);
+    expect(page).not.toMatch(/plan=\{\(currentPlan as any\)/);
+    const { PLAN_ALLOWANCES } = await import("../../shared/plans");
+    for (const id of ["starter", "pro", "creator"]) expect(PLAN_ALLOWANCES[id as "starter"]).toBeDefined();
+  });
+});
