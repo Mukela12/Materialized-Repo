@@ -24,6 +24,15 @@ export function geminiConfigured(env: Record<string, string | undefined> = proce
 
 export const ai = new GoogleGenAI(geminiConfig());
 
+/**
+ * The model every Gemini call uses. Pinned rather than "latest" so a scan
+ * behaves the same from one week to the next, and overridable with
+ * GEMINI_MODEL so the next retirement is a setting, not a code change:
+ * gemini-2.5-flash, which this was hard-coded to, is "no longer available to
+ * new users" (the client's key, 29 Sep 2026), so every scan would have failed.
+ */
+export const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-3.8-flash";
+
 export interface ProductInfo {
   id: string;
   name: string;
@@ -127,7 +136,7 @@ export async function analyzeFrameForProducts(
 
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: GEMINI_MODEL,
       contents: [
         {
           role: "user",
@@ -230,6 +239,17 @@ export interface ConsolidatedDetection {
   peakBoundingBox: BoundingBox | null;
 }
 
+/**
+ * How many frames to sample: about one every 4 seconds, at least 4 and at most
+ * 12. A fixed 4 left a 60-second video with a frame every 15 seconds, so a
+ * product on screen for a few seconds was usually never looked at.
+ */
+export function framesToSample(durationSeconds: number | null | undefined): number {
+  const d = Number(durationSeconds);
+  if (!Number.isFinite(d) || d <= 0) return 4;
+  return Math.min(12, Math.max(4, Math.ceil(d / 4)));
+}
+
 /** A box is usable only if it is normalized 0-1 and has area. */
 export function cleanBoundingBox(b: BoundingBox | undefined | null): BoundingBox | null {
   if (!b) return null;
@@ -242,7 +262,13 @@ export function cleanBoundingBox(b: BoundingBox | undefined | null): BoundingBox
 export function consolidateDetections(
   frameAnalyses: FrameAnalysis[],
   minConfidence: number = 0.6,
-  minDuration: number = 2
+  minDuration: number = 2,
+  /**
+   * Frames a product must be seen in (unless it spans minDuration). 2 was a
+   * guard for when detections went straight to the carousel; with a person
+   * reviewing every placement, 1 keeps a product that is on screen once.
+   */
+  minFrames: number = 2,
 ): ConsolidatedDetection[] {
   const productTimelines = new Map<string, {
     timestamps: number[]; confidences: number[]; brandId: string;
@@ -285,7 +311,7 @@ export function consolidateDetections(
     const endTime = sortedTimestamps[sortedTimestamps.length - 1];
     const duration = endTime - startTime;
 
-    if (duration >= minDuration || sortedTimestamps.length >= 2) {
+    if (duration >= minDuration || sortedTimestamps.length >= minFrames) {
       const avgConfidence = timeline.confidences.reduce((a, b) => a + b, 0) / timeline.confidences.length;
       const peakConfidence = Math.max(...timeline.confidences);
 

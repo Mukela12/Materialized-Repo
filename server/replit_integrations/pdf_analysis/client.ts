@@ -1,12 +1,9 @@
 import { GoogleGenAI } from "@google/genai";
+import { geminiConfig, GEMINI_MODEL } from "../detection/client";
 
-export const ai = new GoogleGenAI({
-  apiKey: process.env.AI_INTEGRATIONS_GEMINI_API_KEY,
-  httpOptions: {
-    apiVersion: "",
-    baseUrl: process.env.AI_INTEGRATIONS_GEMINI_BASE_URL,
-  },
-});
+// Same settings as detection (see geminiConfig): works with a plain Gemini
+// key, and with Replit's proxy only when its URL is set.
+export const ai = new GoogleGenAI(geminiConfig());
 
 export interface ExtractedBrandColors {
   primary?: string;
@@ -118,7 +115,7 @@ export async function analyzeBrandGuideline(
 ): Promise<BrandGuidelineAnalysis> {
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: GEMINI_MODEL,
       contents: [
         {
           role: "user",
@@ -181,7 +178,7 @@ export async function analyzeImageForColors(
 ): Promise<ExtractedBrandColors> {
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: GEMINI_MODEL,
       contents: [
         {
           role: "user",

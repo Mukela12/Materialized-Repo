@@ -255,3 +255,33 @@ describe("Gemini configuration (production had no key for two months)", () => {
     expect(modal).toMatch(/AI detection isn't switched on yet/);
   });
 });
+
+describe("the first real scan (29 Sep 2026, the client's key)", () => {
+  it("uses a model Google still offers, and it can be changed without code", () => {
+    const client = code("server/replit_integrations/detection/client.ts");
+    expect(client).toMatch(/export const GEMINI_MODEL = process\.env\.GEMINI_MODEL \|\| "gemini-3\.8-flash";/);
+    // gemini-2.5-flash is "no longer available to new users": nothing may name a model directly.
+    for (const f of ["server/detectionRunner.ts", "server/replit_integrations/detection/client.ts",
+      "server/replit_integrations/detection/aiContentDetector.ts", "server/replit_integrations/pdf_analysis/client.ts"]) {
+      expect(code(f), f).not.toMatch(/model: "gemini-/);
+    }
+    expect(code("server/replit_integrations/pdf_analysis/client.ts")).toMatch(/new GoogleGenAI\(geminiConfig\(\)\)/);
+  });
+
+  it("samples about one frame every 4 seconds, 4 to 12", async () => {
+    const { framesToSample } = await import("../../server/replit_integrations/detection/client");
+    expect(framesToSample(null)).toBe(4);
+    expect(framesToSample(9)).toBe(4);
+    expect(framesToSample(17)).toBe(5);
+    expect(framesToSample(58)).toBe(12);
+    expect(framesToSample(600)).toBe(12);
+  });
+
+  it("keeps a product seen in one frame, because a person reviews it anyway", () => {
+    const one = [{ frameTimestamp: 5, detectedProducts: [{ productId: "bag", productName: "Bag", brandId: "b", confidence: 0.9 }] }];
+    expect(consolidateDetections(one, 0.5, 1, 2)).toHaveLength(0); // the old rule dropped it
+    expect(consolidateDetections(one, 0.5, 1, 1)).toHaveLength(1);
+    expect(code("server/detectionRunner.ts")).toMatch(/consolidateDetections\(frameAnalyses, 0\.5, 1, 1\)/);
+    expect(code("server/detectionRunner.ts")).toMatch(/count: framesToSample\(video\.durationSeconds\)/);
+  });
+});

@@ -1,4 +1,4 @@
-import { ai } from "./client";
+import { ai, GEMINI_MODEL } from "./client";
 import { batchProcess } from "../batch/utils";
 import type { SampledFrame } from "../../frameSampler";
 
@@ -90,7 +90,7 @@ export async function analyzeFrameForAiContent(
 ): Promise<FrameAiVerdict> {
   try {
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: GEMINI_MODEL,
       contents: [
         {
           role: "user",

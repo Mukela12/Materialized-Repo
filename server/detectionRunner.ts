@@ -8,7 +8,7 @@
  * route and scripts/run-detection.ts run the same code.
  */
 import { storage } from "./storage";
-import { ai, batchAnalyzeFrames, consolidateDetections, geminiConfigured, type ProductInfo } from "./replit_integrations/detection/client";
+import { ai, batchAnalyzeFrames, consolidateDetections, framesToSample, geminiConfigured, GEMINI_MODEL, type ProductInfo } from "./replit_integrations/detection/client";
 import { detectAiGeneratedContent } from "./replit_integrations/detection/aiContentDetector";
 import { sampleVideoFrames } from "./frameSampler";
 
@@ -79,7 +79,7 @@ ${catalogJson}
 Identify which products from the catalog are most likely to appear or be featured in this video. Return a JSON array with objects like: { "productId": "<id>", "confidence": <0.0-1.0> }. Only include products with confidence > 0.5. Return ONLY valid JSON, no explanation.`;
 
         const result = await ai.models.generateContent({
-          model: "gemini-2.5-flash",
+          model: GEMINI_MODEL,
           contents: [{ role: "user", parts: [{ text: prompt }] }],
         });
 
@@ -135,7 +135,7 @@ Identify which products from the catalog are most likely to appear or be feature
     const video = await storage.getVideo(videoId);
     const frames = video?.videoUrl
       ? await sampleVideoFrames(video.videoUrl, {
-          count: 4,
+          count: framesToSample(video.durationSeconds),
           durationSeconds: video.durationSeconds ?? null,
         })
       : [];
@@ -166,7 +166,10 @@ Identify which products from the catalog are most likely to appear or be feature
         storage.updateDetectionJob(job.id, { processedFrames: completed }).catch(() => {});
       }
     );
-    const consolidated = consolidateDetections(frameAnalyses, 0.5, 1);
+    // One frame is enough: every placement is reviewed by a person before it
+    // reaches the carousel. Two frames dropped a 90% match on a handbag seen
+    // in one clip (first real scan, 29 Sep 2026).
+    const consolidated = consolidateDetections(frameAnalyses, 0.5, 1, 1);
 
     for (const result of consolidated) {
       await storage.createDetectionResult({
