@@ -1548,7 +1548,8 @@ export async function registerRoutes(
   });
 
   // Get embed deployments for an affiliate
-  app.get("/api/embed-deployments/:affiliateId", async (req, res) => {
+  // Where a publisher has embedded videos: theirs to see, or an admin only.
+  app.get("/api/embed-deployments/:affiliateId", requireSelfOrAdmin("affiliateId"), async (req, res) => {
     try {
       const deployments = await storage.getEmbedDeploymentsByAffiliate(req.params.affiliateId);
       res.json(deployments);
@@ -2487,17 +2488,17 @@ export async function registerRoutes(
   });
 
   // Get creator invitations sent by brand
+  // The caller's own brand's invitations. This used to need no sign-in and
+  // default to the FIRST brand in the table, so it showed one brand's invited
+  // creators (names and emails) to anyone, including every other brand.
   app.get("/api/brands/creator-invites", async (req, res) => {
     try {
-      // Get a demo brand ID
-      const brands = await storage.getBrands();
-      const brandId = req.query.brandId as string || brands[0]?.id;
-      
-      if (!brandId) {
-        return res.json([]);
-      }
-
-      const invitations = await storage.getCreatorInvitations(brandId);
+      const actor = await actorOr401(req, res);
+      if (!actor) return;
+      const brandIds = await readableBrandIds(req, res, actor);
+      if (!brandIds) return;
+      if (brandIds.length === 0) return res.json([]);
+      const invitations = (await Promise.all(brandIds.map((id) => storage.getCreatorInvitations(id)))).flat();
       res.json(invitations);
     } catch (error) {
       res.status(500).json({ error: "Failed to get creator invitations" });
@@ -2847,13 +2848,54 @@ export async function registerRoutes(
   // ==================== CAMPAIGN ROUTES ====================
 
   // Get all campaigns for a brand
+  /**
+   * Who is asking, or a 401. Plus the brands they own. Used by the brand-side
+   * reads below, which used to answer anyone: campaigns (budgets, publishers)
+   * for any brandId, and creator invitations (names, emails) of whichever brand
+   * happened to be first in the table.
+   */
+  async function actorOr401(req: Request, res: Response) {
+    const uid = (req.session as any)?.userId;
+    if (!uid) { res.status(401).json({ error: "Authentication required" }); return null; }
+    const actor = await storage.getUser(uid);
+    if (!actor) { res.status(401).json({ error: "User not found" }); return null; }
+    return actor;
+  }
+  async function ownedBrandIds(userId: string): Promise<string[]> {
+    return (await storage.getBrands()).filter((b) => b.ownerId === userId).map((b) => b.id);
+  }
+  /** The brands a request may read: the one asked for if allowed, else all the caller owns. */
+  async function readableBrandIds(req: Request, res: Response, actor: { id: string; isAdmin: boolean | null }) {
+    const owned = await ownedBrandIds(actor.id);
+    const asked = typeof req.query.brandId === "string" && req.query.brandId ? req.query.brandId : null;
+    if (!asked) return owned;
+    if (actor.isAdmin || owned.includes(asked)) return [asked];
+    res.status(403).json({ error: "Forbidden" });
+    return null;
+  }
+  /** A campaign the caller may read: its brand's owner, or an admin. */
+  async function readableCampaign(req: Request, res: Response) {
+    const actor = await actorOr401(req, res);
+    if (!actor) return null;
+    const campaign = await storage.getCampaign(req.params.id);
+    if (!campaign) { res.status(404).json({ error: "Campaign not found" }); return null; }
+    if (!actor.isAdmin) {
+      const brand = await storage.getBrand(campaign.brandId);
+      if (brand?.ownerId !== actor.id) { res.status(403).json({ error: "Forbidden" }); return null; }
+    }
+    return campaign;
+  }
+
+  // The caller's own campaigns (all their brands), or one brand's if asked for
+  // and allowed. The brand Campaigns page asks with no brandId, and this used
+  // to answer 400, so that page was always empty.
   app.get("/api/campaigns", async (req, res) => {
     try {
-      const { brandId } = req.query;
-      if (!brandId || typeof brandId !== "string") {
-        return res.status(400).json({ error: "Brand ID required" });
-      }
-      const campaigns = await storage.getCampaigns(brandId);
+      const actor = await actorOr401(req, res);
+      if (!actor) return;
+      const brandIds = await readableBrandIds(req, res, actor);
+      if (!brandIds) return;
+      const campaigns = (await Promise.all(brandIds.map((id) => storage.getCampaigns(id)))).flat();
       res.json(campaigns);
     } catch (error) {
       res.status(500).json({ error: "Failed to get campaigns" });
@@ -2863,11 +2905,12 @@ export async function registerRoutes(
   // Get campaign stats for a brand
   app.get("/api/campaigns/stats", async (req, res) => {
     try {
-      const { brandId } = req.query;
-      if (!brandId || typeof brandId !== "string") {
-        return res.status(400).json({ error: "Brand ID required" });
-      }
-      const stats = await storage.getCampaignStats(brandId);
+      const actor = await actorOr401(req, res);
+      if (!actor) return;
+      const brandIds = await readableBrandIds(req, res, actor);
+      if (!brandIds) return;
+      if (brandIds.length === 0) return res.status(400).json({ error: "Brand ID required" });
+      const stats = await storage.getCampaignStats(brandIds[0]);
       res.json(stats);
     } catch (error) {
       res.status(500).json({ error: "Failed to get campaign stats" });
@@ -2877,10 +2920,8 @@ export async function registerRoutes(
   // Get a single campaign
   app.get("/api/campaigns/:id", async (req, res) => {
     try {
-      const campaign = await storage.getCampaign(req.params.id);
-      if (!campaign) {
-        return res.status(404).json({ error: "Campaign not found" });
-      }
+      const campaign = await readableCampaign(req, res);
+      if (!campaign) return;
       res.json(campaign);
     } catch (error) {
       res.status(500).json({ error: "Failed to get campaign" });
@@ -2890,6 +2931,7 @@ export async function registerRoutes(
   // Campaign detail with publisher list
   app.get("/api/campaigns/:id/detail", async (req, res) => {
     try {
+      if (!(await readableCampaign(req, res))) return;
       const detail = await storage.getCampaignDetail(req.params.id);
       if (!detail) return res.status(404).json({ error: "Campaign not found" });
       res.json(detail);
@@ -3505,6 +3547,21 @@ export async function registerRoutes(
     }
   });
 
+  // Is a publisher invitation still open? Checked when the accept page opens.
+  // Answers only valid / used / not found: never the invitee's email.
+  app.get("/api/affiliates/accept/:token", async (req, res) => {
+    try {
+      const invitation = await storage.getAffiliateInvitationByToken(req.params.token);
+      if (!invitation) return res.json({ valid: false, reason: "not_found" });
+      if (invitation.status !== "pending" && invitation.status !== "sent") {
+        return res.json({ valid: false, reason: "used" });
+      }
+      res.json({ valid: true });
+    } catch {
+      res.status(500).json({ error: "Failed to check invitation" });
+    }
+  });
+
   // Accept affiliate invitation (for affiliate login)
   app.post("/api/affiliates/accept/:token", async (req, res) => {
     try {
@@ -3551,6 +3608,9 @@ export async function registerRoutes(
   // Get affiliates for a video campaign
   app.get("/api/videos/:id/affiliates", async (req, res) => {
     try {
+      // Commission rates, tracking codes and earnings: the video's creator or
+      // an admin only (this was open to anyone).
+      if (!(await videoEditorOr403(req, res))) return;
       const affiliates = await storage.getCampaignAffiliates(req.params.id);
       res.json(affiliates);
     } catch (error) {

@@ -1,5 +1,5 @@
 import { initSentry, Sentry } from "./sentry";
-import express, { type Request, Response, NextFunction } from "express";
+import express, { type Request, Response, NextFunction, type RequestHandler } from "express";
 import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
 import cors from "cors";
@@ -404,9 +404,14 @@ app.use(express.urlencoded({ extended: false }));
 app.use(["/api/auth/login", "/api/auth/register"], accountAuthLimiter, authLimiter);
 
 // Anything that sends mail to an address the caller typed: count every request.
+// POST only: GET /api/auth/reset-password/:token just checks a link when the
+// page opens. Counting it here let two page loads and a refresh use up the
+// 5-per-15-minutes allowance before the person had even typed a password.
+const onlyPost = (limiter: RequestHandler): RequestHandler => (req, res, next) =>
+  req.method === "POST" ? limiter(req, res, next) : next();
 app.use(
   ["/api/auth/resend-verification", "/api/auth/forgot-password", "/api/auth/reset-password"],
-  emailSendLimiter,
+  onlyPost(emailSendLimiter),
   authLimiter,
 );
 

@@ -411,6 +411,18 @@ export function registerAuthRoutes(app: Express) {
   });
 
   // ── Reset Password (perform reset) ───────────────────────────────────────
+  // Is a reset link still usable? Checked when the page opens, so nobody types
+  // a new password twice into a link that was already used or has expired.
+  // Answers only valid / expired / invalid: never who the link belongs to.
+  app.get("/api/auth/reset-password/:token", async (req, res) => {
+    const user = await storage.getUserByPasswordResetTokenHash(hashResetToken(req.params.token));
+    if (!user) return res.json({ valid: false, reason: "invalid" });
+    if (user.passwordResetExpires && new Date(user.passwordResetExpires) < new Date()) {
+      return res.json({ valid: false, reason: "expired" });
+    }
+    res.json({ valid: true });
+  });
+
   app.post("/api/auth/reset-password", async (req, res) => {
     const parsed = resetPasswordSchema.safeParse(req.body);
     if (!parsed.success) {

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -31,6 +31,25 @@ export default function AffiliateAccept() {
   const [errorMessage, setErrorMessage] = useState(
     token ? "" : "This invitation link is invalid. Please ask for a new one."
   );
+
+  // Check the link as soon as the page opens, not after a password is typed.
+  useEffect(() => {
+    if (!token) return;
+    let live = true;
+    const messages: Record<string, string> = {
+      used: "This invitation has already been accepted. Sign in instead.",
+      not_found: "This invitation link is not valid. Please ask for a new one.",
+    };
+    fetch(`/api/affiliates/accept/${encodeURIComponent(token)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((body) => {
+        if (!live || !body || body.valid) return;
+        setErrorMessage(messages[body.reason] ?? messages.not_found);
+        setStatus("error");
+      })
+      .catch(() => { /* leave the form; the submit still checks */ });
+    return () => { live = false; };
+  }, [token]);
 
   const form = useForm<FormData>({
     resolver: zodResolver(schema),

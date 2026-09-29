@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -33,6 +33,25 @@ export default function ResetPassword() {
   const [errorMessage, setErrorMessage] = useState(
     token ? "" : "This reset link is invalid. Please request a new one."
   );
+
+  // Check the link as soon as the page opens, not after a password is typed.
+  useEffect(() => {
+    if (!token) return;
+    let live = true;
+    const messages: Record<string, string> = {
+      expired: "This reset link has expired. Please request a new one.",
+      invalid: "This reset link has already been used or is not valid. Please request a new one.",
+    };
+    fetch(`/api/auth/reset-password/${encodeURIComponent(token)}`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((body) => {
+        if (!live || !body || body.valid) return;
+        setErrorMessage(messages[body.reason] ?? messages.invalid);
+        setStatus("error");
+      })
+      .catch(() => { /* leave the form; the submit still checks */ });
+    return () => { live = false; };
+  }, [token]);
 
   const form = useForm<FormData>({
     resolver: zodResolver(schema),
