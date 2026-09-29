@@ -101,6 +101,25 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+  /**
+   * Is the API up and can it reach the database? /api/health used to fall
+   * through to the website's index.html and answer 200 whatever state the
+   * server or database was in, so every "health 200" check meant nothing.
+   * 503 when the database does not answer within a few seconds.
+   */
+  app.get("/api/health", async (_req, res) => {
+    try {
+      const { pool } = await import("./db");
+      await Promise.race([
+        pool.query("SELECT 1"),
+        new Promise((_, reject) => setTimeout(() => reject(new Error("db timeout")), 3000)),
+      ]);
+      res.set("Cache-Control", "no-store").json({ ok: true, db: true });
+    } catch {
+      res.status(503).set("Cache-Control", "no-store").json({ ok: false, db: false });
+    }
+  });
+
   
   // ==================== AI/PDF ANALYSIS ROUTES ====================
   setupPdfAnalysisRoutes(app);

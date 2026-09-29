@@ -123,3 +123,14 @@ describe("a brand can rename itself", () => {
     expect(code("client/src/pages/profile.tsx")).toMatch(/\{user\?\.role === "brand" && <BrandNameCard \/>\}/);
   });
 });
+
+describe("health check", () => {
+  it("is a real route that pings the database, registered before anything can shadow it", () => {
+    const start = routes.indexOf("export async function registerRoutes(");
+    const health = routes.indexOf('app.get("/api/health"');
+    expect(health).toBeGreaterThan(start);
+    expect(routes.indexOf("\n  app.", start)).toBe(routes.lastIndexOf("\n", health));
+    expect(handler("get", "/api/health")).toMatch(/pool\.query\("SELECT 1"\)/);
+    expect(handler("get", "/api/health")).toMatch(/res\.status\(503\)/);
+  });
+});
