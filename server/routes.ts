@@ -354,7 +354,7 @@ export async function registerRoutes(
    * tests/unit/brand-route-shadowing.test.ts fails if a fourth literal route is
    * ever added below without being listed here.
    */
-  const BRAND_LITERAL_ROUTES = ["stats", "creator-invites", "invite-offer", "mine"];
+  const BRAND_LITERAL_ROUTES = ["stats", "creator-invites", "invite-offer", "mine", "invite-passes"];
 
   app.get("/api/brands/:id", async (req, res, next) => {
     if (BRAND_LITERAL_ROUTES.includes(req.params.id)) return next();
@@ -2389,10 +2389,66 @@ export async function registerRoutes(
       : `${publicOrigin(req)}/register`;
   }
 
-  /** How many more passes this brand can hand out under the per-brand limit. */
-  async function invitePassesLeft(brandId: string): Promise<number> {
-    return Math.max(0, inviteCapPerBrand() - (await storage.countVouchersInBatch(inviteBatchId(brandId))));
+  /**
+   * A brand's creator-pass allowance: its own limit when its sign-up code set
+   * one (10 for Brooklyn), otherwise the platform default.
+   */
+  async function invitePasses(brandId: string): Promise<{ limit: number; used: number; remaining: number }> {
+    const brand = await storage.getBrand(brandId);
+    const limit = brand?.invitePassLimit ?? inviteCapPerBrand();
+    const used = await storage.countVouchersInBatch(inviteBatchId(brandId));
+    return { limit, used, remaining: Math.max(0, limit - used) };
   }
+
+  /** How many more passes this brand can hand out under its limit. */
+  async function invitePassesLeft(brandId: string): Promise<number> {
+    return (await invitePasses(brandId)).remaining;
+  }
+
+  function passLimitMessage(limit: number): string {
+    return `You've used all ${limit} of your creator passes. Contact Materialized to add more.`;
+  }
+
+  /**
+   * The marketplace fee a brand agrees to (client, 29 Sep 2026): the current
+   * rate, shown on the sign-up form and in the prompt existing brands see.
+   */
+  app.get("/api/fee-terms", async (_req, res) => {
+    try {
+      res.json({ marketplaceFeePct: resolveFeeConfig(await storage.getPlatformSettings()).marketplaceFeePct });
+    } catch {
+      res.status(500).json({ error: "Failed to get the fee terms" });
+    }
+  });
+
+  // A brand that signed up before the prompt existed (or before a rate
+  // change) agrees here. Recorded with the rate, never assumed.
+  app.post("/api/fee-terms/accept", async (req, res) => {
+    try {
+      const uid = (req.session as any)?.userId;
+      if (!uid) return res.status(401).json({ error: "Authentication required" });
+      const pct = resolveFeeConfig(await storage.getPlatformSettings()).marketplaceFeePct;
+      await storage.updateUser(uid, { feeTermsAcceptedAt: new Date(), feeTermsPct: pct.toFixed(2) } as any);
+      res.json({ ok: true, marketplaceFeePct: pct });
+    } catch {
+      res.status(500).json({ error: "Failed to record your agreement" });
+    }
+  });
+
+  // The caller's creator passes, for "X creator passes remaining".
+  app.get("/api/brands/invite-passes", async (req, res) => {
+    try {
+      const uid = (req.session as any)?.userId;
+      if (!uid) return res.status(401).json({ error: "Authentication required" });
+      const actor = await storage.getUser(uid);
+      if (!actor) return res.status(401).json({ error: "User not found" });
+      const brand = await ensureOwnBrand(actor);
+      if (!brand) return res.status(404).json({ error: "Not a brand account" });
+      res.json(await invitePasses(brand.id));
+    } catch (error) {
+      res.status(500).json({ error: "Failed to get creator passes" });
+    }
+  });
 
   app.post("/api/brands/invite-creator", async (req, res) => {
     try {
@@ -2445,7 +2501,7 @@ export async function registerRoutes(
       try {
         if ((await invitePassesLeft(useBrandId)) === 0) {
           return res.status(429).json({
-            error: `Invitation limit reached (${inviteCapPerBrand()}). Contact Materialized to raise it.`,
+            error: passLimitMessage((await invitePasses(useBrandId)).limit),
             reason: "invite_cap",
           });
         }
@@ -2546,7 +2602,7 @@ export async function registerRoutes(
       const room = await invitePassesLeft(useBrandId);
       if (room === 0 && validInvitations.length > 0) {
         return res.status(429).json({
-          error: `Invitation limit reached (${inviteCapPerBrand()}). Contact Materialized to raise it.`,
+          error: passLimitMessage((await invitePasses(useBrandId)).limit),
           reason: "invite_cap",
         });
       }
@@ -5730,6 +5786,12 @@ export async function registerRoutes(
       if (days != null && (!Number.isInteger(days) || days < 1 || days > 365)) {
         return res.status(400).json({ error: "freeDays must be a whole number of days between 1 and 365" });
       }
+      // Creator passes only mean something on a code a brand signs up with.
+      const rawPasses = req.body?.creatorPasses;
+      const creatorPasses = rawPasses == null || rawPasses === "" || roleRestriction !== "brand" ? null : Number(rawPasses);
+      if (creatorPasses != null && (!Number.isInteger(creatorPasses) || creatorPasses < 0 || creatorPasses > 1000)) {
+        return res.status(400).json({ error: "creatorPasses must be a whole number from 0 to 1000" });
+      }
 
       const parsedFrom = parseVoucherDate(req.body?.activeFrom ?? null, "start");
       if (parsedFrom && "error" in parsedFrom) {
@@ -5786,6 +5848,7 @@ export async function registerRoutes(
           activeFrom,
           expiresAt: expiry,
           freeDays: days,
+          creatorPasses,
           createdBy: (req.session as any)?.userId ?? null,
           batchId,
           assignedTo,
@@ -5975,8 +6038,15 @@ export async function registerRoutes(
         action = { kind: "dates", activeFrom: from, expiresAt: until };
       } else if (kind === "revoke" || kind === "delete") {
         action = { kind };
+      } else if (kind === "passes") {
+        const raw = req.body?.passes;
+        const passes = raw === null || raw === "" ? null : Number(raw);
+        if (passes !== null && (!Number.isInteger(passes) || passes < 0 || passes > 1000)) {
+          return res.status(400).json({ error: "passes must be a whole number from 0 to 1000, or empty for the default" });
+        }
+        action = { kind: "passes", passes };
       } else {
-        return res.status(400).json({ error: "action must be role, dates, revoke or delete" });
+        return res.status(400).json({ error: "action must be role, dates, passes, revoke or delete" });
       }
       const result = await storage.bulkVoucherAction(Array.from(new Set(ids as string[])), action);
       res.json({ ok: true, ...result });

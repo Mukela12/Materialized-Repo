@@ -150,7 +150,9 @@ export type VoucherBulkAction =
   | { kind: "role"; role: "creator" | "brand" | "affiliate" }
   | { kind: "dates"; activeFrom?: Date | null; expiresAt?: Date | null }
   | { kind: "revoke" }
-  | { kind: "delete" };
+  | { kind: "delete" }
+  /** Creator passes a brand gets from these codes (null = platform default). */
+  | { kind: "passes"; passes: number | null };
 
 export interface VoucherBulkResult {
   updated: number;
@@ -2315,6 +2317,8 @@ export class MemStorage implements IStorage {
         if (action.activeFrom !== undefined) v.activeFrom = action.activeFrom;
         if (action.expiresAt !== undefined) v.expiresAt = action.expiresAt;
         out.updated++;
+      } else if (action.kind === "passes") {
+        v.creatorPasses = action.passes; out.updated++;
       } else if (action.kind === "revoke" || (action.kind === "delete" && used(id))) {
         if (v.revokedAt) { out.skipped++; continue; }
         v.revokedAt = new Date(); out.revoked++;
@@ -4359,6 +4363,11 @@ export class DatabaseStorage implements IStorage {
       assignedTo: v.assignedTo ?? null,
       activeFrom: v.activeFrom ?? null,
       freeDays: v.freeDays ?? null,
+      // Listed field by field, so a new column is silently dropped unless it
+      // is added here: creatorPasses, and partner (which invitation passes set
+      // to the inviting brand and which was never being saved).
+      creatorPasses: v.creatorPasses ?? null,
+      partner: v.partner ?? null,
     }).returning();
     return row;
   }
@@ -4388,6 +4397,7 @@ export class DatabaseStorage implements IStorage {
       // Omitting freeDays would silently revert a rolling code to fixed-date
       // behavior — everyone free until 31 Oct instead of 30 days each.
       freeDays: row.freeDays ?? null,
+      creatorPasses: row.creatorPasses ?? null,
     } : null;
   }
 
@@ -4512,6 +4522,20 @@ export class DatabaseStorage implements IStorage {
         if (action.expiresAt !== undefined) {
           out.accountsUpdated = await this.syncFreeAccessToVoucherExpiry(tx, rows.map((r) => r.id));
         }
+      } else if (action.kind === "passes") {
+        const rows = await tx.update(vouchers).set({ creatorPasses: action.passes })
+          .where(inArray(vouchers.id, ids)).returning({ id: vouchers.id });
+        out.updated = rows.length;
+        out.skipped = ids.length - rows.length;
+        // Brands already signed up with these codes get the new allowance too.
+        const res = (await tx.execute(sql`
+          UPDATE brands b
+             SET invite_pass_limit = ${action.passes}
+            FROM voucher_redemptions r
+           WHERE r.user_id = b.owner_id
+             AND r.voucher_id IN (${sql.join(ids.map((id) => sql`${id}`), sql`, `)})
+        `)) as unknown as { rowCount?: number };
+        out.accountsUpdated = res.rowCount ?? 0;
       } else {
         // Revoke: everything asked for. Delete: unused codes go; used codes are
         // revoked instead, so the account and its redemption record survive.

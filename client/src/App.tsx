@@ -13,6 +13,7 @@ import { AffiliateAppSidebar, PUBLISHER_NAV_GROUPS } from "@/components/Affiliat
 import { MobileNav } from "@/components/MobileNav";
 import { CommandPalette } from "@/components/CommandPalette";
 import { FirstRunTour } from "@/components/FirstRunTour";
+import { FeeTermsGate } from "@/components/FeeTerms";
 import { BrandMobileNav } from "@/components/BrandMobileNav";
 import { AffiliateMobileNav } from "@/components/AffiliateMobileNav";
 import NotFound from "@/pages/not-found";
@@ -543,6 +544,8 @@ function AppContent() {
       </div>
       {getMobileNav()}
       <FirstRunTour portal={isBrandRoute ? "brand" : isAffiliateRoute ? "affiliate" : "creator"} user={user} />
+      {/* Brands who haven't agreed to the current marketplace fee, once. */}
+      <FeeTermsGate />
     </AuthGuard>
   );
 }

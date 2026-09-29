@@ -8,7 +8,7 @@
  */
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Ban, CalendarClock, Trash2, UserCog, X } from "lucide-react";
+import { Ban, CalendarClock, Ticket, Trash2, UserCog, X } from "lucide-react";
 import { apiRequest, serverMessage } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -25,7 +25,8 @@ type BulkBody =
   | { action: "role"; role: "creator" | "brand" | "affiliate" }
   | { action: "dates"; activeFrom?: string | null; expiresAt?: string | null }
   | { action: "revoke" }
-  | { action: "delete" };
+  | { action: "delete" }
+  | { action: "passes"; passes: number | null };
 
 interface BulkResult { updated: number; deleted: number; revoked: number; skipped: number; accountsUpdated: number }
 
@@ -34,7 +35,10 @@ const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? o
 /** What happened, in one sentence a person can check against what they asked for. */
 export function describeBulkResult(body: BulkBody, r: BulkResult): string {
   const parts: string[] = [];
-  if (body.action === "role" || body.action === "dates") {
+  if (body.action === "passes") {
+    parts.push(`${plural(r.updated, "brand code")} now give ${body.passes == null ? "the usual number of" : body.passes} creator passes`);
+    if (r.accountsUpdated) parts.push(`${plural(r.accountsUpdated, "brand")} already signed up updated too`);
+  } else if (body.action === "role" || body.action === "dates") {
     parts.push(`${plural(r.updated, "code")} updated`);
     if (body.action === "role" && r.skipped) parts.push(`${plural(r.skipped, "used code")} left as they were`);
     if (r.accountsUpdated) parts.push(`${plural(r.accountsUpdated, "account")} moved to the new expiry`);
@@ -47,8 +51,10 @@ export function describeBulkResult(body: BulkBody, r: BulkResult): string {
   return parts.join(", ");
 }
 
-export function VoucherBulkBar({ ids, usedCount, onDone }: {
+export function VoucherBulkBar({ ids, brandIds = [], usedCount, onDone }: {
   ids: string[];
+  /** The selected codes that are brand codes: creator passes apply to these. */
+  brandIds?: string[];
   /** How many of the selected codes someone has already signed up with. */
   usedCount: number;
   onDone: () => void;
@@ -58,16 +64,21 @@ export function VoucherBulkBar({ ids, usedCount, onDone }: {
   const [datesOpen, setDatesOpen] = useState(false);
   const [confirm, setConfirm] = useState<null | "revoke" | "delete">(null);
   const [dates, setDates] = useState({ activeFrom: "", expiresAt: "" });
+  const [passesOpen, setPassesOpen] = useState(false);
+  const [passes, setPasses] = useState("10");
 
   const run = useMutation({
     mutationFn: async (body: BulkBody) => {
-      const res = await apiRequest("POST", "/api/admin/vouchers/bulk", { ids, ...body });
+      // Creator passes only mean something on brand codes.
+      const target = body.action === "passes" ? brandIds : ids;
+      const res = await apiRequest("POST", "/api/admin/vouchers/bulk", { ids: target, ...body });
       return { body, result: (await res.json()) as BulkResult };
     },
     onSuccess: ({ body, result }) => {
       qc.invalidateQueries({ queryKey: ["/api/admin/vouchers"] });
       toast({ title: "Done", description: describeBulkResult(body, result) });
       setDatesOpen(false);
+      setPassesOpen(false);
       setConfirm(null);
       onDone();
     },
@@ -103,6 +114,15 @@ export function VoucherBulkBar({ ids, usedCount, onDone }: {
 
         <Button variant="outline" size="sm" className="gap-1.5" disabled={run.isPending} onClick={() => setDatesOpen(true)} data-testid="button-bulk-dates">
           <CalendarClock className="h-3.5 w-3.5" /> Set dates
+        </Button>
+        <Button
+          variant="outline" size="sm" className="gap-1.5"
+          disabled={run.isPending || brandIds.length === 0}
+          title={brandIds.length === 0 ? "Select some brand codes" : undefined}
+          onClick={() => setPassesOpen(true)}
+          data-testid="button-bulk-passes"
+        >
+          <Ticket className="h-3.5 w-3.5" /> Creator passes
         </Button>
         <Button variant="outline" size="sm" className="gap-1.5" disabled={run.isPending} onClick={() => setConfirm("revoke")} data-testid="button-bulk-revoke">
           <Ban className="h-3.5 w-3.5" /> Revoke
@@ -149,6 +169,33 @@ export function VoucherBulkBar({ ids, usedCount, onDone }: {
               data-testid="button-bulk-dates-save"
             >
               Apply to {plural(n, "code")}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={passesOpen} onOpenChange={setPassesOpen}>
+        <DialogContent data-testid="dialog-bulk-passes">
+          <DialogHeader>
+            <DialogTitle>Creator passes for {plural(brandIds.length, "brand code")}</DialogTitle>
+            <DialogDescription>
+              How many creators each brand signing up with these codes can invite with a free pass.
+              Brands that already signed up with them get the new number too. Leave it empty for the usual limit.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 pt-2">
+            <Label htmlFor="bulk-passes">Passes per brand</Label>
+            <Input id="bulk-passes" type="number" min={0} max={1000} value={passes}
+              onChange={(e) => setPasses(e.target.value)} data-testid="input-bulk-passes" />
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setPassesOpen(false)}>Cancel</Button>
+            <Button
+              disabled={run.isPending}
+              onClick={() => run.mutate({ action: "passes", passes: passes === "" ? null : Number(passes) })}
+              data-testid="button-bulk-passes-save"
+            >
+              Apply
             </Button>
           </DialogFooter>
         </DialogContent>

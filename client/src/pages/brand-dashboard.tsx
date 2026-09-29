@@ -5,13 +5,14 @@ import { EmptyState } from "@/components/EmptyState";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { StatCard } from "@/components/StatCard";
+import { CreatorPassesLeft } from "@/components/CreatorPassesLeft";
 import { greeting, todayLabel, monthToDateLabel } from "@/lib/greeting";
 import { BrandDashboardTabs } from "@/components/BrandDashboardTabs";
 import { VideoUploadModal } from "@/components/VideoUploadModal";
 import { defaultCarouselSettings } from "@/components/ProductCarouselEditor";
 import { Eye, DollarSign, MousePointer, Users, Package, Link2, TrendingUp, Zap, Mail, Settings, Upload, Calculator, ArrowRight } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, serverMessage } from "@/lib/queryClient";
 import { Link, useLocation } from "wouter";
 import type { Brand, User, Product } from "@shared/schema";
 import { OVERAGE_RATES } from "@shared/plans";
@@ -85,16 +86,17 @@ export default function BrandDashboard() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/brands/creator-invites"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/brands/invite-passes"] });
       toast({
         title: "Invitation Sent!",
         description: "Your invitation email has been sent to the creator.",
       });
       form.reset();
     },
-    onError: () => {
+    onError: (err: unknown) => {
       toast({
-        title: "Invitation Failed",
-        description: "There was an error sending the invitation.",
+        title: "Invitation not sent",
+        description: serverMessage(err) || "Something went wrong. Please try again.",
         variant: "destructive",
       });
     },
@@ -396,8 +398,9 @@ export default function BrandDashboard() {
                 Connect Your Creators
               </CardTitle>
               <p className="text-sm text-muted-foreground">
-                Invite content creators to feature your products in their videos
+                Invite content creators to feature your products in their videos. Each one gets a free pass.
               </p>
+              <CreatorPassesLeft className="mt-2" />
             </CardHeader>
             <CardContent>
               <Form {...form}>

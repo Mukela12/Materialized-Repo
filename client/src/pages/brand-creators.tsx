@@ -27,6 +27,7 @@ import type { CreatorInvitation } from "@shared/schema";
 import { formatDistanceToNow } from "date-fns";
 import { parseContactCsv, isCsvFile } from "@/lib/csvImport";
 import { CsvFormatHint } from "@/components/CsvFormatHint";
+import { CreatorPassesLeft, useInvitePasses } from "@/components/CreatorPassesLeft";
 
 /**
  * The invitation a brand sends a creator, supplied by the client verbatim.
@@ -117,16 +118,17 @@ export default function BrandCreators() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/brands/creator-invites"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/brands/invite-passes"] });
       toast({
         title: "Invitation Sent",
         description: "The creator has been invited to join your network.",
       });
       form.reset();
     },
-    onError: () => {
+    onError: (err: unknown) => {
       toast({
-        title: "Failed to Send",
-        description: "There was an error sending the invitation.",
+        title: "Invitation not sent",
+        description: serverMessage(err) || "Something went wrong. Please try again.",
         variant: "destructive",
       });
     },
@@ -148,6 +150,7 @@ export default function BrandCreators() {
     },
     onSuccess: (response) => {
       queryClient.invalidateQueries({ queryKey: ["/api/brands/creator-invites"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/brands/invite-passes"] });
       const notSent = response.errors ?? [];
       const reasons = Array.from(new Set(notSent.map((e) => e.error))).join(", ");
       toast({
@@ -258,6 +261,7 @@ export default function BrandCreators() {
   };
 
   const validCount = csvData.filter(r => r.isValid).length;
+  const { data: passes } = useInvitePasses();
   const invalidCount = csvData.filter(r => !r.isValid).length;
 
   return (
@@ -277,8 +281,9 @@ export default function BrandCreators() {
               Send Invitations
             </CardTitle>
             <CardDescription>
-              Invite creators individually or import from a CSV file
+              Invite creators individually or import from a CSV file. Each one gets a free pass.
             </CardDescription>
+            <CreatorPassesLeft className="mt-2 self-start" />
           </CardHeader>
           <CardContent>
             <Tabs value={activeTab} onValueChange={setActiveTab}>
@@ -497,15 +502,24 @@ export default function BrandCreators() {
                       </div>
                     </ScrollArea>
 
+                    {passes && validCount > passes.remaining && (
+                      <p className="rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs" data-testid="text-passes-short">
+                        {passes.remaining === 0
+                          ? `You've used all ${passes.limit} creator passes, so these can't be sent yet.`
+                          : `You have ${passes.remaining} creator ${passes.remaining === 1 ? "pass" : "passes"} left, so only the first ${passes.remaining} will be sent.`}
+                      </p>
+                    )}
                     <Button
                       type="button"
                       className="w-full rounded-full gap-2"
-                      disabled={validCount === 0 || bulkInviteMutation.isPending}
+                      disabled={validCount === 0 || bulkInviteMutation.isPending || passes?.remaining === 0}
                       onClick={() => bulkInviteMutation.mutate({ invitations: csvData })}
                       data-testid="button-send-bulk-invites"
                     >
                       <Send className="h-4 w-4" />
-                      {bulkInviteMutation.isPending ? "Sending..." : `Send ${validCount} Invitations`}
+                      {bulkInviteMutation.isPending
+                        ? "Sending..."
+                        : `Send ${Math.min(validCount, passes?.remaining ?? validCount)} ${Math.min(validCount, passes?.remaining ?? validCount) === 1 ? "Invitation" : "Invitations"}`}
                     </Button>
                   </div>
                 )}

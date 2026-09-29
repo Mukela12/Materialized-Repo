@@ -1,4 +1,5 @@
 import { type Express } from "express";
+import { resolveFeeConfig } from "./feeConfig";
 import { ensureOwnBrand } from "./brandAccount";
 import { publicOrigin } from "./publicOrigin";
 import { storage } from "./storage";
@@ -19,6 +20,8 @@ const registerSchema = z.object({
   displayName: z.string().min(1),
   role: z.enum(["creator", "brand", "affiliate"]).default("creator"),
   accessCode: z.string().optional(),
+  /** Brands agree to the marketplace fee to sign up (client, 29 Sep 2026). */
+  acceptFeeTerms: z.boolean().optional(),
 });
 
 const forgotPasswordSchema = z.object({
@@ -98,7 +101,20 @@ export function registerAuthRoutes(app: Express) {
       return res.status(400).json({ error: parsed.error.errors[0]?.message ?? "Invalid input" });
     }
 
-    const { email, password, displayName, role, accessCode } = parsed.data;
+    const { email, password, displayName, role, accessCode, acceptFeeTerms } = parsed.data;
+
+    // A brand agrees to the marketplace fee before its account exists: the fee
+    // is taken from every sale a video drives, so it is stated up front and
+    // recorded with the rate agreed to (client, 29 Sep 2026).
+    if (role === "brand" && acceptFeeTerms !== true) {
+      return res.status(400).json({
+        error: "Please agree to the marketplace fee to create a brand account.",
+        code: "FEE_TERMS_REQUIRED",
+      });
+    }
+    const feePct = role === "brand"
+      ? resolveFeeConfig(await storage.getPlatformSettings()).marketplaceFeePct
+      : null;
 
     const existing = await storage.getUserByEmail(email);
     if (existing) {
@@ -135,6 +151,8 @@ export function registerAuthRoutes(app: Express) {
      * A voucher with no expiry grants open-ended free access, exactly as before.
      */
     let freeAccessUntil: Date | null = null;
+    /** Brand codes can carry a creator-pass allowance (e.g. 10 for Brooklyn). */
+    let voucherCreatorPasses: number | null = null;
 
     if (accessCode && accessCode.trim()) {
       const code = normaliseCode(accessCode);
@@ -167,6 +185,7 @@ export function registerAuthRoutes(app: Express) {
           ? new Date(Date.now() + check.voucher.freeDays * 24 * 60 * 60 * 1000)
           : (check.voucher.expiresAt ?? null);
         voucherToRedeem = { id: check.voucher.id, maxRedemptions: check.voucher.maxRedemptions };
+        voucherCreatorPasses = check.voucher.creatorPasses ?? null;
       }
     }
 
@@ -213,6 +232,7 @@ export function registerAuthRoutes(app: Express) {
        * trial ended (found in QA, 29 Sep 2026; the Brooklyn brand codes).
        */
       setupFeeWaived: voucherGrants.waiveSetupFee,
+      ...(feePct != null ? { feeTermsAcceptedAt: new Date(), feeTermsPct: feePct.toFixed(2) } : {}),
       freeAccessUntil: voucherGrants.freeAccess ? freeAccessUntil : trialUntil,
       /**
        * Overage accountability is stamped on every free window — voucher or
@@ -248,7 +268,15 @@ export function registerAuthRoutes(app: Express) {
     // campaigns all hang off it, and without it the brand could add nothing.
     // Not fatal: the routes that need it create it too (server/brandAccount.ts).
     if (role === "brand") {
-      await ensureOwnBrand(user).catch((err) => console.error("[Auth] Could not create brand for new account:", err));
+      const brand = await ensureOwnBrand(user).catch((err) => {
+        console.error("[Auth] Could not create brand for new account:", err);
+        return null;
+      });
+      // The code's creator passes become the brand's limit. Only once the
+      // voucher is actually redeemed below does it count; a lost race resets it.
+      if (brand && voucherCreatorPasses != null) {
+        await storage.updateBrand(brand.id, { invitePassLimit: voucherCreatorPasses } as any).catch(() => {});
+      }
     }
 
     let voucherLost: string | null = null;
@@ -269,6 +297,10 @@ export function registerAuthRoutes(app: Express) {
         } as any).catch(() => {});
         // Carry on so the verification email still goes out; answered below.
         // No longer a voucher signup, so no instant session either.
+        if (voucherCreatorPasses != null) {
+          const own = await ensureOwnBrand(user).catch(() => null);
+          if (own) await storage.updateBrand(own.id, { invitePassLimit: null } as any).catch(() => {});
+        }
         voucherLost = r.reason ?? "exhausted";
         voucherToRedeem = null;
       }
@@ -520,6 +552,10 @@ export function registerAuthRoutes(app: Express) {
       stripeConnectOnboarded: user.stripeConnectOnboarded,
       // Lets the client offer the first-run tour only to genuinely new accounts.
       createdAt: user.createdAt,
+      // For the one-time marketplace-fee prompt shown to brands who have not
+      // agreed yet (or agreed to a different rate).
+      feeTermsAcceptedAt: (user as any).feeTermsAcceptedAt ?? null,
+      feeTermsPct: (user as any).feeTermsPct ?? null,
     });
   });
 }

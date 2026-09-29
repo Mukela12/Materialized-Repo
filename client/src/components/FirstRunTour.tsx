@@ -8,6 +8,7 @@
  * Replayable from the Cmd-K palette ("Take the tour").
  */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { useFeeTermsPending } from "@/components/FeeTerms";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import type { CurrentUser } from "@/hooks/useCurrentUser";
@@ -73,16 +74,19 @@ export function FirstRunTour({ portal, user }: { portal: Portal; user: CurrentUs
     if (user?.id) try { localStorage.setItem(storageKey(user.id), "done"); } catch { /* private mode */ }
   }, [user?.id]);
 
+  // Waits while a brand still has the marketplace-fee prompt to answer.
+  const feePending = useFeeTermsPending();
+
   // Auto-offer once, to new non-admin accounts, on the portal home.
   useEffect(() => {
-    if (!user?.id || user.isAdmin || !user.createdAt) return;
+    if (!user?.id || user.isAdmin || !user.createdAt || feePending) return;
     if (location !== `/${portal}`) return;
     const ageDays = (Date.now() - new Date(user.createdAt).getTime()) / 86_400_000;
     if (!(ageDays <= NEW_ACCOUNT_DAYS)) return;
     try { if (localStorage.getItem(storageKey(user.id))) return; } catch { return; }
     const t = setTimeout(() => { setIndex(0); setActive(true); }, 1200);
     return () => clearTimeout(t);
-  }, [user?.id, user?.isAdmin, user?.createdAt, location, portal]);
+  }, [user?.id, user?.isAdmin, user?.createdAt, location, portal, feePending]);
 
   // Replay on demand (Cmd-K "Take the tour").
   useEffect(() => {

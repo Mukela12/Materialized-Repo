@@ -40,6 +40,8 @@ export interface VoucherRecord {
    * redeems until 31 October, but each signup gets its own 30 days.
    */
   freeDays: number | null;
+  /** Brand codes: creator passes the brand gets to hand out. Null = default. */
+  creatorPasses?: number | null;
   revokedAt: Date | null;
 }
 

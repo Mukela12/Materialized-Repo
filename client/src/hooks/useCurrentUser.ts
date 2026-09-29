@@ -14,6 +14,8 @@ export interface CurrentUser {
   stripeConnectAccountId?: string;
   stripeConnectOnboarded?: boolean;
   createdAt?: string;
+  feeTermsAcceptedAt?: string | null;
+  feeTermsPct?: string | null;
 }
 
 export function useCurrentUser() {

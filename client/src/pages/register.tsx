@@ -12,6 +12,8 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import materializedLogo from "@assets/MTRLZD_Logo_white_transparent.png";
 import { Eye, EyeOff } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { FeeTermsSummary, useFeeTerms } from "@/components/FeeTerms";
 import type { CurrentUser } from "@/hooks/useCurrentUser";
 
 const schema = z.object({
@@ -20,6 +22,10 @@ const schema = z.object({
   displayName: z.string().min(1, "Display name is required"),
   role: z.enum(["creator", "brand", "affiliate"]),
   accessCode: z.string().optional(),
+  acceptFeeTerms: z.boolean().optional(),
+}).refine((d) => d.role !== "brand" || d.acceptFeeTerms === true, {
+  message: "Please agree to the marketplace fee to create a brand account",
+  path: ["acceptFeeTerms"],
 });
 type FormData = z.infer<typeof schema>;
 
@@ -60,6 +66,7 @@ export default function Register() {
       accessCode: invitedCode,
     },
   });
+  const { data: feeTerms } = useFeeTerms();
 
   const registerMutation = useMutation({
     mutationFn: (data: FormData) => apiRequest("POST", "/api/auth/register", data),
@@ -252,6 +259,33 @@ export default function Register() {
                   </FormItem>
                 )}
               />
+
+              {/* Brands agree to the marketplace fee up front (client, 29 Sep 2026). */}
+              {form.watch("role") === "brand" && feeTerms && (
+                <FormField
+                  control={form.control}
+                  name="acceptFeeTerms"
+                  render={({ field }) => (
+                    <FormItem className="rounded-xl border bg-muted/40 p-4">
+                      <FeeTermsSummary pct={feeTerms.marketplaceFeePct} />
+                      <div className="mt-3 flex items-start gap-2">
+                        <FormControl>
+                          <Checkbox
+                            id="accept-fee-terms"
+                            checked={field.value === true}
+                            onCheckedChange={(v) => field.onChange(v === true)}
+                            data-testid="checkbox-accept-fee-terms"
+                          />
+                        </FormControl>
+                        <label htmlFor="accept-fee-terms" className="text-sm font-medium leading-tight">
+                          I agree to the {feeTerms.marketplaceFeePct}% marketplace fee
+                        </label>
+                      </div>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              )}
 
               <Button
                 type="submit"

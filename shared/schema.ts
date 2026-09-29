@@ -95,6 +95,13 @@ export const users = pgTable("users", {
   // apart from setupFeePaid so "paid" still means money was received.
   setupFeeWaived: boolean("setup_fee_waived").notNull().default(false),
   /**
+   * When a brand agreed to the marketplace fee, and the percentage they agreed
+   * to (client, 29 Sep 2026). Stored with the rate so a later change of rate is
+   * a new agreement, not a silent one.
+   */
+  feeTermsAcceptedAt: timestamp("fee_terms_accepted_at"),
+  feeTermsPct: decimal("fee_terms_pct", { precision: 5, scale: 2 }),
+  /**
    * Free access requires a card. Stamped at voucher redemption — the client's
    * rule is that overage accountability is "the single requirement of having
    * free access" — so it binds voucher signups only, never existing accounts
@@ -144,6 +151,13 @@ export const brands = pgTable("brands", {
   inventoryAccessUntil: timestamp("inventory_access_until"),
   inventoryAccessGrantedBy: varchar("inventory_access_granted_by").references(() => users.id),
   inventoryAccessNote: text("inventory_access_note"),
+
+  /**
+   * How many free creator passes this brand can hand out (each invitation
+   * mints one). Null means the platform default (INVITE_VOUCHER_CAP). Set from
+   * the brand's sign-up voucher, e.g. 10 for Brooklyn (client, 29 Sep 2026).
+   */
+  invitePassLimit: integer("invite_pass_limit"),
 });
 
 // Products table for brand inventory
@@ -1732,6 +1746,11 @@ export const vouchers = pgTable("vouchers", {
    * behavior: free until the voucher's own expiry date.
    */
   freeDays: integer("free_days"),
+  /**
+   * For brand codes: the creator passes a brand that signs up with this code
+   * gets to hand out (brands.invite_pass_limit). Null means the default.
+   */
+  creatorPasses: integer("creator_passes"),
   /** Revocation is a timestamp, not a delete: redemptions already made stay valid. */
   revokedAt: timestamp("revoked_at"),
   createdBy: varchar("created_by").references(() => users.id),

@@ -87,7 +87,7 @@ describe("links checked when the page opens", () => {
 describe("every brand account has a brand (found in QA, 29 Sep)", () => {
   it("sign-up creates the brand for a brand account", () => {
     const auth = code("server/authRoutes.ts");
-    expect(auth).toMatch(/if \(role === "brand"\) \{\s*await ensureOwnBrand\(user\)/);
+    expect(auth).toMatch(/if \(role === "brand"\) \{\s*const brand = await ensureOwnBrand\(user\)/);
   });
 
   it("only brand accounts get one, one per account even under concurrent first requests", () => {

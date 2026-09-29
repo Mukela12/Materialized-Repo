@@ -54,6 +54,8 @@ interface VoucherRow {
   assignedTo: string | null;
   /** Which partner within that batch. Filled in by the organizer, not by us. */
   partner: string | null;
+  /** Brand codes: creator passes the brand gets. Null means the usual limit. */
+  creatorPasses?: number | null;
   /** Who actually redeemed it, once someone has. */
   redeemedBy: string | null;
 }
@@ -83,7 +85,7 @@ function roleLabel(role: string | null): string {
 export function VoucherManager() {
   const { toast } = useToast();
   const qc = useQueryClient();
-  const [form, setForm] = useState({ ...GTM_DEFAULTS, code: "", activeFrom: "", expiresAt: "" });
+  const [form, setForm] = useState({ ...GTM_DEFAULTS, code: "", activeFrom: "", expiresAt: "", creatorPasses: "" });
   const [editing, setEditing] = useState<Record<string, string>>({});
   const [editingPartner, setEditingPartner] = useState<Record<string, string>>({});
   /**
@@ -115,7 +117,7 @@ export function VoucherManager() {
     onSuccess: async (res: any) => {
       qc.invalidateQueries({ queryKey: ["/api/admin/vouchers"] });
       const body = typeof res?.json === "function" ? await res.json() : res;
-      setForm({ ...GTM_DEFAULTS, code: "", activeFrom: "", expiresAt: "" });
+      setForm({ ...GTM_DEFAULTS, code: "", activeFrom: "", expiresAt: "", creatorPasses: "" });
       toast({
         title: body?.count > 1 ? `${body.count} vouchers created` : "Voucher created",
         description: body?.count > 1 ? "Export them as CSV to hand to a partner." : undefined,
@@ -371,6 +373,23 @@ export function VoucherManager() {
                 data-testid="input-voucher-expiry"
               />
             </div>
+            {form.roleRestriction === "brand" && (
+              <div>
+                <Label>Creator passes for each brand (optional)</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  max={1000}
+                  placeholder="leave blank for the usual limit"
+                  value={form.creatorPasses}
+                  onChange={(e) => setForm({ ...form, creatorPasses: e.target.value })}
+                  data-testid="input-voucher-creator-passes"
+                />
+                <p className="text-xs text-muted-foreground mt-1">
+                  How many creators each brand can invite with a free pass, e.g. 10 for Brooklyn.
+                </p>
+              </div>
+            )}
           </div>
 
           <Button
@@ -382,6 +401,7 @@ export function VoucherManager() {
               maxRedemptions: form.maxRedemptions || null,
               activeFrom: form.activeFrom || null,
               expiresAt: form.expiresAt || null,
+              creatorPasses: form.roleRestriction === "brand" && form.creatorPasses !== "" ? Number(form.creatorPasses) : null,
             })}
             disabled={create.isPending}
             data-testid="button-create-voucher"
@@ -533,7 +553,12 @@ export function VoucherManager() {
           ) : (
             <>
             {selectedIds.length > 0 && (
-              <VoucherBulkBar ids={selectedIds} usedCount={selectedUsed} onDone={() => setSelected(new Set())} />
+              <VoucherBulkBar
+                ids={selectedIds}
+                brandIds={visible.filter(v => selected.has(v.id) && v.roleRestriction === "brand").map(v => v.id)}
+                usedCount={selectedUsed}
+                onDone={() => setSelected(new Set())}
+              />
             )}
             <div className="overflow-x-auto">
               <table className="w-full text-sm" data-testid="table-vouchers">
@@ -592,6 +617,11 @@ export function VoucherManager() {
                         <div className="text-xs text-muted-foreground mt-1">
                           {v.grantType === "free_access" ? "Free access" : "Setup fee waived"}
                         </div>
+                        {v.roleRestriction === "brand" && v.creatorPasses != null && (
+                          <div className="text-xs text-muted-foreground" data-testid={`text-creator-passes-${v.id}`}>
+                            {v.creatorPasses} creator {v.creatorPasses === 1 ? "pass" : "passes"}
+                          </div>
+                        )}
                       </td>
                       <td className="py-2 pr-4">
                         {/* Free text: most recipients have no account yet, which
