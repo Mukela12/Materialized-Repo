@@ -112,6 +112,6 @@ describe("overlays appear only during their own seconds", () => {
   /** The panel carries the background, so an empty one is a smear on the video. */
   it("hides the panel when nothing is due", () => {
     const fn = routes.slice(routes.indexOf("function syncOverlays()"));
-    expect(fn.slice(0, 400)).toContain('carousel.style.display=any?"":"none"');
+    expect(fn.slice(0, 900)).toContain('carousel.style.display=any?"":"none"');
   });
 });

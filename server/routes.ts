@@ -7643,27 +7643,63 @@ export async function registerRoutes(
     #loader{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);z-index:10}
     .spinner{width:40px;height:40px;border:3px solid rgba(255,255,255,0.2);border-top-color:#677A67;border-radius:50%;animation:spin 0.8s linear infinite}
     @keyframes spin{to{transform:rotate(360deg)}}
-    #carousel{position:absolute;bottom:clamp(8px,2vw,16px);left:clamp(8px,2vw,16px);right:clamp(8px,2vw,16px);display:flex;gap:clamp(4px,1vw,8px);overflow-x:auto;padding:4px 0;scrollbar-width:none;z-index:5}
+    /* ── The carousel's design (30 Sep 2026: "more premium and high quality
+       and refined") ──────────────────────────────────────────────────────
+       A glass dock that floats over the footage and is as big as its
+       products, square product shots with a hairline edge, a clear type
+       hierarchy (spaced brand, lighter name, crisp price), a slim button, and
+       cards that rise in when their moment comes. Sizes come from --card-*
+       variables that fitPlayer() sets from the video's own size. Everything a
+       creator chooses (colours, fonts, sizes, toggles, position) is layered
+       on by the per-video block after this, so none of it is decided here. */
+    #carousel{position:absolute;bottom:var(--edge,12px);left:50%;right:auto;transform:translateX(-50%);display:flex;gap:var(--gap,6px);overflow-x:auto;padding:var(--card-pad,6px);scrollbar-width:none;z-index:5;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;animation:mtz-fade .35s ease-out}
     #carousel::-webkit-scrollbar{display:none}
     /* No products yet, no panel. The container is styled — background, radius,
        padding — from the video's carousel settings, so an empty one still
        painted a translucent slab over the footage with nothing in it. */
     #carousel:empty{display:none}
-    .product-card{flex:0 0 auto;background:rgba(255,255,255,0.95);border-radius:clamp(6px,1.5vw,12px);padding:clamp(3px,1vw,8px);width:clamp(58px,var(--card-w,18vw),120px);cursor:pointer;transition:transform .2s;text-decoration:none;backdrop-filter:blur(8px)}
-    .product-card:hover{transform:scale(1.05)}
-    .product-card img{width:100%;height:clamp(30px,var(--card-img-h,10vw),80px);object-fit:cover;border-radius:clamp(4px,1vw,8px)}
+    .product-card{flex:0 0 auto;position:relative;display:flex;flex-direction:column;width:var(--card-w,96px);padding:var(--card-pad,6px);text-decoration:none;color:inherit;cursor:pointer;scroll-snap-align:start;-webkit-tap-highlight-color:transparent;transition:transform .3s cubic-bezier(.2,.8,.2,1),background-color .3s;animation:mtz-rise .45s cubic-bezier(.2,.8,.2,1) backwards}
+    @media (hover:hover){
+      .product-card:hover{transform:translateY(-2px);background-color:rgba(255,255,255,.06)}
+      .product-card:hover .thumb img{transform:scale(1.05)}
+    }
+    .product-card:active{transform:scale(.97)}
+    .product-card:focus-visible{outline:2px solid rgba(255,255,255,.85);outline-offset:2px}
+    .product-card .thumb{position:relative;width:100%;aspect-ratio:1/1;overflow:hidden;background:rgba(255,255,255,.08);box-shadow:inset 0 0 0 1px rgba(255,255,255,.1)}
+    .product-card .thumb img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .6s cubic-bezier(.2,.8,.2,1)}
     /* The brand line truncates exactly like the product name. It never had a
        base rule at all — only color and font from the per-video block — so a
        long brand ran the full width of the strip and three cards' worth of
        "MATERIALIZED FASHION" collided into one another. */
-    .product-brand{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
+    .product-brand{margin-top:calc(var(--card-pad,6px) + 1px);font-weight:600;letter-spacing:.12em;text-transform:uppercase;opacity:.62;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%;line-height:1.3}
     /* The client asked for 5px more air between the brand line and the title,
        and again before the button. The card has no fixed height, so it grows to
        take it rather than squeezing the text. */
-    .product-name{font-size:clamp(7px,var(--card-name,2vw),11px);font-weight:600;margin-top:calc(clamp(2px,0.5vw,4px) + 5px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#333}
-    .product-price{font-size:clamp(7px,var(--card-price,1.8vw),10px);color:#677A67;font-weight:700;margin-top:1px}
-    .buy-btn{margin-top:8px;width:100%;border:0;border-radius:999px;background:#1351aa;color:#fff;font-size:clamp(7px,var(--card-buy,1.7vw),10px);font-weight:700;padding:3px 0;cursor:pointer;font-family:inherit}
-    .buy-btn:hover{background:#0f4189}
+    /* Two lines, as fashion sites set product names: one line cut "Sage Linen
+       Blazer" to "Sage Linen Bl…". Always two lines tall, so cards align. */
+    .product-name{margin-top:calc(clamp(2px,0.5vw,4px) + 5px);font-weight:500;letter-spacing:-.005em;line-height:1.25;min-height:2.5em;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow-wrap:anywhere}
+    /* A short stage (a landscape video in a small frame) gets a compact card:
+       no brand line, one line of name, so the products don't cover the picture. */
+    #player.compact .product-brand{display:none}
+    #player.compact .product-name{-webkit-line-clamp:1;min-height:1.25em;margin-top:4px}
+    #player.compact .buy-btn{margin-top:5px}
+    .product-price{margin-top:2px;font-weight:600;font-variant-numeric:tabular-nums;letter-spacing:.01em;opacity:.9;line-height:1.25}
+    .buy-btn{margin-top:8px;width:100%;height:var(--btn-h,24px);display:flex;align-items:center;justify-content:center;border:0;padding:0 8px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap;cursor:pointer;box-shadow:inset 0 1px 0 rgba(255,255,255,.2),0 1px 2px rgba(0,0,0,.3);transition:filter .2s,transform .2s,background-color .2s}
+    .buy-btn:active{transform:scale(.97)}
+    /* The end-of-video list (commerce off): the last frame frosted, a small
+       heading, one glass row per product. */
+    #end-list{position:absolute;inset:0;z-index:6;display:none;flex-direction:column;align-items:center;justify-content:center;padding:var(--edge,12px);background:linear-gradient(180deg,rgba(0,0,0,.5),rgba(0,0,0,.78));-webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);overflow-y:auto;animation:mtz-fade .4s ease-out}
+    #end-list .end-title{font-size:calc(var(--card-brand,8px) * 1.15);letter-spacing:.2em;text-transform:uppercase;font-weight:600;color:rgba(255,255,255,.72);margin-bottom:12px}
+    #end-list .end-rows{width:100%;max-width:440px;display:flex;flex-direction:column;gap:8px}
+    .end-row{display:flex;align-items:center;gap:12px;padding:8px;border-radius:14px;background:rgba(255,255,255,.07);box-shadow:inset 0 0 0 1px rgba(255,255,255,.09);text-decoration:none;color:inherit;animation:mtz-rise .45s cubic-bezier(.2,.8,.2,1) backwards;transition:background-color .2s}
+    .end-row:hover{background:rgba(255,255,255,.13)}
+    .end-row .product-brand{margin-top:0}
+    .end-row .product-name{min-height:0;-webkit-line-clamp:1;margin-top:2px}
+    .end-thumb{width:52px;height:52px;object-fit:cover;border-radius:10px;flex:0 0 auto;box-shadow:inset 0 0 0 1px rgba(255,255,255,.1)}
+    .end-cta{width:auto;flex:0 0 auto;margin-top:0;padding:0 14px}
+    @keyframes mtz-rise{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+    @keyframes mtz-fade{from{opacity:0}to{opacity:1}}
+    @media (prefers-reduced-motion:reduce){.product-card,#carousel{animation:none}.product-card,.product-card .thumb img{transition:none}}
     /* The checkout sits OVER the video, inside the same frame — the shopper
        never leaves the brand's page. */
     #pay{position:absolute;inset:0;background:rgba(12,14,16,.92);z-index:20;display:none;overflow-y:auto;padding:12px}
@@ -7738,12 +7774,23 @@ ${embedCarouselCss(carousel)}
        * 800 and three 120px cards were laid into 207px of space. Two of them
        * were sliced in half, which reads as broken rather than scrollable.
        */
-      p.style.setProperty("--card-w", (w * 0.29) + "px");
-      p.style.setProperty("--card-img-h", (w * 0.24) + "px");
-      p.style.setProperty("--card-name", (w * 0.032) + "px");
-      p.style.setProperty("--card-price", (w * 0.028) + "px");
-      p.style.setProperty("--card-brand", (w * 0.024) + "px");
-      p.style.setProperty("--card-buy", (w * 0.026) + "px");
+      /* Sized from the smaller of the stage's width and 1.25x its height, so a
+         landscape video on a phone (390x220) gets a carousel in proportion to
+         its short side instead of one that covers most of the picture. The
+         same numbers are used for the downloaded clip (server/shareClip.ts). */
+      var base=Math.min(w,h*1.25),c=function(lo,v,hi){return Math.max(lo,Math.min(hi,v))+"px"};
+      // Width from the stage, and never so tall a card that the dock covers
+      // more than about a third of a landscape frame.
+      p.style.setProperty("--card-w", c(52,Math.min(w*0.24,h*0.15),104));
+      p.classList.toggle("compact", h<320);
+      p.style.setProperty("--card-pad", c(4,base*0.012,7));
+      p.style.setProperty("--gap", c(3,base*0.01,6));
+      p.style.setProperty("--edge", c(8,base*0.03,16));
+      p.style.setProperty("--card-brand", c(6.5,base*0.021,8.5));
+      p.style.setProperty("--card-name", c(8.5,base*0.03,12));
+      p.style.setProperty("--card-price", c(8,base*0.028,11));
+      p.style.setProperty("--card-buy", c(7,base*0.022,9.5));
+      p.style.setProperty("--btn-h", c(18,base*0.062,26));
     }
     (function(){
       var v=document.getElementById("vid");
@@ -7758,7 +7805,8 @@ ${embedCarouselCss(carousel)}
     products.forEach(function(p){
       var a=document.createElement("a");
       a.href=p.productUrl||"#";a.target="_blank";a.rel="noopener";a.className="product-card";
-      if(p.imageUrl){var img=document.createElement("img");img.src=p.imageUrl;img.alt=p.name;a.appendChild(img);}
+      // The product shot sits in a square frame, cropped to fill it.
+      if(p.imageUrl){var th=document.createElement("div");th.className="thumb";var img=document.createElement("img");img.src=p.imageUrl;img.alt=p.name;img.loading="lazy";img.decoding="async";th.appendChild(img);a.appendChild(th);}
       // The brand line. brandTitleColor had nothing of its own to color, so
       // it had been pointed at the price — which is what the client saw as
       // "Brand Title color changes the Price color".
@@ -7795,11 +7843,13 @@ ${embedCarouselCss(carousel)}
      * handful of cards, and it follows scrubbing for free.
      */
     function syncOverlays(){
-      var t=vid.currentTime,any=false;
+      var t=vid.currentTime,any=false,shown=0;
       for(var i=0;i<timedCards.length;i++){
         var c=timedCards[i],on=t>=c.start&&t<c.end;
+        // Cards arriving together rise in one after another.
+        if(on&&c.el.style.display==="none")c.el.style.animationDelay=(shown*60)+"ms";
         c.el.style.display=on?"":"none";
-        if(on)any=true;
+        if(on){any=true;shown++;}
       }
       carousel.style.display=any?"":"none";
     }
@@ -7870,11 +7920,12 @@ ${embedCarouselCss(carousel)}
     if(!COMMERCE_ON){
       var endList=document.createElement("div");
       endList.id="end-list";
-      endList.style.cssText="position:absolute;inset:0;z-index:6;display:none;flex-direction:column;justify-content:center;gap:6px;padding:clamp(10px,4vw,28px);background:rgba(0,0,0,.72);overflow-y:auto";
+      var endTitle=document.createElement("div");endTitle.className="end-title";endTitle.textContent="Shop the video";endList.appendChild(endTitle);
+      var endRows=document.createElement("div");endRows.className="end-rows";endList.appendChild(endRows);
       products.forEach(function(p){
         var row=document.createElement("a");
         row.href=p.productUrl||"#";row.target="_blank";row.rel="noopener";
-        row.style.cssText="display:flex;align-items:center;justify-content:space-between;gap:10px;text-decoration:none;padding:6px 8px;border-radius:8px";
+        row.className="end-row";row.style.animationDelay=(endRows.childElementCount*70)+"ms";
         /**
          * The SAME show/hide toggles as the in-video carousel.
          *
@@ -7902,7 +7953,7 @@ ${embedCarouselCss(carousel)}
         cta.textContent=BUY_LABEL;
         row.appendChild(cta);
         row.addEventListener("click",function(){track("click")});
-        endList.appendChild(row);
+        endRows.appendChild(row);
       });
       document.getElementById("player").appendChild(endList);
       vid.addEventListener("ended",function(){

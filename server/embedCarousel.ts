@@ -39,7 +39,8 @@ export function resolveEmbedSettings(
 
 /** Where the carousel strip sits, as CSS edges. */
 function positionCss(s: CarouselSettings): string {
-  const gap = "clamp(8px,2vw,16px)";
+  // --edge is set by the player from the size of the video (fitPlayer).
+  const gap = "var(--edge,12px)";
   const x = `calc(${gap} + ${s.positionOffsetX}px)`;
   const y = `calc(${gap} + ${s.positionOffsetY}px)`;
   const yUp = `calc(${gap} - ${s.positionOffsetY}px)`;
@@ -56,20 +57,21 @@ function positionCss(s: CarouselSettings): string {
    * products in it yet, a large blank rectangle — which is exactly how the
    * client reported it: "blank container sits over the video".
    *
-   * Only the default `bottom` was unaffected, because it happens to overwrite
-   * every edge the base rule sets. So it looked correct everywhere it was
-   * tested and broke for every other choice in the picker.
+   * Top and bottom are a centred dock that is as wide as its products (30 Sep
+   * 2026). They were a strip across the whole video, a slab that covered a
+   * third of a landscape frame whatever was in it.
    */
+  const dock = `left:calc(50% + ${s.positionOffsetX}px);right:auto;transform:translateX(-50%);width:max-content;max-width:calc(100% - 2 * ${gap})`;
   switch (s.position) {
-    case "top":          return `top:${y};bottom:auto;left:${gap};right:${gap};justify-content:center`;
-    case "bottom":       return `bottom:${yUp};top:auto;left:${gap};right:${gap};justify-content:center`;
-    case "left":         return `left:${x};right:auto;top:50%;bottom:auto;transform:translateY(-50%);max-width:38%`;
-    case "right":        return `right:${xIn};left:auto;top:50%;bottom:auto;transform:translateY(-50%);max-width:38%`;
-    case "top-left":     return `top:${y};bottom:auto;left:${x};right:auto;max-width:70%`;
-    case "top-right":    return `top:${y};bottom:auto;right:${xIn};left:auto;max-width:70%;justify-content:flex-end`;
-    case "bottom-left":  return `bottom:${yUp};top:auto;left:${x};right:auto;max-width:70%`;
-    case "bottom-right": return `bottom:${yUp};top:auto;right:${xIn};left:auto;max-width:70%;justify-content:flex-end`;
-    default:             return `bottom:${yUp};top:auto;left:${gap};right:${gap};justify-content:center`;
+    case "top":          return `top:${y};bottom:auto;${dock}`;
+    case "bottom":       return `bottom:${yUp};top:auto;${dock}`;
+    case "left":         return `left:${x};right:auto;top:50%;bottom:auto;transform:translateY(-50%);max-width:40%`;
+    case "right":        return `right:${xIn};left:auto;top:50%;bottom:auto;transform:translateY(-50%);max-width:40%`;
+    case "top-left":     return `top:${y};bottom:auto;left:${x};right:auto;transform:none;max-width:72%`;
+    case "top-right":    return `top:${y};bottom:auto;right:${xIn};left:auto;transform:none;max-width:72%`;
+    case "bottom-left":  return `bottom:${yUp};top:auto;left:${x};right:auto;transform:none;max-width:72%`;
+    case "bottom-right": return `bottom:${yUp};top:auto;right:${xIn};left:auto;transform:none;max-width:72%`;
+    default:             return `bottom:${yUp};top:auto;${dock}`;
   }
 }
 
@@ -77,7 +79,9 @@ function positionCss(s: CarouselSettings): string {
  * The stylesheet for one video's carousel.
  *
  * Emitted as a block appended after the base rules, so it overrides them
- * without the base needing to know these settings exist.
+ * without the base needing to know these settings exist. The base rules (in
+ * the embed document) carry the design: glass dock, square product shots,
+ * type hierarchy, motion. This block carries the creator's choices.
  */
 export function embedCarouselCss(raw: CarouselSettings): string {
   const s = sanitiseSettings(raw);
@@ -85,27 +89,28 @@ export function embedCarouselCss(raw: CarouselSettings): string {
   // The client's rule: anchored to a side there is no width to spare, so
   // products stack; anchored top or bottom they run side by side.
   const stacked = isStackedPosition(s.position);
+  // A panel set fully transparent is a choice for no panel: no glass, no edge.
+  const glass = s.backgroundOpacity > 0;
 
   return `
     #carousel{
       ${positionCss(s)};
       flex-direction:${stacked ? "column" : "row"};
       overflow-${stacked ? "y" : "x"}:auto;
+      scroll-snap-type:${stacked ? "y" : "x"} proximity;
       align-items:${stacked ? "stretch" : "flex-end"};
-      ${stacked ? "max-height:76%;" : ""}
+      ${stacked ? "max-height:78%;" : ""}
       background:${panelBackground(s)};
       border-radius:${s.cornerRadius}px;
-      padding:${s.cornerRadius > 0 ? "6px" : "4px 0"};
+      padding:var(--card-pad,6px);
+      ${glass ? "-webkit-backdrop-filter:blur(18px) saturate(1.5);backdrop-filter:blur(18px) saturate(1.5);box-shadow:inset 0 0 0 1px rgba(255,255,255,.09),0 18px 40px -18px rgba(0,0,0,.6);" : ""}
     }
-    .product-card{
-      background:transparent;
-      backdrop-filter:none;
-      ${stacked ? "width:100%;" : ""}
-    }
+    .product-card{ border-radius:${Math.max(0, s.cornerRadius - 4)}px; }
+    .product-card .thumb{ border-radius:${Math.max(0, s.cornerRadius - 7)}px; ${s.showThumbnail ? "" : "display:none;"} }
     .product-name{
       color:${s.productTitleColor};
       font-family:${fontStack(s.titleFont)};
-      font-size:calc(clamp(7px,var(--card-name,2vw),11px) * ${s.titleFontSize / 100});
+      font-size:calc(var(--card-name,11px) * ${s.titleFontSize / 100});
       ${s.showTitle ? "" : "display:none;"}
     }
     /* PRICE FOLLOWS THE PRODUCT TITLE, NOT THE BRAND TITLE.
@@ -115,26 +120,22 @@ export function embedCarouselCss(raw: CarouselSettings): string {
        element, styled below. */
     .product-price{
       color:${s.productTitleColor};
-      font-size:calc(clamp(7px,var(--card-price,1.8vw),10px) * ${s.priceFontSize / 100});
+      font-size:calc(var(--card-price,10px) * ${s.priceFontSize / 100});
       ${s.showPrice ? "" : "display:none;"}
     }
     /* The brand name — what brandTitleColor is actually for. */
     .product-brand{
       color:${s.brandTitleColor};
       font-family:${fontStack(s.titleFont)};
-      font-size:calc(clamp(6px,var(--card-brand,1.5vw),9px) * ${s.titleFontSize / 100});
-      text-transform:uppercase;
-      letter-spacing:.04em;
-      opacity:.85;
+      font-size:calc(var(--card-brand,8px) * ${s.titleFontSize / 100});
       ${s.showTitle ? "" : "display:none;"}
     }
-    .product-card img{ ${s.showThumbnail ? "" : "display:none;"} }
     .buy-btn{
       background:${buttonBackground(s)};
       color:${s.buttonTextColor};
       border-radius:${s.buttonCornerRadius}px;
       font-family:${fontStack(s.buttonFont)};
-      font-size:calc(clamp(7px,var(--card-buy,1.7vw),10px) * ${s.buttonFontSize / 100});
+      font-size:calc(var(--card-buy,9px) * ${s.buttonFontSize / 100});
       ${s.showButton ? "" : "display:none;"}
     }
     .buy-btn:hover{ background:${s.buttonHoverColor}; }
@@ -142,13 +143,7 @@ export function embedCarouselCss(raw: CarouselSettings): string {
        Its elements reuse .product-brand/.product-name/.product-price/.buy-btn
        above, so the client's show/hide toggles apply to BOTH places without
        being decided twice. Only the layout differs. */
-    .end-thumb{
-      width:44px;height:44px;object-fit:cover;border-radius:6px;flex:0 0 auto;
-      ${s.showThumbnail ? "" : "display:none;"}
-    }
-    .end-cta{
-      width:auto;padding:4px 12px;flex:0 0 auto;
-    }
+    .end-thumb{ ${s.showThumbnail ? "" : "display:none;"} }
     /* Commerce off: nothing over the video during playback. The end-of-video
        list is rendered by the embed's own script, not by this rule. */
     ${s.commerceEnabled ? "" : "#carousel{display:none}"}

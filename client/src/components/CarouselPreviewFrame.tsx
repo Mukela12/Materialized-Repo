@@ -120,8 +120,12 @@ export function CarouselPreviewFrame({
               />
             </>
           ) : (
-            <div className="absolute inset-0 flex items-center justify-center text-muted-foreground text-xs bg-black/20 rounded-lg">
-              {emptyLabel}
+            // In a corner, not the middle: centred, it sat in the middle of the
+            // carousel mock-up drawn over the frame.
+            <div className="absolute inset-0 bg-black/20 rounded-lg">
+              <span className="absolute left-2 top-2 rounded-full bg-black/30 px-2 py-0.5 text-[10px] text-white/80">
+                {emptyLabel}
+              </span>
             </div>
           )}
 

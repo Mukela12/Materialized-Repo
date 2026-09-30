@@ -156,36 +156,63 @@ function textPath(font: Font, text: string, x: number, baseline: number, size: n
     `${letterSpacing ? ` letter-spacing="${(letterSpacing * size).toFixed(2)}"` : ""} ${fillAttrs}>${esc(text)}</text>`;
 }
 
-/** The card and panel metrics of the player, in its CSS pixels, for a stage `w` wide. */
-export function cardMetrics(s: CarouselSettings, w: number) {
+/**
+ * The card and panel metrics of the player, in its CSS pixels, for a stage
+ * `w` x `h`. The same formulas as fitPlayer() in the embed (server/routes.ts),
+ * so the clip and the player agree on size.
+ */
+export function cardMetrics(s: CarouselSettings, w: number, h: number = w * 16 / 9) {
   const title = s.titleFontSize / 100, price = s.priceFontSize / 100, buy = s.buttonFontSize / 100;
+  const base = Math.min(w, h * 1.25);
   return {
-    gap: clamp(8, 0.02 * w, 16),
-    cardGap: clamp(4, 0.01 * w, 8),
-    cardW: clamp(58, 0.29 * w, 120),
-    cardPad: clamp(3, 0.01 * w, 8),
-    imgH: clamp(30, 0.24 * w, 80),
-    imgR: clamp(4, 0.01 * w, 8),
-    brandFs: clamp(6, 0.024 * w, 9) * title,
-    nameFs: clamp(7, 0.032 * w, 11) * title,
+    compact: h < 320,
+    edge: clamp(8, base * 0.03, 16),
+    cardGap: clamp(3, base * 0.01, 6),
+    cardW: clamp(52, Math.min(w * 0.24, h * 0.15), 104),
+    cardPad: clamp(4, base * 0.012, 7),
+    brandFs: clamp(6.5, base * 0.021, 8.5) * title,
+    nameFs: clamp(8.5, base * 0.03, 12) * title,
+    priceFs: clamp(8, base * 0.028, 11) * price,
+    buyFs: clamp(7, base * 0.022, 9.5) * buy,
+    btnH: clamp(18, base * 0.062, 26),
+    // The client's "5px more" between the brand line and the name.
     nameTop: clamp(2, 0.005 * w, 4) + 5,
-    priceFs: clamp(7, 0.028 * w, 10) * price,
-    buyFs: clamp(7, 0.026 * w, 10) * buy,
-    panelPadX: s.cornerRadius > 0 ? 6 : 0,
-    panelPadY: s.cornerRadius > 0 ? 6 : 4,
   };
 }
 type Metrics = ReturnType<typeof cardMetrics>;
 
 const LINE = 1.25;
 
+/** Up to `max` lines of `text` in `maxW`, the last with an ellipsis if it had to stop. */
+export function wrapLines(font: Font, text: string, size: number, maxW: number, max: number): string[] {
+  const words = text.split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let cur = "";
+  for (let i = 0; i < words.length; i++) {
+    const next = cur ? `${cur} ${words[i]}` : words[i];
+    if (font.getAdvanceWidth(next, size) <= maxW || !cur) { cur = next; continue; }
+    lines.push(cur);
+    cur = words[i];
+    if (lines.length === max - 1) {
+      // The last line takes everything left, cut to fit.
+      cur = words.slice(i).join(" ");
+      break;
+    }
+  }
+  if (cur) lines.push(cur);
+  return lines.slice(0, max).map((l, i) => (i === max - 1 || font.getAdvanceWidth(l, size) > maxW ? fitText(font, l, size, maxW) : l));
+}
+
+function nameLines(m: Metrics) { return m.compact ? 1 : 2; }
+
 function cardHeight(p: ClipProduct, s: CarouselSettings, m: Metrics): number {
+  const inner = m.cardW - m.cardPad * 2;
   let h = m.cardPad * 2;
-  if (p.imageUrl && s.showThumbnail) h += m.imgH;
-  if (p.brandName && s.showTitle) h += m.brandFs * LINE;
-  if (s.showTitle) h += m.nameTop + m.nameFs * LINE;
-  if (p.price && s.showPrice) h += 1 + m.priceFs * LINE;
-  if (p.buyable && s.showButton) h += 8 + m.buyFs * LINE + 6;
+  if (p.imageUrl && s.showThumbnail) h += inner;
+  if (p.brandName && s.showTitle && !m.compact) h += m.cardPad + 1 + m.brandFs * 1.3;
+  if (s.showTitle) h += (m.compact ? 4 : m.nameTop) + m.nameFs * LINE * nameLines(m);
+  if (p.price && s.showPrice) h += 2 + m.priceFs * LINE;
+  if (p.buyable && s.showButton) h += (m.compact ? 5 : 8) + m.btnH;
   return h;
 }
 
@@ -200,43 +227,52 @@ function drawCard(
   const out: string[] = [];
   if (p.imageUrl && s.showThumbnail) {
     const data = images.get(p.imageUrl);
-    out.push(`<clipPath id="c${id}"><rect x="${left}" y="${cy}" width="${inner}" height="${m.imgH}" rx="${m.imgR}"/></clipPath>`);
-    out.push(data
-      ? `<image href="${data}" x="${left}" y="${cy}" width="${inner}" height="${m.imgH}" preserveAspectRatio="xMidYMid slice" clip-path="url(#c${id})"/>`
-      : `<rect x="${left}" y="${cy}" width="${inner}" height="${m.imgH}" rx="${m.imgR}" fill="#ffffff" fill-opacity="0.18"/>`);
-    cy += m.imgH;
+    const r = Math.max(0, s.cornerRadius - 7);
+    out.push(`<clipPath id="c${id}"><rect x="${left}" y="${cy}" width="${inner}" height="${inner}" rx="${r}"/></clipPath>`);
+    out.push(`<rect x="${left}" y="${cy}" width="${inner}" height="${inner}" rx="${r}" fill="#ffffff" fill-opacity="0.08"/>`);
+    if (data) out.push(`<image href="${data}" x="${left}" y="${cy}" width="${inner}" height="${inner}" preserveAspectRatio="xMidYMid slice" clip-path="url(#c${id})"/>`);
+    // The hairline the player draws inside the frame.
+    out.push(`<rect x="${left + 0.5}" y="${cy + 0.5}" width="${inner - 1}" height="${inner - 1}" rx="${r}" fill="none" stroke="#ffffff" stroke-opacity="0.1" stroke-width="1"/>`);
+    cy += inner;
   }
-  if (p.brandName && s.showTitle) {
-    const ls = 0.04;
-    const t = fitText(fonts.regular, p.brandName.toUpperCase(), m.brandFs, inner, ls);
-    out.push(textPath(fonts.regular, t, left, cy + m.brandFs * 1.0, m.brandFs, paint(s.brandTitleColor, 0.85), ls));
-    cy += m.brandFs * LINE;
+  if (p.brandName && s.showTitle && !m.compact) {
+    cy += m.cardPad + 1;
+    const ls = 0.12;
+    const t = fitText(fonts.semibold, p.brandName.toUpperCase(), m.brandFs, inner, ls);
+    out.push(textPath(fonts.semibold, t, left, cy + m.brandFs * 1.02, m.brandFs, paint(s.brandTitleColor, 0.62), ls));
+    cy += m.brandFs * 1.3;
   }
   if (s.showTitle) {
-    cy += m.nameTop;
-    const t = fitText(fonts.semibold, p.name, m.nameFs, inner);
-    out.push(textPath(fonts.semibold, t, left, cy + m.nameFs * 1.0, m.nameFs, paint(s.productTitleColor)));
-    cy += m.nameFs * LINE;
+    cy += m.compact ? 4 : m.nameTop;
+    wrapLines(fonts.regular, p.name, m.nameFs, inner, nameLines(m)).forEach((line, i) => {
+      out.push(textPath(fonts.regular, line, left, cy + m.nameFs * (1.0 + i * LINE), m.nameFs, paint(s.productTitleColor)));
+    });
+    cy += m.nameFs * LINE * nameLines(m);
   }
   if (p.price && s.showPrice) {
-    cy += 1;
-    const t = fitText(fonts.bold, `${currency}${p.price}`, m.priceFs, inner);
-    out.push(textPath(fonts.bold, t, left, cy + m.priceFs * 1.0, m.priceFs, paint(s.productTitleColor)));
+    cy += 2;
+    const t = fitText(fonts.semibold, `${currency}${p.price}`, m.priceFs, inner);
+    out.push(textPath(fonts.semibold, t, left, cy + m.priceFs * 1.0, m.priceFs, paint(s.productTitleColor, 0.9)));
     cy += m.priceFs * LINE;
   }
   if (p.buyable && s.showButton) {
-    cy += 8;
-    const bh = m.buyFs * LINE + 6;
+    cy += m.compact ? 5 : 8;
+    const bh = m.btnH;
     const r = Math.min(s.buttonCornerRadius, bh / 2);
     out.push(`<rect x="${left}" y="${cy}" width="${inner}" height="${bh}" rx="${r}" ${paint(buttonBackground(s))}/>`);
-    const label = fitText(fonts.bold, p.buttonLabel || buyLabel, m.buyFs, inner - 4);
-    const lw = fonts.bold.getAdvanceWidth(label, m.buyFs);
-    out.push(textPath(fonts.bold, label, left + (inner - lw) / 2, cy + bh / 2 + m.buyFs * 0.35, m.buyFs, paint(s.buttonTextColor)));
+    // The inset highlight along the top of the player's button.
+    out.push(`<rect x="${left + r * 0.3}" y="${cy + 0.5}" width="${inner - r * 0.6}" height="1" fill="#ffffff" fill-opacity="0.18"/>`);
+    const ls = 0.08;
+    const label = fitText(fonts.semibold, (p.buttonLabel || buyLabel).toUpperCase(), m.buyFs, inner - 8, ls);
+    const lw = fonts.semibold.getAdvanceWidth(label, m.buyFs, { letterSpacing: ls });
+    out.push(textPath(fonts.semibold, label, left + (inner - lw) / 2, cy + bh / 2 + m.buyFs * 0.36, m.buyFs, paint(s.buttonTextColor), ls));
   }
   return out.join("");
 }
 
 export interface OverlayFrame { W: number; H: number; ref: number }
+
+const SHADOW = `<filter id="dock" x="-20%" y="-20%" width="140%" height="160%"><feDropShadow dx="0" dy="12" stdDeviation="14" flood-color="#000000" flood-opacity="0.45"/></filter>`;
 
 /**
  * The carousel as it stands with `items` on screen: a transparent SVG the
@@ -250,67 +286,71 @@ export function carouselSvg(
   const { W, H, ref } = frame;
   const k = W / ref;
   const w = ref, h = H / k;
-  const m = cardMetrics(s, w);
+  const m = cardMetrics(s, w, h);
   const stacked = isStackedPosition(s.position);
   const ox = s.positionOffsetX, oy = s.positionOffsetY;
+  const pad = m.cardPad;
 
   const heights = items.map((p) => cardHeight(p, s, m));
   let px: number, py: number, pw: number, ph: number;
   const placed: { p: ClipProduct; x: number; y: number; cw: number }[] = [];
 
   if (stacked) {
-    pw = Math.min(m.cardW + m.panelPadX * 2, 0.38 * w);
-    const cw = pw - m.panelPadX * 2;
-    const maxH = 0.76 * h;
-    let used = m.panelPadY * 2, shown = 0;
+    pw = Math.min(m.cardW + pad * 2, 0.4 * w);
+    const cw = pw - pad * 2;
+    const maxH = 0.78 * h;
+    let used = pad * 2, shown = 0;
     for (let i = 0; i < items.length; i++) {
       const add = heights[i] + (shown ? m.cardGap : 0);
       if (used + add > maxH && shown > 0) break;
       used += add; shown++;
     }
     ph = used;
-    px = s.position === "left" ? m.gap + ox : w - m.gap + ox - pw;
+    px = s.position === "left" ? m.edge + ox : w - m.edge + ox - pw;
     py = (h - ph) / 2;
-    let cy = py + m.panelPadY;
-    for (let i = 0; i < shown; i++) { placed.push({ p: items[i], x: px + m.panelPadX, y: cy, cw }); cy += heights[i] + m.cardGap; }
+    let cy = py + pad;
+    for (let i = 0; i < shown; i++) { placed.push({ p: items[i], x: px + pad, y: cy, cw }); cy += heights[i] + m.cardGap; }
   } else {
-    const full = s.position === "top" || s.position === "bottom";
-    const maxW = full ? w - m.gap * 2 : 0.7 * w;
+    const dock = s.position === "top" || s.position === "bottom";
+    const maxW = dock ? w - m.edge * 2 : 0.72 * w;
     let content = 0, shown = 0;
     for (let i = 0; i < items.length; i++) {
       const add = m.cardW + (shown ? m.cardGap : 0);
-      if (m.panelPadX * 2 + content + add > maxW && shown > 0) break;
+      if (pad * 2 + content + add > maxW && shown > 0) break;
       content += add; shown++;
     }
     const rowH = Math.max(...heights.slice(0, shown));
-    ph = rowH + m.panelPadY * 2;
-    pw = full ? maxW : Math.min(maxW, content + m.panelPadX * 2);
+    ph = rowH + pad * 2;
+    pw = content + pad * 2;
     const top = s.position.startsWith("top");
-    py = top ? m.gap + oy : h - m.gap + oy - ph;
-    if (full) px = m.gap;
-    else if (s.position.endsWith("left")) px = m.gap + ox;
-    else px = w - m.gap + ox - pw;
-    // Cards sit centred on a strip, to the right in a right corner.
-    let cx = full ? px + (pw - content) / 2 : s.position.endsWith("right") ? px + pw - m.panelPadX - content : px + m.panelPadX;
+    py = top ? m.edge + oy : h - m.edge + oy - ph;
+    // Top and bottom: a dock as wide as its products, centred.
+    if (dock) px = (w - pw) / 2 + ox;
+    else if (s.position.endsWith("left")) px = m.edge + ox;
+    else px = w - m.edge + ox - pw;
+    let cx = px + pad;
     for (let i = 0; i < shown; i++) {
       // align-items: flex-end, so a shorter card sits on the same baseline.
-      placed.push({ p: items[i], x: cx, y: py + m.panelPadY + (rowH - heights[i]), cw: m.cardW });
+      placed.push({ p: items[i], x: cx, y: py + pad + (rowH - heights[i]), cw: m.cardW });
       cx += m.cardW + m.cardGap;
     }
   }
 
+  const glass = s.backgroundOpacity > 0;
   const buyLabel = s.buttonLabel;
   const cards = placed.map((c, i) => drawCard(c.p, c.x, c.y, c.cw, s, m, fonts, images, currency, buyLabel, String(i))).join("");
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">` +
+    `<defs>${SHADOW}</defs>` +
     `<g transform="scale(${k})">` +
     `<clipPath id="panel"><rect x="${px}" y="${py}" width="${pw}" height="${ph}" rx="${s.cornerRadius}"/></clipPath>` +
-    `<rect x="${px}" y="${py}" width="${pw}" height="${ph}" rx="${s.cornerRadius}" ${paint(panelBackground(s))}/>` +
+    `<rect x="${px}" y="${py}" width="${pw}" height="${ph}" rx="${s.cornerRadius}" ${paint(panelBackground(s))}${glass ? ` filter="url(#dock)"` : ""}/>` +
+    (glass ? `<rect x="${px + 0.5}" y="${py + 0.5}" width="${pw - 1}" height="${ph - 1}" rx="${s.cornerRadius}" fill="none" stroke="#ffffff" stroke-opacity="0.09" stroke-width="1"/>` : "") +
     `<g clip-path="url(#panel)">${cards}</g></g></svg>`;
 }
 
 /**
  * The end-of-video product list the player shows when commerce is off: the
- * last frame dimmed, one row per product.
+ * last frame dimmed, a small heading, one glass row per product.
  */
 export function endListSvg(
   items: ClipProduct[], s: CarouselSettings, frame: OverlayFrame, fonts: Fonts,
@@ -318,50 +358,63 @@ export function endListSvg(
 ): string {
   const { W, H, ref } = frame;
   const k = W / ref, w = ref, h = H / k;
-  const m = cardMetrics(s, w);
-  const pad = clamp(10, 0.04 * w, 28);
-  const thumb = s.showThumbnail ? 44 : 0;
-  const rowH = Math.max(thumb, m.brandFs * LINE + m.nameFs * LINE + m.priceFs * LINE) + 12;
-  const maxRows = Math.max(1, Math.floor((h - pad * 2) / (rowH + 6)));
+  const m = cardMetrics(s, w, h);
+  const thumb = s.showThumbnail ? 52 : 0;
+  const nameFs = m.nameFs, brandFs = m.brandFs, priceFs = m.priceFs;
+  const rowH = Math.max(thumb, brandFs * 1.3 + 2 + nameFs * LINE + priceFs * LINE) + 16;
+  const rowW = Math.min(440, w - m.edge * 2);
+  const titleFs = brandFs * 1.15;
+  const maxRows = Math.max(1, Math.floor((h - m.edge * 2 - titleFs - 12) / (rowH + 8)));
   const rows = items.slice(0, maxRows);
-  let y = (h - rows.length * (rowH + 6)) / 2;
+  const blockH = titleFs + 12 + rows.length * (rowH + 8) - 8;
+  let y = (h - blockH) / 2;
+  const x = (w - rowW) / 2;
   const out: string[] = [];
+  const title = "SHOP THE VIDEO";
+  const tls = 0.2;
+  const tw = fonts.semibold.getAdvanceWidth(title, titleFs, { letterSpacing: tls });
+  out.push(textPath(fonts.semibold, title, (w - tw) / 2, y + titleFs, titleFs, `fill="#ffffff" fill-opacity="0.72"`, tls));
+  y += titleFs + 12;
   rows.forEach((p, i) => {
-    const x = pad;
+    out.push(`<rect x="${x}" y="${y}" width="${rowW}" height="${rowH}" rx="14" fill="#ffffff" fill-opacity="0.07"/>`);
+    out.push(`<rect x="${x + 0.5}" y="${y + 0.5}" width="${rowW - 1}" height="${rowH - 1}" rx="14" fill="none" stroke="#ffffff" stroke-opacity="0.09"/>`);
     let tx = x + 8;
     if (thumb && p.imageUrl) {
       const data = images.get(p.imageUrl);
-      out.push(`<clipPath id="e${i}"><rect x="${x + 8}" y="${y + 6}" width="${thumb}" height="${thumb}" rx="6"/></clipPath>`);
+      const ty0 = y + (rowH - thumb) / 2;
+      out.push(`<clipPath id="e${i}"><rect x="${tx}" y="${ty0}" width="${thumb}" height="${thumb}" rx="10"/></clipPath>`);
       out.push(data
-        ? `<image href="${data}" x="${x + 8}" y="${y + 6}" width="${thumb}" height="${thumb}" preserveAspectRatio="xMidYMid slice" clip-path="url(#e${i})"/>`
-        : `<rect x="${x + 8}" y="${y + 6}" width="${thumb}" height="${thumb}" rx="6" fill="#ffffff" fill-opacity="0.18"/>`);
-      tx += thumb + 10;
+        ? `<image href="${data}" x="${tx}" y="${ty0}" width="${thumb}" height="${thumb}" preserveAspectRatio="xMidYMid slice" clip-path="url(#e${i})"/>`
+        : `<rect x="${tx}" y="${ty0}" width="${thumb}" height="${thumb}" rx="10" fill="#ffffff" fill-opacity="0.12"/>`);
+      tx += thumb + 12;
     }
-    const ctaFs = m.buyFs;
-    const cta = p.buttonLabel || s.buttonLabel;
-    const ctaW = s.showButton ? fonts.bold.getAdvanceWidth(cta, ctaFs) + 24 : 0;
-    const textW = w - pad - 8 - ctaW - 10 - tx;
-    let ty = y + 6;
+    const cta = (p.buttonLabel || s.buttonLabel).toUpperCase();
+    const ctaLs = 0.08;
+    const ctaW = s.showButton ? fonts.semibold.getAdvanceWidth(cta, m.buyFs, { letterSpacing: ctaLs }) + 28 : 0;
+    const textW = x + rowW - 8 - ctaW - 12 - tx;
+    const textH = (p.brandName && s.showTitle ? brandFs * 1.3 + 2 : 0) + (s.showTitle ? nameFs * LINE : 0) + (p.price && s.showPrice ? priceFs * LINE : 0);
+    let ty = y + (rowH - textH) / 2;
     if (p.brandName && s.showTitle) {
-      out.push(textPath(fonts.regular, fitText(fonts.regular, p.brandName.toUpperCase(), m.brandFs, textW, 0.04), tx, ty + m.brandFs, m.brandFs, paint(s.brandTitleColor, 0.85), 0.04));
-      ty += m.brandFs * LINE;
+      out.push(textPath(fonts.semibold, fitText(fonts.semibold, p.brandName.toUpperCase(), brandFs, textW, 0.12), tx, ty + brandFs, brandFs, paint(s.brandTitleColor, 0.62), 0.12));
+      ty += brandFs * 1.3 + 2;
     }
     if (s.showTitle) {
-      out.push(textPath(fonts.semibold, fitText(fonts.semibold, p.name, m.nameFs, textW), tx, ty + m.nameFs, m.nameFs, paint(s.productTitleColor)));
-      ty += m.nameFs * LINE;
+      out.push(textPath(fonts.regular, fitText(fonts.regular, p.name, nameFs, textW), tx, ty + nameFs, nameFs, paint(s.productTitleColor)));
+      ty += nameFs * LINE;
     }
     if (p.price && s.showPrice) {
-      out.push(textPath(fonts.bold, `${currency}${p.price}`, tx, ty + m.priceFs, m.priceFs, paint(s.productTitleColor)));
+      out.push(textPath(fonts.semibold, `${currency}${p.price}`, tx, ty + priceFs, priceFs, paint(s.productTitleColor, 0.9)));
     }
     if (s.showButton) {
-      const bh = ctaFs * LINE + 8, bx = w - pad - 8 - ctaW, by = y + (rowH - bh) / 2;
+      const bh = m.btnH, bx = x + rowW - 8 - ctaW, by = y + (rowH - bh) / 2;
       out.push(`<rect x="${bx}" y="${by}" width="${ctaW}" height="${bh}" rx="${Math.min(s.buttonCornerRadius, bh / 2)}" ${paint(buttonBackground(s))}/>`);
-      out.push(textPath(fonts.bold, cta, bx + 12, by + bh / 2 + ctaFs * 0.35, ctaFs, paint(s.buttonTextColor)));
+      out.push(textPath(fonts.semibold, cta, bx + 14, by + bh / 2 + m.buyFs * 0.36, m.buyFs, paint(s.buttonTextColor), ctaLs));
     }
-    y += rowH + 6;
+    y += rowH + 8;
   });
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">` +
-    `<rect width="${W}" height="${H}" fill="#000000" fill-opacity="0.72"/>` +
+    `<defs><linearGradient id="dim" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#000000" stop-opacity="0.55"/><stop offset="1" stop-color="#000000" stop-opacity="0.8"/></linearGradient></defs>` +
+    `<rect width="${W}" height="${H}" fill="url(#dim)"/>` +
     `<g transform="scale(${k})">${out.join("")}</g></svg>`;
 }
 

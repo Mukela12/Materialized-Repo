@@ -13,6 +13,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Copy, Check, Code, Monitor, Smartphone, Eye, ExternalLink } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { copyText } from "@/lib/clipboard";
 import type { Video } from "@shared/schema";
 import { ShareClipPanel } from "@/components/ShareClipPanel";
 
@@ -54,8 +55,12 @@ export function EmbedCodeModal({ open, onOpenChange, video }: EmbedCodeModalProp
   ></iframe>
 </div>`;
 
-  const copyCode = (code: string) => {
-    navigator.clipboard.writeText(code);
+  const copyCode = async (code: string) => {
+    // It used to say "Copied!" whether or not anything was copied.
+    if (!(await copyText(code))) {
+      toast({ title: "Couldn't copy", description: "Select the code and copy it by hand.", variant: "destructive" });
+      return;
+    }
     setCopied(true);
     toast({
       title: "Copied!",
