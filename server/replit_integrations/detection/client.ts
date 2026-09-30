@@ -108,7 +108,6 @@ For each product you identify in the image, respond with a JSON object:
     {
       "productId": "the matching product ID from the catalog",
       "productName": "the product name",
-      "brandId": "the brand ID",
       "confidence": 0.0 to 1.0 (how confident you are this is the correct product),
       "boundingBox": { "x": 0.0-1.0, "y": 0.0-1.0, "width": 0.0-1.0, "height": 0.0-1.0 } (normalized coordinates)
     }
@@ -162,10 +161,14 @@ export async function analyzeFrameForProducts(
         if (p.productId && typeof p.productId === "string") {
           const matchedProduct = products.find(prod => prod.id === p.productId);
           if (matchedProduct) {
+            // Name and brand come from the catalog, not the model. The catalog
+            // it is shown lists brands by name only, so its "brandId" was the
+            // brand's name, and saving the match failed on the brand key
+            // (first scan with real matches, 29 Sep 2026).
             detectedProducts.push({
               productId: p.productId,
-              productName: p.productName || matchedProduct.name,
-              brandId: p.brandId || matchedProduct.brandId,
+              productName: matchedProduct.name,
+              brandId: matchedProduct.brandId,
               confidence: typeof p.confidence === "number" ? p.confidence : 0.5,
               boundingBox: p.boundingBox && typeof p.boundingBox === "object" ? {
                 x: Number(p.boundingBox.x) || 0,
