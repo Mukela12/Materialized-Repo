@@ -593,9 +593,15 @@ export function clipDir(): string {
   return d;
 }
 
-/** Same video, products and look: same clip. Anything that changes the picture changes the key. */
+/**
+ * Bumped whenever the drawing changes, so a clip cached under the old design
+ * is not handed out as the new one (2: the refined carousel, 30 Sep 2026).
+ */
+export const RENDER_VERSION = 2;
+
+/** Same video, products, look and renderer: same clip. Anything that changes the picture changes the key. */
 export function clipKey(videoId: string, input: RenderInput): string {
-  return createHash("sha256").update(JSON.stringify({ videoId, v: 1, ...input })).digest("hex").slice(0, 24);
+  return createHash("sha256").update(JSON.stringify({ videoId, v: RENDER_VERSION, ...input })).digest("hex").slice(0, 24);
 }
 
 export interface ClipJob {

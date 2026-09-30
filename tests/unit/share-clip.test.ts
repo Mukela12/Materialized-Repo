@@ -156,3 +156,15 @@ describe("who can use it", () => {
     expect(modal.indexOf("<ShareClipPanel")).toBeLessThan(modal.indexOf('data-testid="button-toggle-embed-code"'));
   });
 });
+
+describe("the clip cache", () => {
+  it("a new renderer version never hands out a clip drawn by the old one", async () => {
+    const { clipKey, RENDER_VERSION } = await import("../../server/shareClip");
+    const input = { videoUrl: "https://vz-1.b-cdn.net/a/play_720p.mp4", products: [], settings: CAROUSEL_DEFAULTS, currency: "$" };
+    expect(RENDER_VERSION).toBeGreaterThanOrEqual(2);
+    expect(clipKey("v1", input)).toBe(clipKey("v1", input));
+    expect(clipKey("v1", input)).not.toBe(clipKey("v2", input));
+    expect(clipKey("v1", input)).not.toBe(clipKey("v1", { ...input, settings: { ...CAROUSEL_DEFAULTS, position: "top" } }));
+    expect(code("server/shareClip.ts")).toMatch(/v: RENDER_VERSION, \.\.\.input/);
+  });
+});
