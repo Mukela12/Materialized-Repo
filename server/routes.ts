@@ -3298,9 +3298,20 @@ export async function registerRoutes(
     try {
       const ok = await videoEditorOr403(req, res);
       if (!ok) return;
-      const job = await storage.getDetectionJobByVideoId(req.params.id);
+      let job = await storage.getDetectionJobByVideoId(req.params.id);
       if (!job) {
         return res.json({ status: "none", results: [], counts: reviewCounts([]) });
+      }
+      // A scan runs inside the server process, so a deploy or crash mid-scan
+      // left it "processing" forever and the uploader waiting on a spinner.
+      // Anything running this long was cut off: say so, once, here.
+      {
+        const { isStalledScan, SCAN_STALLED_NOTE } = await import("@shared/detectionNotes");
+        if (isStalledScan(job)) {
+          job = (await storage.updateDetectionJob(job.id, {
+            status: "failed", completedAt: new Date(), error: SCAN_STALLED_NOTE,
+          } as any)) ?? { ...job, status: "failed", error: SCAN_STALLED_NOTE };
+        }
       }
 
       const results = await storage.getDetectionResults(job.id);
@@ -3495,10 +3506,22 @@ export async function registerRoutes(
     const ok = await videoEditorOr403(req, res);
     if (!ok) return;
     try {
-      const results = importable(await storage.getDetectionResultsByVideo(req.params.id));
+      // The latest scan only: what the review screen shows is what gets added.
+      // Reading every scan of the video brought back accepted placements from
+      // an older scan that nobody could see any more.
+      const job = await storage.getDetectionJobByVideoId(req.params.id);
+      const results = job ? importable(await storage.getDetectionResults(job.id)) : [];
+      // A product already on this video's carousel from an earlier scan is not
+      // added twice; its placement is still marked done.
+      const onCarousel = new Set(
+        (await storage.getVideoProductOverlays(req.params.id))
+          .filter((o: any) => o.source === "ai" && o.productId)
+          .map((o: any) => o.productId as string),
+      );
       const created = [];
       for (const r of results) {
         if (!(await storage.claimDetectionImport(r.id))) continue;
+        if (r.productId && onCarousel.has(r.productId)) continue;
         try {
           const product = r.productId ? await storage.getProduct(r.productId) : null;
           const brand = product?.brandId ? await storage.getBrand(product.brandId) : null;
@@ -3516,10 +3539,13 @@ export async function registerRoutes(
             brandName: brand?.name ?? null,
             position: (req.body?.position ?? "bottom") as any,
             startTime: r.startTime ?? "0",
-            endTime: r.endTime ?? null,
+            // An end at or before the start means no timing was found (older
+            // metadata-only scans stored 0 to 0): show it for the whole video.
+            endTime: r.endTime != null && Number(r.endTime) > Number(r.startTime ?? 0) ? r.endTime : null,
             source: "ai",
           });
           created.push(overlay);
+          if (r.productId) onCarousel.add(r.productId);
         } catch (err) {
           // Give the claim back so the next import retries this placement.
           await storage.releaseDetectionImport(r.id);

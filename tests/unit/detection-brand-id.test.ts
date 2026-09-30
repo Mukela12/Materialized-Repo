@@ -18,7 +18,7 @@ const catalog = [
 ];
 const reply = (products: unknown[]) => ({ text: JSON.stringify({ products }) });
 
-beforeEach(() => generate.mockReset());
+beforeEach(() => { generate.mockReset(); });
 
 describe("detected products take their brand from the catalog", () => {
   it("ignores a brand name the model puts in brandId", async () => {

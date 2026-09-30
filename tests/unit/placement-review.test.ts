@@ -129,7 +129,7 @@ describe("the routes", () => {
 
   it("import takes accepted placements only and claims each before making its overlay", () => {
     const body = routeBody(routes, "post", "/api/videos/:id/overlays/import-detections");
-    expect(body).toMatch(/importable\(await storage\.getDetectionResultsByVideo\(req\.params\.id\)\)/);
+    expect(body).toMatch(/importable\(await storage\.getDetectionResults\(job\.id\)\)/);
     expect(body).toMatch(/if \(!\(await storage\.claimDetectionImport\(r\.id\)\)\) continue;[\s\S]*createVideoProductOverlay/);
     expect(body).toMatch(/releaseDetectionImport\(r\.id\)/);
   });
@@ -288,18 +288,18 @@ describe("the first real scan (29 Sep 2026, the client's key)", () => {
 
 describe("the queue on the invoice: filterable by brand, each with its image and price (30 Sep 2026)", () => {
   const q = [
-    { id: "1", brandId: "b2", brandName: "Zara Studio" },
-    { id: "2", brandId: "b1", brandName: "Atelier" },
-    { id: "3", brandId: "b2", brandName: "Zara Studio" },
-    { id: "4", brandId: "b3", brandName: null },
+    { id: "1", brandId: "b2", brandName: "Zara Studio", reviewStatus: "pending" as const },
+    { id: "2", brandId: "b1", brandName: "Atelier", reviewStatus: "accepted" as const },
+    { id: "3", brandId: "b2", brandName: "Zara Studio", reviewStatus: "rejected" as const },
+    { id: "4", brandId: "b3", brandName: null, reviewStatus: "pending" as const },
   ];
 
-  it("lists each brand once, with its count, in name order", async () => {
+  it("lists each brand once, with its count and what is left to review, in name order", async () => {
     const { brandFilterOptions } = await import("../../client/src/lib/placementReview");
     expect(brandFilterOptions(q)).toEqual([
-      { id: "b1", name: "Atelier", count: 1 },
-      { id: "b3", name: "Unknown brand", count: 1 },
-      { id: "b2", name: "Zara Studio", count: 2 },
+      { id: "b1", name: "Atelier", count: 1, pending: 0 },
+      { id: "b3", name: "Unknown brand", count: 1, pending: 1 },
+      { id: "b2", name: "Zara Studio", count: 2, pending: 1 },
     ]);
   });
 
@@ -324,6 +324,6 @@ describe("the queue on the invoice: filterable by brand, each with its image and
     const ui = code("client/src/components/PlacementReview.tsx");
     const rows = ui.slice(ui.indexOf('data-testid="placement-queue"'));
     expect(rows).toMatch(/<img src=\{p\.product\.imageUrl\}/);
-    expect(rows).toMatch(/p\.product\?\.price && `\$\$\{p\.product\.price\}`/);
+    expect(rows).toMatch(/p\.product\?\.price && formatMoney\(p\.product\.price\)/);
   });
 });

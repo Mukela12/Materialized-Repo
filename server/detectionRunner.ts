@@ -11,6 +11,7 @@ import { storage } from "./storage";
 import { ai, batchAnalyzeFrames, consolidateDetections, framesToSample, geminiConfigured, GEMINI_MODEL, type ProductInfo } from "./replit_integrations/detection/client";
 import { detectAiGeneratedContent } from "./replit_integrations/detection/aiContentDetector";
 import { sampleVideoFrames } from "./frameSampler";
+import { NO_CATALOG_NOTE, SCAN_FAILED_NOTE } from "@shared/detectionNotes";
 
 /** Stored on the job when this server has no Gemini key; shown to the uploader. */
 export const DETECTION_NOT_CONFIGURED = "AI detection is not set up on this server yet";
@@ -59,6 +60,18 @@ export async function runDetectionJob(
       }
     }
 
+    // Nothing to look for: every tagged brand is either not live yet or has
+    // no products. Say so, rather than paying for a scan that cannot find
+    // anything and reporting "no products found".
+    if (allProducts.length === 0) {
+      await storage.updateDetectionJob(job.id, {
+        status: "completed",
+        completedAt: new Date(),
+        error: NO_CATALOG_NOTE,
+      } as any);
+      return;
+    }
+
     // Fallback path — today's metadata-only "text guess". Behavior is
     // byte-for-byte identical to before: same prompt, same parsing, same
     // zeroed timestamps. `note` records why we ended up here for the badge.
@@ -99,10 +112,12 @@ Identify which products from the catalog are most likely to appear or be feature
             videoId: videoId,
             productId: det.productId,
             brandId: product.brandId,
-            confidence: det.confidence.toString(),
+            confidence: String(Number(det.confidence) || 0.5),
             frameTimestamp: "0",
             startTime: "0",
-            endTime: "0",
+            // No timing is known from metadata, so the whole video: an end of
+            // "0" put accepted products on the carousel for no time at all.
+            endTime: null,
             boundingBox: null,
           });
         }
@@ -166,6 +181,17 @@ Identify which products from the catalog are most likely to appear or be feature
         storage.updateDetectionJob(job.id, { processedFrames: completed }).catch(() => {});
       }
     );
+    // Every call failed: the scan did not happen, whatever the list says.
+    const failedFrames = frameAnalyses.filter((f) => f.error);
+    if (failedFrames.length === frameAnalyses.length) {
+      await storage.updateDetectionJob(job.id, {
+        status: "failed",
+        completedAt: new Date(),
+        error: `${SCAN_FAILED_NOTE} (${failedFrames[0].error!.slice(0, 160)})`,
+      } as any);
+      return;
+    }
+
     // One frame is enough: every placement is reviewed by a person before it
     // reaches the carousel. Two frames dropped a 90% match on a handbag seen
     // in one clip (first real scan, 29 Sep 2026).
@@ -203,6 +229,11 @@ Identify which products from the catalog are most likely to appear or be feature
     });
   } catch (err) {
     console.error("Gemini detection error:", err);
-    await storage.updateDetectionJob(job.id, { status: "failed" } as any).catch(() => {});
+    const why = err instanceof Error ? err.message : String(err);
+    await storage.updateDetectionJob(job.id, {
+      status: "failed",
+      completedAt: new Date(),
+      error: `${SCAN_FAILED_NOTE} (${why.slice(0, 160)})`,
+    } as any).catch(() => {});
   }
 }

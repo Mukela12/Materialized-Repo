@@ -52,6 +52,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { Brand } from "@shared/schema";
 import { OverlayComposer } from "@/components/OverlayComposer";
 import { PlacementReview } from "@/components/PlacementReview";
+import { NO_CATALOG_NOTE } from "@shared/detectionNotes";
 import { videoTooLargeMessage, MAX_VIDEO_UPLOAD_LABEL } from "@shared/uploadLimits";
 
 const videoUploadSchema = z.object({
@@ -132,6 +133,9 @@ export function VideoUploadModal({
   const [scanProgress, setScanProgress] = useState(0);
   const scanInterval = useRef<ReturnType<typeof setInterval> | null>(null);
   const pollInterval = useRef<ReturnType<typeof setInterval> | null>(null);
+  /** When the scan started, so a slow one can be skipped instead of waited out. */
+  const [scanStartedAt, setScanStartedAt] = useState<number | null>(null);
+  const [scanElapsed, setScanElapsed] = useState(0);
   const { toast } = useToast();
 
   /**
@@ -396,7 +400,11 @@ export function VideoUploadModal({
   const startScanAnimation = () => {
     setScanMsgIdx(0);
     setScanProgress(0);
+    const started = Date.now();
+    setScanStartedAt(started);
+    setScanElapsed(0);
     scanInterval.current = setInterval(() => {
+      setScanElapsed(Date.now() - started);
       setScanMsgIdx((i) => (i + 1) % SCAN_MESSAGES.length);
       setScanProgress((p) => Math.min(p + 12, 90));
     }, 1400);
@@ -406,6 +414,14 @@ export function VideoUploadModal({
     pollInterval.current = setInterval(async () => {
       try {
         const res = await fetch(`/api/videos/${videoId}/detections`);
+        // Signed out, or the video is gone: this answer will not change, so
+        // stop asking and let them carry on by hand.
+        if (res.status === 401 || res.status === 403 || res.status === 404) {
+          clearIntervals();
+          setStep("carousel");
+          return;
+        }
+        if (!res.ok) return; // a hiccup: keep polling
         const job: DetectionJob = await res.json();
         if (job.status === "completed" || job.status === "failed") {
           clearIntervals();
@@ -933,6 +949,24 @@ export function VideoUploadModal({
                   <Progress value={scanProgress} className="h-1.5" />
                   <p className="text-xs text-center text-muted-foreground">{scanProgress}%</p>
                 </div>
+
+                {/* A scan usually takes about a minute. After two, offer a way
+                    on: the scan keeps running and its placements wait under
+                    Review AI in the video's Timeline Overlays. */}
+                {scanStartedAt && scanElapsed > 120_000 && (
+                  <div className="text-center text-xs text-muted-foreground" data-testid="scan-slow">
+                    <p>This is taking longer than usual.</p>
+                    <button
+                      type="button"
+                      className="mt-1 font-medium text-primary underline-offset-2 hover:underline"
+                      onClick={() => { clearIntervals(); setStep("carousel"); }}
+                      data-testid="button-skip-scan"
+                    >
+                      Skip and add products by hand
+                    </button>
+                    <p className="mt-1">Anything the AI finds will wait for you under Review AI.</p>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -996,11 +1030,16 @@ export function VideoUploadModal({
                         {!done
                           // It used to say "AI scan completed" here when the
                           // scan had FAILED. Say what happened.
-                          ? (detectionJob.error?.startsWith("AI detection is not set up")
-                              ? "AI detection isn't switched on yet. Add your products below."
-                              : "The AI scan didn't finish. Add your products below.")
+                          ? (detectionJob.status !== "failed"
+                              // Skipped while it was still running.
+                              ? "The AI is still scanning. Anything it finds will wait for you under Review AI."
+                              : detectionJob.error?.startsWith("AI detection is not set up")
+                                ? "AI detection isn't switched on yet. Add your products below."
+                                : "The AI scan didn't finish. Add your products below.")
                           : detectionJob.results.length === 0
-                            ? "AI found no products from the tagged brands"
+                            ? (detectionJob.error === NO_CATALOG_NOTE
+                                ? "The tagged brands haven't added products yet, so there was nothing for the AI to look for. Add products below."
+                                : "AI found no products from the tagged brands")
                             : onCarousel.length > 0
                               ? `${onCarousel.length} AI placement${onCarousel.length !== 1 ? "s" : ""} on your carousel`
                               : "No AI placements on your carousel yet"}

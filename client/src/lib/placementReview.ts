@@ -23,6 +23,8 @@ export interface Placement {
 export interface ReviewJob {
   id?: string;
   status: "none" | "queued" | "processing" | "completed" | "failed";
+  /** Why a scan ended the way it did (no catalog, failed, stalled). */
+  error?: string | null;
   results: Placement[];
   counts: { pending: number; accepted: number; rejected: number; readyToImport: number };
 }
@@ -92,11 +94,14 @@ export function assignLanes(placements: Pick<Placement, "id" | "startTime" | "en
  * The brands in a queue, for the brand filter: each with how many placements
  * it has, in name order. The filter only appears when there are two or more.
  */
-export function brandFilterOptions(queue: Pick<Placement, "brandId" | "brandName">[]): { id: string; name: string; count: number }[] {
-  const byId = new Map<string, { id: string; name: string; count: number }>();
+export function brandFilterOptions(
+  queue: Pick<Placement, "brandId" | "brandName" | "reviewStatus">[],
+): { id: string; name: string; count: number; pending: number }[] {
+  const byId = new Map<string, { id: string; name: string; count: number; pending: number }>();
   for (const p of queue) {
-    const b = byId.get(p.brandId) ?? { id: p.brandId, name: p.brandName ?? "Unknown brand", count: 0 };
+    const b = byId.get(p.brandId) ?? { id: p.brandId, name: p.brandName ?? "Unknown brand", count: 0, pending: 0 };
     b.count++;
+    if (p.reviewStatus === "pending") b.pending++;
     byId.set(p.brandId, b);
   }
   return Array.from(byId.values()).sort((a, b) => a.name.localeCompare(b.name));

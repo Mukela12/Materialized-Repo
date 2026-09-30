@@ -21,6 +21,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { videoDeliveryUrl } from "@shared/videoDelivery";
+import { NO_CATALOG_NOTE } from "@shared/detectionNotes";
+import { formatMoney } from "@/lib/currency";
 import {
   STATUS_LABEL, assignLanes, brandFilterOptions, filterByBrand, formatTime, matchPercent,
   nextPendingId, segment, type Placement, type ReviewJob, type ReviewStatus,
@@ -178,7 +180,9 @@ export function PlacementReview({ videoId, videoUrl, onImported }: PlacementRevi
         <p className="mt-1 text-xs text-muted-foreground">
           {job?.status === "failed"
             ? "The scan did not finish. You can still add products by hand under Timeline Overlays."
-            : "The scan found no products from the tagged brands. Add them by hand under Timeline Overlays."}
+            : job?.error === NO_CATALOG_NOTE
+              ? "The tagged brands haven't added products yet, so there was nothing to look for. Add products by hand under Timeline Overlays."
+              : "The scan found no products from the tagged brands. Add them by hand under Timeline Overlays."}
         </p>
       </div>
     );
@@ -218,7 +222,7 @@ export function PlacementReview({ videoId, videoUrl, onImported }: PlacementRevi
 
       {brands.length > 1 && (
         <div className="flex gap-2 overflow-x-auto pb-1" role="group" aria-label="Filter by brand" data-testid="placement-brand-filter">
-          {[{ id: "all", name: "All brands", count: allResults.length }, ...brands].map((b) => (
+          {[{ id: "all", name: "All brands", count: allResults.length, pending: counts.pending }, ...brands].map((b) => (
             <button
               key={b.id}
               type="button"
@@ -230,7 +234,12 @@ export function PlacementReview({ videoId, videoUrl, onImported }: PlacementRevi
               )}
               data-testid={`placement-brand-${b.id}`}
             >
-              {b.name} <span className="tabular-nums opacity-70">{b.count}</span>
+              {b.name}{" "}
+              {/* What is left to do, so a brand still waiting is visible from
+                  inside another brand's filter. A tick once it is all decided. */}
+              {b.pending > 0
+                ? <span className="tabular-nums opacity-80">{b.pending} to review</span>
+                : <Check className="inline h-3 w-3 align-[-2px] opacity-80" aria-label="all reviewed" />}
             </button>
           ))}
         </div>
@@ -354,7 +363,7 @@ export function PlacementReview({ videoId, videoUrl, onImported }: PlacementRevi
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-semibold">{selected.product?.name ?? "Unknown product"}</p>
                 <p className="truncate text-xs text-muted-foreground">
-                  {[selected.brandName, selected.product?.price && `$${selected.product.price}`].filter(Boolean).join(" · ")}
+                  {[selected.brandName, selected.product?.price && formatMoney(selected.product.price)].filter(Boolean).join(" · ")}
                 </p>
                 <p className="mt-1 text-xs"><span className="font-semibold tabular-nums">{matchPercent(selected.confidence)}%</span> <span className="text-muted-foreground">match</span></p>
               </div>
@@ -423,7 +432,7 @@ export function PlacementReview({ videoId, videoUrl, onImported }: PlacementRevi
                     {p.product?.name ?? "Unknown product"}
                   </span>
                   <span className="block truncate text-xs text-muted-foreground">
-                    {[p.brandName ?? "Unknown brand", p.product?.price && `$${p.product.price}`, formatTime(p.startTime)].filter(Boolean).join(" · ")}
+                    {[p.brandName ?? "Unknown brand", p.product?.price && formatMoney(p.product.price), formatTime(p.startTime)].filter(Boolean).join(" · ")}
                   </span>
                 </span>
                 <span className="shrink-0 text-right">

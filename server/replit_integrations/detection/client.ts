@@ -1,5 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
-import { batchProcess } from "../batch/utils";
+import { batchProcess, isRateLimitError } from "../batch/utils";
 
 /**
  * Gemini client settings.
@@ -45,6 +45,13 @@ export interface ProductInfo {
 export interface FrameAnalysis {
   frameTimestamp: number;
   detectedProducts: DetectedProduct[];
+  /**
+   * The model could not be asked about this frame (bad key, retired model,
+   * network). Kept apart from "looked and found nothing", which used to be
+   * the same empty list: a scan where every call failed finished as
+   * "no products found" and sent people to check their catalog.
+   */
+  error?: string;
 }
 
 export interface DetectedProduct {
@@ -187,10 +194,14 @@ export async function analyzeFrameForProducts(
       detectedProducts,
     };
   } catch (error) {
+    // Rate limits go back to batchProcess, which waits and retries them. They
+    // were swallowed here, so its retries never ran and busy frames were lost.
+    if (isRateLimitError(error)) throw error;
     console.error("Error analyzing frame:", error);
     return {
       frameTimestamp,
       detectedProducts: [],
+      error: error instanceof Error ? error.message : String(error),
     };
   }
 }
