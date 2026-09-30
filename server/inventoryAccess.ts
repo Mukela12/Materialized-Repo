@@ -1,5 +1,5 @@
 import { storage } from "./storage";
-import { hasFreeAccess, type EntitlementUser } from "./entitlement";
+import { hasFreeAccess, owesCardOnFile, type EntitlementUser } from "./entitlement";
 
 /**
  * Is a brand's INVENTORY discoverable to other users?
@@ -32,7 +32,7 @@ import { hasFreeAccess, type EntitlementUser } from "./entitlement";
  */
 export function inventoryDiscoverable(
   brand: { ownerId?: string | null; inventoryAccessUntil?: Date | null } | null | undefined,
-  owner: (EntitlementUser & { isAdmin?: boolean | null }) | null | undefined,
+  owner: (EntitlementUser & { isAdmin?: boolean | null; role?: string | null }) | null | undefined,
   subscriptionStatus: string | null | undefined,
   now: Date = new Date(),
 ): boolean {
@@ -47,8 +47,14 @@ export function inventoryDiscoverable(
   if (!brand.ownerId) return false;
   // (b) Active subscription. Unchanged.
   if (subscriptionStatus === "active") return true;
-  // (c) The owner's free window (voucher or trial), or an admin owner.
-  return !!owner && (!!owner.isAdmin || hasFreeAccess(owner, now));
+  // (c) The owner's free window (voucher or trial), or an admin owner. Brand
+  // accounts only: every signup gets a trial window, and a creator who makes
+  // a brand of their own through the API is not a brand on the platform. And
+  // on the same terms as the account itself: once the card-on-file rule wakes
+  // (2027), a voucher brand without a card loses both together.
+  if (!owner) return false;
+  if (owner.isAdmin) return true;
+  return owner.role === "brand" && hasFreeAccess(owner, now) && !owesCardOnFile(owner, now);
 }
 
 export async function isBrandInventoryDiscoverable(brandId: string): Promise<boolean> {

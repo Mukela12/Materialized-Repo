@@ -73,7 +73,7 @@ describe("subscription grant is independent and must not regress", () => {
 
 describe("the owner's free window opens the catalog (voucher and trial brands, 30 Sep 2026)", () => {
   const brand = { ownerId: "u1", inventoryAccessUntil: null };
-  const until = (ms: number) => ({ freeAccess: true, freeAccessUntil: future(ms) });
+  const until = (ms: number) => ({ role: "brand", freeAccess: true, freeAccessUntil: future(ms) });
 
   it("a Brooklyn voucher brand with no subscription is discoverable until its date", () => {
     expect(inventoryDiscoverable(brand, until(30 * DAY), null, NOW)).toBe(true);
@@ -88,7 +88,7 @@ describe("the owner's free window opens the catalog (voucher and trial brands, 3
   });
 
   it("an open-ended admin comp (no end date) counts, as it does for access", () => {
-    expect(inventoryDiscoverable(brand, { freeAccess: true, freeAccessUntil: null }, null, NOW)).toBe(true);
+    expect(inventoryDiscoverable(brand, { role: "brand", freeAccess: true, freeAccessUntil: null }, null, NOW)).toBe(true);
   });
 
   it("the platform's own admin-owned brand counts", () => {
@@ -105,5 +105,18 @@ describe("the owner's free window opens the catalog (voucher and trial brands, 3
     const src = readFileSync(require.resolve("../../server/inventoryAccess.ts"), "utf8");
     expect(src).toMatch(/storage\.getUser\(brand\.ownerId\)/);
     expect(src).toMatch(/return inventoryDiscoverable\(brand, owner, sub\?\.status\);/);
+  });
+
+  it("a creator's trial window does not make a brand they created discoverable", () => {
+    expect(inventoryDiscoverable(brand, { role: "creator", freeAccess: true, freeAccessUntil: future(14 * DAY) }, null, NOW)).toBe(false);
+  });
+
+  it("from 2027 a voucher brand that owes a card loses its catalog with its access", () => {
+    const jan2027 = new Date("2027-01-02T12:00:00Z");
+    const owner = { role: "brand", freeAccess: true, freeAccessUntil: new Date("2027-03-01T05:00:00Z"), overageCardRequired: true, cardOnFile: false };
+    expect(inventoryDiscoverable(brand, owner, null, jan2027)).toBe(false);
+    expect(inventoryDiscoverable(brand, { ...owner, cardOnFile: true }, null, jan2027)).toBe(true);
+    // Before the rule wakes, the missing card does not matter.
+    expect(inventoryDiscoverable(brand, owner, null, NOW)).toBe(true);
   });
 });

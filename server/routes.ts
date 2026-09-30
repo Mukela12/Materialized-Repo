@@ -6515,7 +6515,13 @@ export async function registerRoutes(
   app.get("/api/admin/brands", requireAdmin, async (req, res) => {
     try {
       const allBrands = await storage.getBrands();
-      res.json(allBrands);
+      // Whether each catalog is live for creators and the AI scan, by the same
+      // rule they use, so a voucher or trial brand does not read "Off" here.
+      const withLive = await Promise.all(allBrands.map(async (b) => ({
+        ...b,
+        catalogLive: await isBrandInventoryDiscoverable(b.id).catch(() => false),
+      })));
+      res.json(withLive);
     } catch (error) {
       res.status(500).json({ error: "Failed to load brands" });
     }

@@ -438,9 +438,11 @@ interface AdminBrand {
   /** Admin-granted inventory window. Null = never granted. Past = lapsed/revoked. */
   inventoryAccessUntil: string | null;
   inventoryAccessNote: string | null;
+  /** Live for creators and the AI scan by ANY route: admin window, subscription, or free period. */
+  catalogLive?: boolean;
 }
 
-/** True while an admin grant is still running. Mirrors the server gate. */
+/** True while an admin grant is still running (only one of the ways a catalog is live). */
 function inventoryLive(b: AdminBrand): boolean {
   return !!b.inventoryAccessUntil && new Date(b.inventoryAccessUntil).getTime() > Date.now();
 }
@@ -544,6 +546,14 @@ function AdminBrands() {
                       Revoke
                     </Button>
                   </div>
+                ) : b.catalogLive ? (
+                  <Badge
+                    className="bg-green-500/20 text-green-600 border-0 whitespace-nowrap"
+                    title="Live through the brand's own subscription or free period"
+                    data-testid={`badge-catalog-live-${b.id}`}
+                  >
+                    On &middot; own plan
+                  </Badge>
                 ) : (
                   <Button
                     size="sm" variant="outline"
