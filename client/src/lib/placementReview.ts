@@ -87,3 +87,22 @@ export function assignLanes(placements: Pick<Placement, "id" | "startTime" | "en
   }
   return { lanes, count: Math.max(1, laneEnds.length) };
 }
+
+/**
+ * The brands in a queue, for the brand filter: each with how many placements
+ * it has, in name order. The filter only appears when there are two or more.
+ */
+export function brandFilterOptions(queue: Pick<Placement, "brandId" | "brandName">[]): { id: string; name: string; count: number }[] {
+  const byId = new Map<string, { id: string; name: string; count: number }>();
+  for (const p of queue) {
+    const b = byId.get(p.brandId) ?? { id: p.brandId, name: p.brandName ?? "Unknown brand", count: 0 };
+    b.count++;
+    byId.set(p.brandId, b);
+  }
+  return Array.from(byId.values()).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** The queue as the brand filter shows it ("all" or one brand's id). */
+export function filterByBrand<T extends Pick<Placement, "brandId">>(queue: T[], brandId: string): T[] {
+  return brandId === "all" ? queue : queue.filter((p) => p.brandId === brandId);
+}

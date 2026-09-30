@@ -22,8 +22,8 @@ import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { videoDeliveryUrl } from "@shared/videoDelivery";
 import {
-  STATUS_LABEL, assignLanes, formatTime, matchPercent, nextPendingId, segment,
-  type Placement, type ReviewJob, type ReviewStatus,
+  STATUS_LABEL, assignLanes, brandFilterOptions, filterByBrand, formatTime, matchPercent,
+  nextPendingId, segment, type Placement, type ReviewJob, type ReviewStatus,
 } from "@/lib/placementReview";
 
 interface PlacementReviewProps {
@@ -51,7 +51,17 @@ export function PlacementReview({ videoId, videoUrl, onImported }: PlacementRevi
       return s === "queued" || s === "processing" ? 2000 : false;
     },
   });
-  const queue = job?.results ?? [];
+  const allResults = job?.results ?? [];
+
+  // Brand filter (the invoice: "filterable by brand"). The queue, timeline,
+  // keyboard and "next" all work on what the filter shows; the header counts
+  // and "Add to carousel" stay whole-video, because that is what they change.
+  const brands = useMemo(() => brandFilterOptions(allResults), [allResults]);
+  const [brandFilter, setBrandFilter] = useState("all");
+  useEffect(() => {
+    if (brandFilter !== "all" && !brands.some((b) => b.id === brandFilter)) setBrandFilter("all");
+  }, [brands, brandFilter]);
+  const queue = useMemo(() => filterByBrand(allResults, brandFilter), [allResults, brandFilter]);
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   useEffect(() => {
@@ -148,7 +158,7 @@ export function PlacementReview({ videoId, videoUrl, onImported }: PlacementRevi
   });
 
   const counts = job?.counts ?? { pending: 0, accepted: 0, rejected: 0, readyToImport: 0 };
-  const videoLength = duration || Math.max(0, ...queue.map((p) => Number(p.endTime) || 0));
+  const videoLength = duration || Math.max(0, ...allResults.map((p) => Number(p.endTime) || 0));
   const src = useMemo(() => videoDeliveryUrl(videoUrl, "preview"), [videoUrl]);
   const { lanes, count: laneCount } = useMemo(() => assignLanes(queue), [queue]);
   const LANE = 14; // px per lane; bars are 10px with 4px between
@@ -160,7 +170,7 @@ export function PlacementReview({ videoId, videoUrl, onImported }: PlacementRevi
       </div>
     );
   }
-  if (!job || job.status === "none" || (job.status !== "processing" && job.status !== "queued" && queue.length === 0)) {
+  if (!job || job.status === "none" || (job.status !== "processing" && job.status !== "queued" && allResults.length === 0)) {
     return (
       <div className="rounded-xl border border-dashed px-6 py-10 text-center" data-testid="placement-review-empty">
         <ScanSearch className="mx-auto h-6 w-6 text-muted-foreground" />
@@ -189,7 +199,7 @@ export function PlacementReview({ videoId, videoUrl, onImported }: PlacementRevi
           <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Placement review</p>
           <p className="mt-1 text-sm text-muted-foreground">
             {counts.pending > 0
-              ? `${counts.pending} of ${queue.length} still to review. Nothing goes on the carousel until you accept it.`
+              ? `${counts.pending} of ${allResults.length} still to review. Nothing goes on the carousel until you accept it.`
               : "All reviewed. Add the accepted ones to the carousel."}
           </p>
         </div>
@@ -205,6 +215,26 @@ export function PlacementReview({ videoId, videoUrl, onImported }: PlacementRevi
             : `Add ${counts.readyToImport} to carousel`}
         </Button>
       </div>
+
+      {brands.length > 1 && (
+        <div className="flex gap-2 overflow-x-auto pb-1" role="group" aria-label="Filter by brand" data-testid="placement-brand-filter">
+          {[{ id: "all", name: "All brands", count: allResults.length }, ...brands].map((b) => (
+            <button
+              key={b.id}
+              type="button"
+              onClick={() => setBrandFilter(b.id)}
+              aria-pressed={brandFilter === b.id}
+              className={cn(
+                "shrink-0 rounded-full border px-3 py-1 text-xs font-medium transition-colors",
+                brandFilter === b.id ? "border-primary bg-primary text-primary-foreground" : "bg-card hover:bg-muted",
+              )}
+              data-testid={`placement-brand-${b.id}`}
+            >
+              {b.name} <span className="tabular-nums opacity-70">{b.count}</span>
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* Grid areas: phones read frame, inspector, sequence, queue (so Accept is
           near the frame); desktop puts the frame and sequence left, the rest right. */}
@@ -379,13 +409,21 @@ export function PlacementReview({ videoId, videoUrl, onImported }: PlacementRevi
                 )}
                 data-testid={`placement-row-${p.id}`}
               >
-                <span className={cn("h-2 w-2 shrink-0 rounded-full", STATUS_TONE[p.reviewStatus])} aria-hidden="true" />
+                {/* The catalog photo, with the review status as a dot on its corner. */}
+                <span className="relative h-10 w-10 shrink-0">
+                  <span className="block h-full w-full overflow-hidden rounded-md border bg-muted">
+                    {p.product?.imageUrl
+                      ? <img src={p.product.imageUrl} alt="" loading="lazy" className={cn("h-full w-full object-cover", p.reviewStatus === "rejected" && "opacity-50 grayscale")} />
+                      : <Package className="m-auto mt-2.5 h-4 w-4 text-muted-foreground" />}
+                  </span>
+                  <span className={cn("absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full ring-2 ring-card", STATUS_TONE[p.reviewStatus])} aria-hidden="true" />
+                </span>
                 <span className={cn("min-w-0 flex-1", p.reviewStatus === "rejected" && "opacity-55")}>
                   <span className={cn("block truncate text-sm font-medium", p.reviewStatus === "rejected" && "line-through")}>
                     {p.product?.name ?? "Unknown product"}
                   </span>
                   <span className="block truncate text-xs text-muted-foreground">
-                    {p.brandName ?? "Unknown brand"} · {formatTime(p.startTime)}
+                    {[p.brandName ?? "Unknown brand", p.product?.price && `$${p.product.price}`, formatTime(p.startTime)].filter(Boolean).join(" · ")}
                   </span>
                 </span>
                 <span className="shrink-0 text-right">

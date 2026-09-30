@@ -285,3 +285,45 @@ describe("the first real scan (29 Sep 2026, the client's key)", () => {
     expect(code("server/detectionRunner.ts")).toMatch(/count: framesToSample\(video\.durationSeconds\)/);
   });
 });
+
+describe("the queue on the invoice: filterable by brand, each with its image and price (30 Sep 2026)", () => {
+  const q = [
+    { id: "1", brandId: "b2", brandName: "Zara Studio" },
+    { id: "2", brandId: "b1", brandName: "Atelier" },
+    { id: "3", brandId: "b2", brandName: "Zara Studio" },
+    { id: "4", brandId: "b3", brandName: null },
+  ];
+
+  it("lists each brand once, with its count, in name order", async () => {
+    const { brandFilterOptions } = await import("../../client/src/lib/placementReview");
+    expect(brandFilterOptions(q)).toEqual([
+      { id: "b1", name: "Atelier", count: 1 },
+      { id: "b3", name: "Unknown brand", count: 1 },
+      { id: "b2", name: "Zara Studio", count: 2 },
+    ]);
+  });
+
+  it("filters to one brand, and 'all' keeps the whole queue in its order", async () => {
+    const { filterByBrand } = await import("../../client/src/lib/placementReview");
+    expect(filterByBrand(q, "b2").map((p) => p.id)).toEqual(["1", "3"]);
+    expect(filterByBrand(q, "all")).toBe(q);
+    expect(filterByBrand(q, "gone")).toEqual([]);
+  });
+
+  it("the workspace shows the filter for two or more brands and works on the filtered queue", () => {
+    const ui = code("client/src/components/PlacementReview.tsx");
+    expect(ui).toMatch(/\{brands\.length > 1 && \(/);
+    expect(ui).toMatch(/const queue = useMemo\(\(\) => filterByBrand\(allResults, brandFilter\)/);
+    // A brand that drops out of the results resets the filter instead of showing nothing.
+    expect(ui).toMatch(/!brands\.some\(\(b\) => b\.id === brandFilter\)\) setBrandFilter\("all"\)/);
+    // Counts and "Add to carousel" stay whole-video.
+    expect(ui).toMatch(/\$\{counts\.pending\} of \$\{allResults\.length\} still to review/);
+  });
+
+  it("every row carries the catalog photo and the price", () => {
+    const ui = code("client/src/components/PlacementReview.tsx");
+    const rows = ui.slice(ui.indexOf('data-testid="placement-queue"'));
+    expect(rows).toMatch(/<img src=\{p\.product\.imageUrl\}/);
+    expect(rows).toMatch(/p\.product\?\.price && `\$\$\{p\.product\.price\}`/);
+  });
+});
