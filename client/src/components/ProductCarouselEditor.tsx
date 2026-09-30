@@ -7,6 +7,7 @@ import {
   type CarouselSettings,
 } from "@shared/carousel";
 import { CarouselPreviewFrame } from "@/components/CarouselPreviewFrame";
+import { InfoTip } from "@/components/InfoTip";
 import { carouselPositionStyles } from "@/lib/carouselPosition";
 import { videoDeliveryUrl } from "@shared/videoDelivery";
 import { Button } from "@/components/ui/button";
@@ -155,19 +156,19 @@ export function ProductCarouselEditor({
 
       <Tabs defaultValue="layout" className="w-full">
         <TabsList className="grid w-full grid-cols-4 h-8">
-          <TabsTrigger value="layout" className="text-xs gap-1 px-1">
+          <TabsTrigger value="layout" className="text-xs gap-1 px-1" aria-label="Layout" title="Layout" data-testid="tab-editor-layout">
             <Layout className="h-3 w-3" />
             <span className="hidden sm:inline">Layout</span>
           </TabsTrigger>
-          <TabsTrigger value="style" className="text-xs gap-1 px-1">
+          <TabsTrigger value="style" className="text-xs gap-1 px-1" aria-label="Style" title="Style" data-testid="tab-editor-style">
             <Palette className="h-3 w-3" />
             <span className="hidden sm:inline">Style</span>
           </TabsTrigger>
-          <TabsTrigger value="fonts" className="text-xs gap-1 px-1">
+          <TabsTrigger value="fonts" className="text-xs gap-1 px-1" aria-label="Fonts" title="Fonts" data-testid="tab-editor-fonts">
             <Type className="h-3 w-3" />
             <span className="hidden sm:inline">Fonts</span>
           </TabsTrigger>
-          <TabsTrigger value="toggle" className="text-xs gap-1 px-1">
+          <TabsTrigger value="toggle" className="text-xs gap-1 px-1" aria-label="Toggle" title="Toggle" data-testid="tab-editor-toggle">
             <ToggleLeft className="h-3 w-3" />
             <span className="hidden sm:inline">Toggle</span>
           </TabsTrigger>
@@ -529,23 +530,21 @@ export function ProductCarouselEditor({
               onValueChange={(v) => updateSetting("commerceEnabled", v === "enabled")}
               className="gap-2"
             >
-              <div className="flex items-start gap-2">
-                <RadioGroupItem value="enabled" id="commerce-on" className="mt-0.5" data-testid="radio-commerce-enabled" />
-                <Label htmlFor="commerce-on" className="text-xs font-normal leading-snug cursor-pointer">
-                  <span className="font-medium">Enable commerce</span>
-                  <span className="block text-muted-foreground">
-                    Products appear over the video while it plays, shoppable as they are shown.
-                  </span>
-                </Label>
+              {/* The explanations sit behind an (i) now, at the client's request
+                  (30 Sep): hover on a computer, tap on a phone. */}
+              <div className="flex items-center gap-2">
+                <RadioGroupItem value="enabled" id="commerce-on" data-testid="radio-commerce-enabled" />
+                <Label htmlFor="commerce-on" className="text-xs font-medium cursor-pointer">Enable commerce</Label>
+                <InfoTip label="About Enable commerce" testId="info-commerce-enabled">
+                  Products appear over the video while it plays, and viewers can shop them as they are shown.
+                </InfoTip>
               </div>
-              <div className="flex items-start gap-2">
-                <RadioGroupItem value="disabled" id="commerce-off" className="mt-0.5" data-testid="radio-commerce-disabled" />
-                <Label htmlFor="commerce-off" className="text-xs font-normal leading-snug cursor-pointer">
-                  <span className="font-medium">Disable commerce</span>
-                  <span className="block text-muted-foreground">
-                    Nothing over the video. A product list appears at the end of playback instead.
-                  </span>
-                </Label>
+              <div className="flex items-center gap-2">
+                <RadioGroupItem value="disabled" id="commerce-off" data-testid="radio-commerce-disabled" />
+                <Label htmlFor="commerce-off" className="text-xs font-medium cursor-pointer">Disable commerce</Label>
+                <InfoTip label="About Disable commerce" testId="info-commerce-disabled">
+                  Nothing appears over the video while it plays. A list of the products shows at the end instead.
+                </InfoTip>
               </div>
             </RadioGroup>
           </div>
