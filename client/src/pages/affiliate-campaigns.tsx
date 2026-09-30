@@ -22,6 +22,7 @@ import {
   ArrowDownUp
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { copyText } from "@/lib/clipboard";
 import { Link } from "wouter";
 import { useTableControls } from "@/hooks/useTableControls";
 import { exportToCsv } from "@/lib/exportCsv";
@@ -50,7 +51,7 @@ export default function AffiliateCampaigns() {
 
   const copyToClipboard = async (text: string, label: string) => {
     try {
-      await navigator.clipboard.writeText(text);
+      if (!(await copyText(text))) throw new Error("copy");
       toast({
         title: "Copied!",
         description: `${label} copied to clipboard`,

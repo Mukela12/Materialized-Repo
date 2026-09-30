@@ -17,6 +17,8 @@ import { apiRequest, serverMessage } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import { Input } from "@/components/ui/input";
+import { copyText } from "@/lib/clipboard";
 
 type ClipStatus = "queued" | "rendering" | "ready" | "failed";
 interface ClipJob { id: string; status: ClipStatus; progress: number; error?: string }
@@ -31,6 +33,8 @@ export function ShareClipPanel({ videoId, title, shoppableUrl }: {
   const [job, setJob] = useState<ClipJob | null>(null);
   const [starting, setStarting] = useState(false);
   const [file, setFile] = useState<{ url: string; file: File } | null>(null);
+  /** Shown when the browser won't let us copy: the link, selected, to copy by hand. */
+  const [showLink, setShowLink] = useState(false);
   const poll = useRef<ReturnType<typeof setTimeout>>();
   const alive = useRef(true);
 
@@ -95,13 +99,27 @@ export function ShareClipPanel({ videoId, title, shoppableUrl }: {
     }
   };
   const copyLink = async () => {
-    try {
-      await navigator.clipboard.writeText(shoppableUrl);
+    if (await copyText(shoppableUrl)) {
+      setShowLink(false);
       toast({ title: "Link copied", description: "Paste it in your caption, or as a link sticker on your story." });
-    } catch {
-      toast({ title: "Couldn't copy the link", variant: "destructive" });
+    } else {
+      // This browser won't allow copying from a page: hand them the link.
+      setShowLink(true);
     }
   };
+  const linkBox = showLink && (
+    <div className="space-y-1" data-testid="shoppable-link-box">
+      <p className="text-xs text-muted-foreground">This browser won't let the page copy. Tap and hold the link to copy it:</p>
+      <Input
+        readOnly
+        value={shoppableUrl}
+        autoFocus
+        onFocus={(e) => e.currentTarget.select()}
+        className="h-9 text-xs font-mono"
+        data-testid="input-shoppable-link"
+      />
+    </div>
+  );
 
   const working = starting || job?.status === "queued" || job?.status === "rendering" || (job?.status === "ready" && !file);
 
@@ -140,6 +158,7 @@ export function ShareClipPanel({ videoId, title, shoppableUrl }: {
           <Button size="sm" variant="ghost" className="gap-1.5 rounded-full" onClick={copyLink} data-testid="button-copy-shoppable-link">
             <Link2 className="h-4 w-4" /> Copy shoppable link
           </Button>
+          {linkBox && <div className="w-full">{linkBox}</div>}
         </div>
       ) : (
         <div className="space-y-2">
@@ -154,6 +173,7 @@ export function ShareClipPanel({ videoId, title, shoppableUrl }: {
               <Link2 className="h-4 w-4" /> Copy shoppable link
             </Button>
           </div>
+          {linkBox}
         </div>
       )}
     </div>

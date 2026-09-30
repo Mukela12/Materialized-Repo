@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ArrowLeft, KeyRound, Plus, Trash2, Eye, EyeOff, Copy, CheckCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { copyText } from "@/lib/clipboard";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { format } from "date-fns";
 import type { BrandApiKey } from "@shared/schema";
@@ -48,9 +49,13 @@ export default function BrandSettingsApiKey() {
 
   const handleCopy = () => {
     if (!revealedRawKey) return;
-    navigator.clipboard.writeText(revealedRawKey);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    copyText(revealedRawKey).then((ok) => {
+      // The key is shown on screen once; if it can't be copied, it is still
+      // there to select, so say so rather than claim it was copied.
+      if (!ok) { toast({ title: "Couldn't copy", description: "Select the key and copy it by hand.", variant: "destructive" }); return; }
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
   };
 
   return (

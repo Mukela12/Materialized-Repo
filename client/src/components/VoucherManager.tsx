@@ -15,6 +15,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { readCsvCells, normalizeHeader, findColumn, isCsvFile } from "@/lib/csvImport";
 import { apiRequest, serverMessage } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { copyText } from "@/lib/clipboard";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -221,8 +222,11 @@ export function VoucherManager() {
     },
   });
 
-  const copy = (code: string) => {
-    navigator.clipboard.writeText(code);
+  const copy = async (code: string) => {
+    if (!(await copyText(code))) {
+      toast({ title: "Couldn't copy", description: code, variant: "destructive" });
+      return;
+    }
     setCopied(code);
     setTimeout(() => setCopied(null), 1500);
   };

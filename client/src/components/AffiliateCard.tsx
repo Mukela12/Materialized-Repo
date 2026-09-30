@@ -2,6 +2,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Link2, Tag, Percent, Copy } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { copyText } from "@/lib/clipboard";
 
 interface AffiliateCardProps {
   trackingId: string;
@@ -12,12 +13,11 @@ interface AffiliateCardProps {
 export function AffiliateCard({ trackingId, referralCode, commissionRate }: AffiliateCardProps) {
   const { toast } = useToast();
 
-  const copyToClipboard = (text: string, label: string) => {
-    navigator.clipboard.writeText(text);
-    toast({
-      title: "Copied!",
-      description: `${label} copied to clipboard`,
-    });
+  const copyToClipboard = async (text: string, label: string) => {
+    const ok = await copyText(text);
+    toast(ok
+      ? { title: "Copied!", description: `${label} copied to clipboard` }
+      : { title: "Couldn't copy", description: text, variant: "destructive" });
   };
 
   return (

@@ -4,6 +4,7 @@ import { LICENSE_FEE_PER_VIDEO, tokensForFee } from "@shared/pricing";
 import { TokenPayOption } from "@/components/TokenPayOption";
 import { walletPost, useInvalidateWallet, tokenLabel } from "@/hooks/useWallet";
 import { useState } from "react";
+import { copyText } from "@/lib/clipboard";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { EmptyState } from "@/components/EmptyState";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -72,7 +73,8 @@ function buildUtmUrl(baseUrl: string, item: PlaylistItem): string {
 function CopyButton({ text, label }: { text: string; label?: string }) {
   const [copied, setCopied] = useState(false);
   const copy = () => {
-    navigator.clipboard.writeText(text).then(() => {
+    copyText(text).then((ok) => {
+      if (!ok) { window.prompt("Copy this:", text); return; }
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     });
