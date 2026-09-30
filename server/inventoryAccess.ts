@@ -1,4 +1,5 @@
 import { storage } from "./storage";
+import { hasFreeAccess, type EntitlementUser } from "./entitlement";
 
 /**
  * Is a brand's INVENTORY discoverable to other users?
@@ -17,20 +18,47 @@ import { storage } from "./storage";
  * so a lapsed subscription cannot retroactively break a creator's live video or
  * their tracked sales.
  */
-export async function isBrandInventoryDiscoverable(brandId: string): Promise<boolean> {
-  const brand = await storage.getBrand(brandId);
+/**
+ * The decision itself, with no database: three independent grants.
+ *
+ * (c) was missing (found 30 Sep 2026, before the client's Brooklyn test).
+ * Voucher brands and every new brand on the 14-day trial get their access
+ * from a free window on the account, not a Stripe subscription, so none of
+ * them had a discoverable catalog: creators could not see their products and
+ * the AI scan skipped them. The free window now counts, through the same
+ * hasFreeAccess the rest of the app uses, so the catalog opens and lapses on
+ * exactly the dates the account does. Admin-owned brands (the platform's own
+ * demo catalog) count as well, as they do everywhere else.
+ */
+export function inventoryDiscoverable(
+  brand: { ownerId?: string | null; inventoryAccessUntil?: Date | null } | null | undefined,
+  owner: (EntitlementUser & { isAdmin?: boolean | null }) | null | undefined,
+  subscriptionStatus: string | null | undefined,
+  now: Date = new Date(),
+): boolean {
   if (!brand) return false;
 
   // (a) Admin-granted window. Checked FIRST and independently of ownership: the
   // whole point is to switch on a brand that has accepted and paid the $29 but
   // has no subscription — and possibly no owner account yet. Compared at read
   // time, so the window self-expires with no scheduler.
-  if (brand.inventoryAccessUntil && brand.inventoryAccessUntil.getTime() > Date.now()) {
-    return true;
-  }
+  if (brand.inventoryAccessUntil && brand.inventoryAccessUntil.getTime() > now.getTime()) return true;
 
-  // (b) Active subscription. Unchanged.
   if (!brand.ownerId) return false;
-  const sub = await storage.getBrandSubscription(brand.ownerId);
-  return sub?.status === "active";
+  // (b) Active subscription. Unchanged.
+  if (subscriptionStatus === "active") return true;
+  // (c) The owner's free window (voucher or trial), or an admin owner.
+  return !!owner && (!!owner.isAdmin || hasFreeAccess(owner, now));
+}
+
+export async function isBrandInventoryDiscoverable(brandId: string): Promise<boolean> {
+  const brand = await storage.getBrand(brandId);
+  if (!brand) return false;
+  if (inventoryDiscoverable(brand, null, null)) return true;
+  if (!brand.ownerId) return false;
+  const [sub, owner] = await Promise.all([
+    storage.getBrandSubscription(brand.ownerId),
+    storage.getUser(brand.ownerId),
+  ]);
+  return inventoryDiscoverable(brand, owner, sub?.status);
 }

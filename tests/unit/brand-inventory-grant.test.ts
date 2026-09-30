@@ -13,16 +13,15 @@
  */
 import { describe, it, expect } from "vitest";
 
-/** Mirrors isBrandInventoryDiscoverable in server/routes.ts. */
+import { inventoryDiscoverable } from "../../server/inventoryAccess";
+
+/** The real rule, for a brand whose owner has no free window. */
 function discoverable(
   brand: { ownerId?: string | null; inventoryAccessUntil?: Date | null } | null,
   subscriptionStatus: string | null,
   now: Date = new Date(),
 ): boolean {
-  if (!brand) return false;
-  if (brand.inventoryAccessUntil && brand.inventoryAccessUntil.getTime() > now.getTime()) return true;
-  if (!brand.ownerId) return false;
-  return subscriptionStatus === "active";
+  return inventoryDiscoverable(brand, null, subscriptionStatus, now);
 }
 
 const NOW = new Date("2026-07-29T12:00:00Z");
@@ -69,5 +68,42 @@ describe("subscription grant is independent and must not regress", () => {
 
   it("a missing brand is never discoverable", () => {
     expect(discoverable(null, "active", NOW)).toBe(false);
+  });
+});
+
+describe("the owner's free window opens the catalog (voucher and trial brands, 30 Sep 2026)", () => {
+  const brand = { ownerId: "u1", inventoryAccessUntil: null };
+  const until = (ms: number) => ({ freeAccess: true, freeAccessUntil: future(ms) });
+
+  it("a Brooklyn voucher brand with no subscription is discoverable until its date", () => {
+    expect(inventoryDiscoverable(brand, until(30 * DAY), null, NOW)).toBe(true);
+  });
+
+  it("and stops being discoverable the moment the window lapses", () => {
+    expect(inventoryDiscoverable(brand, until(-1), null, NOW)).toBe(false);
+  });
+
+  it("a brand on the 14-day trial is discoverable (the trial is the same window)", () => {
+    expect(inventoryDiscoverable(brand, until(14 * DAY), "canceled", NOW)).toBe(true);
+  });
+
+  it("an open-ended admin comp (no end date) counts, as it does for access", () => {
+    expect(inventoryDiscoverable(brand, { freeAccess: true, freeAccessUntil: null }, null, NOW)).toBe(true);
+  });
+
+  it("the platform's own admin-owned brand counts", () => {
+    expect(inventoryDiscoverable(brand, { isAdmin: true }, null, NOW)).toBe(true);
+  });
+
+  it("an owner with no window, no subscription and no admin role does not", () => {
+    expect(inventoryDiscoverable(brand, { freeAccess: false }, null, NOW)).toBe(false);
+    expect(inventoryDiscoverable(brand, undefined, null, NOW)).toBe(false);
+  });
+
+  it("the live check reads the owner as well as the subscription", async () => {
+    const { readFileSync } = await import("node:fs");
+    const src = readFileSync(require.resolve("../../server/inventoryAccess.ts"), "utf8");
+    expect(src).toMatch(/storage\.getUser\(brand\.ownerId\)/);
+    expect(src).toMatch(/return inventoryDiscoverable\(brand, owner, sub\?\.status\);/);
   });
 });
