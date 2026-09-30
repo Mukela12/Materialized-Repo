@@ -783,9 +783,12 @@ export async function registerRoutes(
       if (!actor?.isAdmin && existing.creatorId !== sessionUserId) {
         return res.status(403).json({ error: "Forbidden" });
       }
-      const deleted = await storage.deleteVideo(req.params.id);
-      if (!deleted) {
-        return res.status(404).json({ error: "Video not found" });
+      const { deleteVideoCompletely, VIDEO_HAS_SALES } = await import("./videoDeletion");
+      const result = await deleteVideoCompletely(req.params.id);
+      if (!result.deleted) {
+        return result.reason === "has_sales"
+          ? res.status(409).json({ error: VIDEO_HAS_SALES, code: "VIDEO_HAS_SALES" })
+          : res.status(404).json({ error: "Video not found" });
       }
       res.json({ success: true });
     } catch (error) {

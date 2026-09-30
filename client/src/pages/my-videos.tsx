@@ -11,7 +11,11 @@ import { VideoUploadModal } from "@/components/VideoUploadModal";
 import { EmbedCodeModal } from "@/components/EmbedCodeModal";
 import { Upload, Search, Grid, List, Video } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, serverMessage } from "@/lib/queryClient";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
+  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import type { Video as VideoType, Brand } from "@shared/schema";
 
 const CATEGORY_FILTERS = [
@@ -104,11 +108,17 @@ export default function MyVideos() {
     mutationFn: async (videoId: string) => apiRequest("DELETE", `/api/videos/${videoId}`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/videos"] });
+      setDeleting(null);
       toast({ title: "Video Deleted", description: "The video has been removed." });
     },
-    onError: () =>
-      toast({ title: "Delete Failed", description: "There was an error deleting the video.", variant: "destructive" }),
+    // The server says why (a video with sales on record is kept), so show it.
+    onError: (err: unknown) => {
+      setDeleting(null);
+      toast({ title: "Couldn't delete the video", description: serverMessage(err) || "Please try again.", variant: "destructive" });
+    },
   });
+  /** The video waiting for "Delete" to be confirmed. It used to go on the first click. */
+  const [deleting, setDeleting] = useState<VideoType | null>(null);
 
   // ── Handlers ───────────────────────────────────────────────────────────────
   const handleVideoUpload = async (data: {
@@ -121,7 +131,7 @@ export default function MyVideos() {
   }) => referralMutation.mutateAsync(data);
 
   const handleViewEmbed = (video: VideoType) => { setSelectedVideo(video); setEmbedModalOpen(true); };
-  const handleDelete    = async (video: VideoType) => deleteMutation.mutateAsync(video.id);
+  const handleDelete    = (video: VideoType) => setDeleting(video);
   const handleOpenDetail = (video: VideoType) => { setDetailSheetVideo(video); setDetailSheetOpen(true); };
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -293,6 +303,28 @@ export default function MyVideos() {
         onOpenChange={setEmbedModalOpen}
         video={selectedVideo}
       />
+
+      <AlertDialog open={!!deleting} onOpenChange={(o) => { if (!o && !deleteMutation.isPending) setDeleting(null); }}>
+        <AlertDialogContent data-testid="dialog-delete-video">
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete "{deleting?.title}"?</AlertDialogTitle>
+            <AlertDialogDescription>
+              The video, its carousel and its AI placements are removed, and any embeds of it stop working. This can't be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteMutation.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={deleteMutation.isPending}
+              onClick={(e) => { e.preventDefault(); if (deleting) deleteMutation.mutate(deleting.id); }}
+              data-testid="button-confirm-delete-video"
+            >
+              {deleteMutation.isPending ? "Deleting…" : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <VideoDetailSheet
         video={detailSheetVideo}
