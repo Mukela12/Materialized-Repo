@@ -14,6 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Copy, Check, Code, Monitor, Smartphone, Eye, ExternalLink } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { Video } from "@shared/schema";
+import { ShareClipPanel } from "@/components/ShareClipPanel";
 
 interface EmbedCodeModalProps {
   open: boolean;
@@ -65,7 +66,10 @@ export function EmbedCodeModal({ open, onOpenChange, video }: EmbedCodeModalProp
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+      {/* One column that can shrink: the dialog is a grid, and its auto column
+          grew to the widest row, so on a phone the whole screen was 549px
+          wide inside a 390px window and ran off the right edge. */}
+      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto grid-cols-[minmax(0,1fr)]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-xl font-bold">
             <Code className="h-5 w-5" />
@@ -78,8 +82,8 @@ export function EmbedCodeModal({ open, onOpenChange, video }: EmbedCodeModalProp
 
         <Card className="bg-muted/50 border-0">
           <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="w-24 h-14 rounded-lg bg-muted overflow-hidden flex-shrink-0">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="w-20 sm:w-24 h-12 sm:h-14 rounded-lg bg-muted overflow-hidden flex-shrink-0">
                 {video.thumbnailUrl ? (
                   <img
                     src={video.thumbnailUrl}
@@ -90,8 +94,8 @@ export function EmbedCodeModal({ open, onOpenChange, video }: EmbedCodeModalProp
                   <div className="w-full h-full bg-gradient-to-br from-primary/20 to-chart-2/20" />
                 )}
               </div>
-              <div className="flex-1">
-                <p className="font-medium">{video.title}</p>
+              <div className="flex-1 min-w-0">
+                <p className="font-medium truncate">{video.title}</p>
                 <div className="flex items-center gap-2 mt-1">
                   <Badge variant="secondary" className="text-xs">
                     UTM: {video.utmCode?.slice(0, 8)}...
@@ -101,11 +105,11 @@ export function EmbedCodeModal({ open, onOpenChange, video }: EmbedCodeModalProp
                   </Badge>
                 </div>
               </div>
-              <div className="flex gap-2">
+              <div className="flex gap-2 max-sm:w-full">
                 <Button
                   variant="outline"
                   size="sm"
-                  className="gap-1"
+                  className="gap-1 max-sm:flex-1"
                   onClick={() => setShowPreview(!showPreview)}
                 >
                   <Eye className="h-3.5 w-3.5" />
@@ -114,7 +118,7 @@ export function EmbedCodeModal({ open, onOpenChange, video }: EmbedCodeModalProp
                 <Button
                   variant="outline"
                   size="sm"
-                  className="gap-1"
+                  className="gap-1 max-sm:flex-1"
                   onClick={() => window.open(embedUrl, "_blank")}
                 >
                   <ExternalLink className="h-3.5 w-3.5" />
@@ -146,6 +150,10 @@ export function EmbedCodeModal({ open, onOpenChange, video }: EmbedCodeModalProp
             />
           </div>
         )}
+
+        {/* Before the embed code, as the client placed it: the preview, then a
+            clip to post, then the code for a website. */}
+        <ShareClipPanel videoId={video.id} title={video.title || "video"} shoppableUrl={fullEmbedUrl} />
 
         {/* The client's reason: "Embed code blocking the user from screen
             recording the product carousel." While the preview is open the code

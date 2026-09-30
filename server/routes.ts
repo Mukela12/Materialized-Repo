@@ -3295,6 +3295,77 @@ export async function registerRoutes(
     return { video, uid };
   }
 
+  // ==================== DOWNLOAD FOR SOCIALS ====================
+  // The published video as an MP4 with its carousel drawn on (server/shareClip.ts).
+  // Rendering takes a few seconds to a couple of minutes, so it is a job: start
+  // it, ask how it is going, then fetch the file. Editor only, like the rest of
+  // a video's tools.
+
+  /** What the clip shows: exactly what the player would, from the same rows and settings. */
+  async function shareClipInput(video: { id: string; videoUrl: string; creatorId: string | null }) {
+    const overlays = await storage.getVideoProductOverlays(video.id);
+    const NAME_LIMIT = 25; // the player's cap, so names truncate the same way
+    const products = overlays.map((o) => ({
+      name: (o.name || "").length > NAME_LIMIT ? (o.name || "").slice(0, NAME_LIMIT - 1).trimEnd() + "…" : (o.name || ""),
+      brandName: o.brandName || "",
+      price: o.price ?? null,
+      imageUrl: o.imageUrl ?? null,
+      startTime: Number(o.startTime ?? 0) || 0,
+      endTime: o.endTime == null ? null : Number(o.endTime),
+      buyable: o.priceCents != null && o.priceCents > 0,
+      buttonLabel: o.buttonLabel || null,
+    }));
+    const brandKit = video.creatorId ? await storage.getBrandKit(video.creatorId).catch(() => undefined) : undefined;
+    const override = await storage.getVideoCarouselOverride(video.id).catch(() => undefined);
+    return {
+      videoUrl: video.videoUrl,
+      products,
+      settings: resolveEmbedSettings(brandKit ?? null, override ?? null),
+      currency: embedCurrencySymbol(),
+    };
+  }
+
+  const clipView = (j: { id: string; status: string; progress: number; error?: string }) => ({
+    id: j.id, status: j.status, progress: j.progress,
+    // The raw ffmpeg text helps nobody reading a toast; the log has it.
+    ...(j.status === "failed" ? { error: "The video couldn't be prepared. Please try again in a minute." } : {}),
+  });
+
+  app.post("/api/videos/:id/share-clip", async (req, res) => {
+    try {
+      const ok = await videoEditorOr403(req, res);
+      if (!ok) return;
+      const { isAllowedVideoUrl, startClipJob } = await import("./shareClip");
+      if (!ok.video.videoUrl || !isAllowedVideoUrl(ok.video.videoUrl)) {
+        return res.status(409).json({ error: "This video is still being processed. Try again once it has finished." });
+      }
+      const job = startClipJob(ok.video.id, await shareClipInput(ok.video as any));
+      res.json(clipView(job));
+    } catch (error) {
+      console.error("[ShareClip] start failed:", error);
+      res.status(500).json({ error: "Couldn't start preparing the video" });
+    }
+  });
+
+  app.get("/api/videos/:id/share-clip/:jobId", async (req, res) => {
+    const ok = await videoEditorOr403(req, res);
+    if (!ok) return;
+    const { getClipJob } = await import("./shareClip");
+    const job = getClipJob(req.params.jobId);
+    if (!job || job.videoId !== ok.video.id) return res.status(404).json({ error: "Start it again" });
+    res.json(clipView(job));
+  });
+
+  app.get("/api/videos/:id/share-clip/:jobId/file", async (req, res) => {
+    const ok = await videoEditorOr403(req, res);
+    if (!ok) return;
+    const { getClipJob } = await import("./shareClip");
+    const job = getClipJob(req.params.jobId);
+    if (!job || job.videoId !== ok.video.id || job.status !== "ready") return res.status(404).json({ error: "Not ready" });
+    const name = (ok.video.title || "video").replace(/[^\w\- ]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 60) || "video";
+    res.download(job.file, `${name}.mp4`);
+  });
+
   // The latest detection job for a video, with its placements as a review
   // queue: product and brand joined, undecided first, most confident first.
   app.get("/api/videos/:id/detections", async (req, res) => {
