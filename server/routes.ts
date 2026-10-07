@@ -2392,6 +2392,210 @@ export async function registerRoutes(
       : `${publicOrigin(req)}/register`;
   }
 
+  // ==================== PROGRAM INVITES ====================
+  // A producer (or any account an admin switches on) invites its designers
+  // and influencers from the app: one message, mail-merged, each person with
+  // their own single-use code. Rules in server/programInvites.ts.
+
+  /** One send at a time per account, so two clicks can't overrun the allowance. */
+  const programSendLocks = new Map<string, Promise<unknown>>();
+  function withProgramLock<T>(userId: string, fn: () => Promise<T>): Promise<T> {
+    const prev = programSendLocks.get(userId) ?? Promise.resolve();
+    const next = prev.catch(() => {}).then(fn);
+    programSendLocks.set(userId, next);
+    next.finally(() => { if (programSendLocks.get(userId) === next) programSendLocks.delete(userId); }).catch(() => {});
+    return next;
+  }
+
+  async function programContext(userId: string) {
+    const { getSender, getVoucherById, countSent } = await import("./programSenders");
+    const { templateProblem, offerLine } = await import("./programInvites");
+    const sender = await getSender(userId);
+    if (!sender) return null;
+    const user = await storage.getUser(userId);
+    const seats = {} as Record<"brand" | "creator", { limit: number; sent: number; remaining: number; offer: string | null; problem: string | null; template: any }>;
+    for (const type of ["brand", "creator"] as const) {
+      const template = await getVoucherById(type === "brand" ? sender.brandTemplateVoucherId : sender.creatorTemplateVoucherId);
+      const limit = type === "brand" ? sender.brandLimit : sender.creatorLimit;
+      const sent = await countSent(userId, type);
+      const problem = limit <= 0 ? `Invites for ${type === "brand" ? "designers" : "influencers"} aren't switched on` : templateProblem(template, type);
+      seats[type] = { limit, sent, remaining: Math.max(0, limit - sent), offer: template && !problem ? offerLine(template, type) : null, problem, template };
+    }
+    return { sender, user, seats, senderName: user?.displayName || user?.username || user?.email || "Your host" };
+  }
+
+  const programSignupUrl = (req: Request, code: string, type: "brand" | "creator") =>
+    `${publicOrigin(req)}/register?code=${encodeURIComponent(code)}&role=${type}`;
+
+  app.get("/api/program/me", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ error: "Authentication required" });
+    const ctx = await programContext(userId);
+    if (!ctx) return res.json({ enabled: false });
+    const { DEFAULT_MESSAGE, DEFAULT_SUBJECT, MAX_RECIPIENTS } = await import("./programInvites");
+    const seat = (t: "brand" | "creator") => {
+      const { template, ...rest } = ctx.seats[t];
+      return rest;
+    };
+    res.json({
+      enabled: true, programName: ctx.sender.programName, senderName: ctx.senderName,
+      seats: { brand: seat("brand"), creator: seat("creator") },
+      defaultSubject: DEFAULT_SUBJECT, defaultMessage: DEFAULT_MESSAGE, maxRecipients: MAX_RECIPIENTS,
+      emailReady: isEmailConfigured(),
+    });
+  });
+
+  /** Exactly the email one person would get, with a sample code. */
+  app.post("/api/program/preview", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ error: "Authentication required" });
+    const ctx = await programContext(userId);
+    if (!ctx) return res.status(403).json({ error: "Program invites aren't switched on for this account" });
+    const { checkRecipient, mergeFields, MAX_MESSAGE, MAX_SUBJECT, DEFAULT_SUBJECT } = await import("./programInvites");
+    const { programInviteHtml } = await import("./emailService");
+    const check = checkRecipient(req.body?.recipient ?? { name: "Alex Rivera", email: "alex@example.com", type: "designer" });
+    const r = check.ok ? check.recipient : { name: "Alex Rivera", email: "alex@example.com", type: "brand" as const };
+    const seat = ctx.seats[r.type];
+    const message = mergeFields(String(req.body?.message ?? "").slice(0, MAX_MESSAGE), r);
+    const subject = mergeFields(String(req.body?.subject || DEFAULT_SUBJECT).slice(0, MAX_SUBJECT), r).replace(/\{\s*sender\s*\}/gi, ctx.senderName);
+    res.json({
+      subject,
+      html: programInviteHtml({
+        message, senderName: ctx.senderName, programName: ctx.sender.programName,
+        offer: seat.offer ?? "Free access to MTRLZD.", code: "SAMPLE-CODE", signupUrl: programSignupUrl(req, "SAMPLE-CODE", r.type),
+      }),
+    });
+  });
+
+  app.post("/api/program/invites", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ error: "Authentication required" });
+    try {
+      const out = await withProgramLock(userId, async () => {
+        const ctx = await programContext(userId);
+        if (!ctx) return { status: 403, body: { error: "Program invites aren't switched on for this account" } };
+        if (!isEmailConfigured()) return { status: 503, body: { error: "Email sending isn't set up on the server yet" } };
+        const P = await import("./programInvites");
+        const S = await import("./programSenders");
+        const { sendProgramInvites } = await import("./emailService");
+
+        const message = String(req.body?.message ?? "").trim();
+        const subjectTpl = String(req.body?.subject || P.DEFAULT_SUBJECT).trim();
+        if (!message) return { status: 400, body: { error: "Write a message first" } };
+        if (message.length > P.MAX_MESSAGE) return { status: 400, body: { error: `Keep the message under ${P.MAX_MESSAGE} characters` } };
+        if (subjectTpl.length > P.MAX_SUBJECT) return { status: 400, body: { error: `Keep the subject under ${P.MAX_SUBJECT} characters` } };
+        const list = Array.isArray(req.body?.recipients) ? req.body.recipients : [];
+        if (list.length === 0) return { status: 400, body: { error: "Add at least one person" } };
+        if (list.length > P.MAX_RECIPIENTS) return { status: 400, body: { error: `Up to ${P.MAX_RECIPIENTS} people per send` } };
+
+        const already = await S.invitedEmails(userId);
+        const seen = new Set<string>();
+        const left = { brand: ctx.seats.brand.problem ? 0 : ctx.seats.brand.remaining, creator: ctx.seats.creator.problem ? 0 : ctx.seats.creator.remaining };
+        const results: { email: string; name?: string; type?: string; status: "sent" | "skipped" | "failed"; reason?: string }[] = [];
+        const toSend: { idx: number; voucherId: string; email: any }[] = [];
+
+        for (const raw of list) {
+          const c = P.checkRecipient(raw);
+          if (!c.ok) { results.push({ email: c.email, status: "skipped", reason: c.error }); continue; }
+          const r = c.recipient;
+          const base = { email: r.email, name: r.name, type: r.type };
+          if (seen.has(r.email)) { results.push({ ...base, status: "skipped", reason: "Listed twice" }); continue; }
+          seen.add(r.email);
+          if (already.has(r.email)) { results.push({ ...base, status: "skipped", reason: "Already invited" }); continue; }
+          const seat = ctx.seats[r.type];
+          if (seat.problem) { results.push({ ...base, status: "skipped", reason: seat.problem }); continue; }
+          if (left[r.type] <= 0) { results.push({ ...base, status: "skipped", reason: `No ${P.SEAT_WORD[r.type]} invites left` }); continue; }
+          left[r.type]--;
+          const [code] = await mintCodes(1, async (x) => !!(await storage.getVoucherByCode(x)));
+          const voucher = await storage.createVoucher(P.inviteVoucherFromTemplate({
+            code, template: seat.template, type: r.type, recipient: r,
+            sender: { id: userId, name: ctx.senderName }, programName: ctx.sender.programName,
+          }) as any);
+          const merged = P.mergeFields(message, r);
+          results.push({ ...base, status: "sent" });
+          toSend.push({
+            idx: results.length - 1, voucherId: voucher.id,
+            email: {
+              to: r.email,
+              subject: P.mergeFields(subjectTpl, r).replace(/\{\s*sender\s*\}/gi, ctx.senderName).slice(0, P.MAX_SUBJECT),
+              message: merged, senderName: ctx.senderName, programName: ctx.sender.programName,
+              offer: seat.offer ?? "Free access to MTRLZD.", code, signupUrl: programSignupUrl(req, code, r.type),
+              replyTo: ctx.user?.email ?? null,
+            },
+          });
+        }
+
+        if (toSend.length) {
+          const { failed } = await sendProgramInvites(toSend.map((t) => t.email));
+          if (failed.size) {
+            await S.releaseUnsent(toSend.filter((_, i) => failed.has(i)).map((t) => t.voucherId));
+            toSend.forEach((t, i) => { if (failed.has(i)) results[t.idx] = { ...results[t.idx], status: "failed", reason: "The email didn't send. Try again." }; });
+          }
+        }
+        const after = await programContext(userId);
+        return {
+          status: 200,
+          body: {
+            sent: results.filter((r) => r.status === "sent").length,
+            results,
+            remaining: { brand: after?.seats.brand.remaining ?? 0, creator: after?.seats.creator.remaining ?? 0 },
+          },
+        };
+      });
+      res.status(out.status).json(out.body);
+    } catch (err) {
+      console.error("[ProgramInvites] send failed:", err);
+      res.status(500).json({ error: "Couldn't send the invites" });
+    }
+  });
+
+  app.get("/api/program/invites", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ error: "Authentication required" });
+    const { getSender, listSent } = await import("./programSenders");
+    if (!(await getSender(userId))) return res.json([]);
+    res.json(await listSent(userId));
+  });
+
+  // Admin: which accounts may send, for which program, how many, on whose terms.
+  app.get("/api/admin/program-senders", requireAdmin, async (_req, res) => {
+    const { listSenders } = await import("./programSenders");
+    res.json(await listSenders());
+  });
+
+  app.put("/api/admin/program-senders", requireAdmin, async (req, res) => {
+    const adminId = (req.session as any)?.userId;
+    const { findVoucherByCode, saveSender } = await import("./programSenders");
+    const { templateProblem } = await import("./programInvites");
+    const email = String(req.body?.email ?? "").trim().toLowerCase();
+    const programName = String(req.body?.programName ?? "").trim().slice(0, 120);
+    const num = (v: unknown) => Math.max(0, Math.min(5000, Math.floor(Number(v) || 0)));
+    const brandLimit = num(req.body?.brandLimit), creatorLimit = num(req.body?.creatorLimit);
+    if (!email) return res.status(400).json({ error: "Which account? Enter its email." });
+    if (!programName) return res.status(400).json({ error: "Name the program, e.g. Fashion Week Brooklyn" });
+    const user = await storage.getUserByEmail(email);
+    if (!user) return res.status(404).json({ error: `No account uses ${email}` });
+    const resolve = async (code: unknown, type: "brand" | "creator", limit: number) => {
+      const raw = String(code ?? "").trim();
+      if (!raw) return limit > 0 ? { error: `Add a template code for ${type === "brand" ? "designer" : "influencer"} invites` } : { id: null };
+      const v = await findVoucherByCode(raw);
+      if (!v) return { error: `No code ${raw.toUpperCase()}` };
+      const problem = templateProblem(v, type);
+      return problem ? { error: `${raw.toUpperCase()}: ${problem}` } : { id: v.id };
+    };
+    const b = await resolve(req.body?.brandTemplateCode, "brand", brandLimit);
+    const c = await resolve(req.body?.creatorTemplateCode, "creator", creatorLimit);
+    if ("error" in b) return res.status(400).json({ error: b.error });
+    if ("error" in c) return res.status(400).json({ error: c.error });
+    await saveSender({ userId: user.id, programName, brandLimit, brandTemplateVoucherId: b.id, creatorLimit, creatorTemplateVoucherId: c.id, createdBy: adminId });
+    res.json({ ok: true });
+  });
+
+  app.delete("/api/admin/program-senders/:userId", requireAdmin, async (req, res) => {
+    const { removeSender } = await import("./programSenders");
+    res.json({ ok: await removeSender(req.params.userId) });
+  });
+
   /**
    * A brand's creator-pass allowance: its own limit when its sign-up code set
    * one (10 for Brooklyn), otherwise the platform default.

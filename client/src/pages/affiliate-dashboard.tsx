@@ -1,4 +1,5 @@
 import { CURRENCY_SYMBOL } from "@/lib/currency";
+import { ProgramInviteBanner } from "@/components/ProgramInviteBanner";
 import { useQuery } from "@tanstack/react-query";
 import { EmptyState } from "@/components/EmptyState";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -84,6 +85,8 @@ export default function AffiliateDashboard() {
           {greeting(currentUser?.displayName)}
         </h1>
       </div>
+
+      <ProgramInviteBanner />
 
       {/* No trend on earnings: this used to show a hard-coded "+15% vs last
           month" to every publisher with any earnings. A trend appears only

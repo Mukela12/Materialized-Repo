@@ -21,6 +21,8 @@ import {
 } from "lucide-react";
 import { useLogout } from "@/hooks/useCurrentUser";
 import { useMailboxUnreadCount } from "@/hooks/useMailbox";
+import { useProgram } from "@/hooks/useProgram";
+import { Send as SendIcon } from "lucide-react";
 import { useTokenBalance, tokenLabel } from "@/hooks/useWallet";
 import {
   Sidebar,
@@ -100,6 +102,11 @@ export function AppSidebar({ user }: AppSidebarProps) {
   const logoutMutation = useLogout();
   const [location] = useLocation();
   const { data: unreadCount = 0 } = useMailboxUnreadCount();
+  // Program invites: shown only to accounts an admin switched on.
+  const { data: program } = useProgram();
+  const contentNav = program?.enabled
+    ? [...contentItems, { path: "/creator/invites", label: "Invite your network", icon: SendIcon }]
+    : contentItems;
   const { balance: tokenBalance } = useTokenBalance();
 
   const [menuQuery, setMenuQuery] = useState("");
@@ -213,13 +220,13 @@ export function AppSidebar({ user }: AppSidebarProps) {
         </SidebarGroup>
         )}
 
-        {filterItems(contentItems).length > 0 && (
+        {filterItems(contentNav).length > 0 && (
         <SidebarGroup>
           <SidebarGroupLabel className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             Content Management
           </SidebarGroupLabel>
           <SidebarGroupContent>
-            {renderItems(filterItems(contentItems))}
+            {renderItems(filterItems(contentNav))}
           </SidebarGroupContent>
         </SidebarGroup>
         )}

@@ -19,6 +19,8 @@ import {
 } from "lucide-react";
 import { useLogout } from "@/hooks/useCurrentUser";
 import { useMailboxUnreadCount } from "@/hooks/useMailbox";
+import { useProgram } from "@/hooks/useProgram";
+import { Send as SendIcon } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -83,6 +85,11 @@ export function BrandAppSidebar({ user }: BrandAppSidebarProps) {
   const [location] = useLocation();
   const logoutMutation = useLogout();
   const { data: unreadCount = 0 } = useMailboxUnreadCount();
+  // Program invites: shown only to accounts an admin switched on.
+  const { data: program } = useProgram();
+  const creatorsNav = program?.enabled
+    ? [...creatorsItems, { path: "/brand/invites", label: "Invite your network", icon: SendIcon }]
+    : creatorsItems;
 
   const [menuQuery, setMenuQuery] = useState("");
 
@@ -186,13 +193,13 @@ export function BrandAppSidebar({ user }: BrandAppSidebarProps) {
         </SidebarGroup>
         )}
 
-        {filterItems(creatorsItems).length > 0 && (
+        {filterItems(creatorsNav).length > 0 && (
         <SidebarGroup>
           <SidebarGroupLabel className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             Creator Network
           </SidebarGroupLabel>
           <SidebarGroupContent>
-            {renderItems(filterItems(creatorsItems))}
+            {renderItems(filterItems(creatorsNav))}
           </SidebarGroupContent>
         </SidebarGroup>
         )}

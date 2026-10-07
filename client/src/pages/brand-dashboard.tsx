@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { ProgramInviteBanner } from "@/components/ProgramInviteBanner";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/EmptyState";
@@ -180,6 +181,8 @@ export default function BrandDashboard() {
           </Button>
         </div>
       </div>
+
+      <ProgramInviteBanner />
 
       <BrandDashboardTabs activeTab={activeTab} onTabChange={setActiveTab} />
 

@@ -363,6 +363,7 @@ export default function BrandCreators() {
                               data-testid="input-invite-message"
                             />
                           </FormControl>
+                          <p className="text-xs text-muted-foreground">Type {"{first_name}"} and each creator sees their own first name.</p>
                           <FormMessage />
                         </FormItem>
                       )}

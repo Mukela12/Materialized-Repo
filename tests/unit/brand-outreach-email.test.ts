@@ -58,9 +58,15 @@ async function render(over: Record<string, any> = {}) {
 describe("the outreach email", () => {
   it("shows the MTRLZD logo, from a stable path", async () => {
     const m = await render({ creatorInstagramHandle: "bethanie.ash" });
-    expect(m.html).toContain("/mtrlzd-logo.png");
+    // The small trimmed wordmark (7 Oct 2026; the original was 906 KB).
+    expect(m.html).toContain("/mtrlzd-logo-email.png");
     // Absolute: a relative src resolves against the mail client, not our site.
-    expect(m.html).toMatch(/src="https:\/\/[^"]+\/mtrlzd-logo\.png"/);
+    expect(m.html).toMatch(/src="https:\/\/[^"]+\/mtrlzd-logo-email\.png"/);
+    // And it ships, small; the old file stays for emails already sent.
+    const { statSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    expect(statSync(join(__dirname, "../../client/public/mtrlzd-logo-email.png")).size).toBeLessThan(20_000);
+    expect(statSync(join(__dirname, "../../client/public/mtrlzd-logo.png")).size).toBeGreaterThan(0);
     // alt text, for the many clients that block images by default.
     expect(m.html).toMatch(/alt="MTRLZD"/);
   });

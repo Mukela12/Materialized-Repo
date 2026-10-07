@@ -24,6 +24,7 @@ import Analytics from "@/pages/analytics";
 import CRMAnalytics from "@/pages/crm";
 import Referrals from "@/pages/referrals";
 import Help from "@/pages/help";
+import ProgramInvites from "@/pages/program-invites";
 import More from "@/pages/more";
 import BrandDashboard from "@/pages/brand-dashboard";
 import BrandInventory from "@/pages/brand-inventory";
@@ -90,6 +91,7 @@ function CreatorRouter() {
       <Route path="/creator/rewards" component={WalletPage} />
       <Route path="/creator/profile" component={Profile} />
       <Route path="/creator/help" component={Help} />
+      <Route path="/creator/invites" component={ProgramInvites} />
       <Route path="/creator/mailbox" component={Mailbox} />
       <Route path="/creator/more" component={More} />
       <Route path="/creator/settings/subscription" component={CreatorSettingsSubscription} />
@@ -121,6 +123,7 @@ function BrandRouter() {
       <Route path="/brand/brand-kit" component={BrandKit} />
       <Route path="/brand/mailbox" component={Mailbox} />
       <Route path="/brand/help" component={Help} />
+      <Route path="/brand/invites" component={ProgramInvites} />
       <Route component={NotFound} />
     </Switch>
   );
@@ -139,6 +142,7 @@ function AffiliateRouter() {
       <Route path="/affiliate/brand-kit" component={BrandKit} />
       <Route path="/affiliate/mailbox" component={Mailbox} />
       <Route path="/affiliate/help" component={Help} />
+      <Route path="/affiliate/invites" component={ProgramInvites} />
       <Route component={NotFound} />
     </Switch>
   );

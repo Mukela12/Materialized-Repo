@@ -1,5 +1,6 @@
 import { Resend } from "resend";
 import { publicOrigin } from "./publicOrigin";
+import { escapeHtml, mergeFields, messageToHtml } from "./programInvites";
 
 /**
  * Constructed on first use, not at import.
@@ -66,8 +67,12 @@ function baseTemplate(body: string): string {
            stable, unhashed path — a bundled asset's filename changes on every
            build, which would silently break the logo in every email already
            sent. alt text carries the brand for clients that block images. -->
-      <img src="${publicOrigin()}/mtrlzd-logo.png" alt="MTRLZD"
-           width="150" style="display:block;margin:0 auto;max-width:150px;height:auto;border:0;" />
+      <!-- mtrlzd-logo-email.png is the wordmark trimmed and small (about 2 KB,
+           was 906 KB with a large transparent margin), so it shows at once
+           and the header is no taller than the mark. The old file stays at
+           its path for emails already sent. -->
+      <img src="${publicOrigin()}/mtrlzd-logo-email.png" alt="MTRLZD"
+           width="150" height="27" style="display:block;margin:0 auto;width:150px;max-width:150px;height:auto;border:0;" />
       <div class="header-title">Video Commerce Platform</div>
     </div>
     <div class="body">
@@ -447,15 +452,19 @@ export async function sendCreatorInvitationEmail(opts: {
   /** The invitation's own voucher. Null only if minting failed. */
   voucherCode?: string | null;
 }): Promise<void> {
-  const firstName = opts.creatorName.split(" ")[0];
+  // Escaped: the names and the message are typed by people, and went into
+  // the email as raw HTML, so a message could carry its own links and markup
+  // under the platform's name.
+  const firstName = escapeHtml(opts.creatorName.split(" ")[0]);
+  const brandName = escapeHtml(opts.brandName);
   const body = `
     <h1>You're invited, ${firstName}!</h1>
     <p>
-      <strong>${opts.brandName}</strong> would love to collaborate with you on Materialized,
+      <strong>${brandName}</strong> would love to collaborate with you on Materialized,
       the platform that turns your videos into fully shoppable, commission-earning experiences.
     </p>
-    ${opts.category ? `<div class="video-box"><p><strong>Content category:</strong> ${opts.category}</p></div>` : ""}
-    ${opts.message ? `<p style="font-style:italic;border-left:3px solid #677A67;padding-left:14px;color:#444;">"${opts.message}"</p>` : ""}
+    ${opts.category ? `<div class="video-box"><p><strong>Content category:</strong> ${escapeHtml(opts.category)}</p></div>` : ""}
+    ${opts.message ? `<p style="font-style:italic;border-left:3px solid #677A67;padding-left:14px;color:#444;">"${escapeHtml(mergeFields(opts.message, { name: opts.creatorName }))}"</p>` : ""}
     <p>
       Join Materialized to start making your content shoppable and earning commissions on every sale
       you drive.
@@ -478,6 +487,70 @@ export async function sendCreatorInvitationEmail(opts: {
     `${opts.brandName} invited you to collaborate on Materialized`,
     baseTemplate(body)
   );
+}
+
+// ── Program invite (producer → designer or influencer) ──────────────────────
+
+export interface ProgramInviteEmail {
+  to: string;
+  subject: string;
+  /** The sender's message, already merged for this person (plain text). */
+  message: string;
+  senderName: string;
+  programName: string;
+  offer: string;
+  code: string;
+  signupUrl: string;
+  /** Replies go to the person who sent it, not to the platform. */
+  replyTo?: string | null;
+}
+
+/** The invite as HTML. Exported so the page can preview exactly what is sent. */
+export function programInviteHtml(e: Omit<ProgramInviteEmail, "to" | "subject" | "replyTo">): string {
+  const body = `
+    ${messageToHtml(e.message)}
+    <div class="video-box" style="text-align:center;">
+      <p style="margin:0 0 4px;color:#444;"><strong>${escapeHtml(e.programName)}</strong></p>
+      <p style="margin:0;color:#555;">${escapeHtml(e.offer)}</p>
+    </div>
+    <div class="cta-wrap">
+      <a href="${escapeHtml(e.signupUrl)}" class="cta">Join MTRLZD</a>
+    </div>
+    <div class="video-box" style="text-align:center;">
+      <p style="margin:0 0 6px;color:#444;">Your personal code, if you need to enter it by hand:</p>
+      <p style="margin:0;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:18px;font-weight:700;letter-spacing:.08em;color:#111;">${escapeHtml(e.code)}</p>
+    </div>
+    <p class="note">Sent by ${escapeHtml(e.senderName)} through MTRLZD. Reply to this email to reach them.</p>
+  `;
+  return baseTemplate(body);
+}
+
+/**
+ * Many invites at once, through Resend's batch endpoint (100 per call), so a
+ * 200-person list goes out in two requests instead of 200 one-by-one sends
+ * that would outrun both the rate limit and the request's own timeout.
+ * Returns which ones failed, by index, so their codes can be released.
+ */
+export async function sendProgramInvites(emails: ProgramInviteEmail[]): Promise<{ failed: Set<number>; error?: string }> {
+  const failed = new Set<number>();
+  let error: string | undefined;
+  for (let i = 0; i < emails.length; i += 100) {
+    const chunk = emails.slice(i, i + 100);
+    try {
+      const res: any = await client().batch.send(chunk.map((e) => ({
+        from: `MTRLZD <${FROM_ADDRESS}>`,
+        to: e.to,
+        subject: e.subject,
+        html: programInviteHtml(e),
+        ...(e.replyTo ? { replyTo: e.replyTo } : {}),
+      })));
+      if (res?.error) throw new Error(res.error.message || String(res.error));
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err);
+      for (let j = 0; j < chunk.length; j++) failed.add(i + j);
+    }
+  }
+  return { failed, error };
 }
 
 // ── Affiliate / Publisher Invitation ─────────────────────────────────────────

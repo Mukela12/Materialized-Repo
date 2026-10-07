@@ -7,6 +7,7 @@ import { useTableControls, type SortDir } from "@/hooks/useTableControls";
 import { exportToCsv } from "@/lib/exportCsv";
 import { TableToolbar } from "@/components/TableToolbar";
 import { VoucherManager } from "@/components/VoucherManager";
+import { ProgramSendersAdmin } from "@/components/ProgramSendersAdmin";
 import { AllowancesEditor } from "@/components/AllowancesEditor";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -1697,7 +1698,7 @@ export default function AdminPipeline() {
         {activeTab === "videos" && <AdminVideos />}
         {activeTab === "brands" && <AdminBrands />}
         {activeTab === "money" && <AdminMoneyOps />}
-        {activeTab === "vouchers" && <VoucherManager />}
+        {activeTab === "vouchers" && <><VoucherManager /><ProgramSendersAdmin /></>}
         {activeTab === "pipeline" && (
         <div>
         {/* Header */}

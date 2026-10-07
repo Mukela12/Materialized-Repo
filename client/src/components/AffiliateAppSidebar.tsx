@@ -30,6 +30,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useLogout } from "@/hooks/useCurrentUser";
 import { useMailboxUnreadCount } from "@/hooks/useMailbox";
+import { useProgram } from "@/hooks/useProgram";
+import { Send as SendIcon } from "lucide-react";
 
 type User = {
   id?: string;
@@ -103,6 +105,12 @@ export function AffiliateAppSidebar({ user }: AffiliateAppSidebarProps) {
   const [location] = useLocation();
   const logoutMutation = useLogout();
   const { data: unreadCount = 0 } = useMailboxUnreadCount();
+  // Program invites: shown only to accounts an admin switched on, which for
+  // publishers means event producers inviting their designers and influencers.
+  const { data: program } = useProgram();
+  const menuItems = program?.enabled
+    ? [...affiliateMenuItems.slice(0, 1), { title: "Invite your network", url: "/affiliate/invites", icon: SendIcon }, ...affiliateMenuItems.slice(1)]
+    : affiliateMenuItems;
 
   return (
     <Sidebar collapsible="icon" className="border-r border-border">
@@ -125,7 +133,7 @@ export function AffiliateAppSidebar({ user }: AffiliateAppSidebarProps) {
           </SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {affiliateMenuItems.map((item) => {
+              {menuItems.map((item) => {
                 const isActive = location === item.url ||
                   (item.url !== "/affiliate" && location.startsWith(item.url));
                 const isMailbox = item.url.endsWith("/mailbox");

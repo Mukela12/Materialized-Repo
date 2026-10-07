@@ -1765,6 +1765,25 @@ export const voucherRedemptions = pgTable("voucher_redemptions", {
 });
 
 export type Voucher = typeof vouchers.$inferSelect;
+
+/**
+ * Accounts an admin has switched on to send program invites (migration 0041):
+ * a Fashion Week producer inviting its designers and influencers from the app,
+ * each invite minting a single-use code that copies its terms from the
+ * program's own template code for that kind of seat.
+ */
+export const programSenders = pgTable("program_senders", {
+  userId: varchar("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
+  programName: text("program_name").notNull(),
+  brandLimit: integer("brand_limit").notNull().default(0),
+  brandTemplateVoucherId: varchar("brand_template_voucher_id").references(() => vouchers.id, { onDelete: "set null" }),
+  creatorLimit: integer("creator_limit").notNull().default(0),
+  creatorTemplateVoucherId: varchar("creator_template_voucher_id").references(() => vouchers.id, { onDelete: "set null" }),
+  createdBy: varchar("created_by"),
+  createdAt: timestamp("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: timestamp("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+});
+export type ProgramSender = typeof programSenders.$inferSelect;
 export type VoucherRedemption = typeof voucherRedemptions.$inferSelect;
 
 // ─────────────────────────────────────────────────────────────────────────────
