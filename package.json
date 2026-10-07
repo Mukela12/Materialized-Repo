@@ -7,12 +7,12 @@
     "node": ">=20.0.0"
   },
   "scripts": {
-    "dev": "NODE_ENV=development tsx server/index.ts",
-    "build": "tsx script/build.ts",
-    "start": "NODE_ENV=production node dist/index.cjs",
+    "dev": "node api.js && NODE_ENV=development tsx server/index.ts",
+    "build": "node api.js && tsx script/build.ts",
+    "start": "node api.js && NODE_ENV=production node dist/index.cjs",
     "check": "tsc",
     "db:migrate": "tsx server/migrate.ts",
-    "_comment_db:push": "DANGER: drizzle-kit push diffs shared/schema.ts against the live DB and DROPS anything not modeled — including the connect-pg-simple `session` table, which is intentionally NOT in schema.ts. It would destroy all active sessions. Do NOT run against staging/prod. Use `npm run db:migrate` (versioned, additive-only) instead.",
+    "_comment_db:push": "DANGER: drizzle-kit push diffs shared/schema.ts against the live DB and DROPS anything not modeled \u2014 including the connect-pg-simple `session` table, which is intentionally NOT in schema.ts. It would destroy all active sessions. Do NOT run against staging/prod. Use `npm run db:migrate` (versioned, additive-only) instead.",
     "db:push": "drizzle-kit push"
   },
   "dependencies": {

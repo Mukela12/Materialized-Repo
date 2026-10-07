@@ -177,16 +177,21 @@ export default function ProgramInvites() {
         </p>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2">
+      {/* Two tiles that only show numbers: side by side at every width, compact
+          on a phone, so they don't push the list and message down the screen. */}
+      <div className="grid grid-cols-2 gap-2 sm:gap-3">
         {(["brand", "creator"] as Seat[]).map((t) => (
-          <div key={t} className="rounded-xl border bg-card p-4" data-testid={`seat-${t}`}>
-            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">{WORD[t]}s</p>
+          <div key={t} className="min-w-0 rounded-xl border bg-card p-3 sm:p-4" data-testid={`seat-${t}`}>
+            <p className="text-[10px] sm:text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">{WORD[t]}s</p>
             {seats[t].problem ? (
-              <p className="mt-1 text-sm text-muted-foreground">{seats[t].problem}</p>
+              <p className="mt-1 text-xs sm:text-sm leading-snug text-muted-foreground">{seats[t].problem}</p>
             ) : (
               <>
-                <p className="mt-1 text-2xl font-semibold tabular-nums">{seats[t].remaining}<span className="text-sm font-normal text-muted-foreground"> of {seats[t].limit} invites left</span></p>
-                <p className="text-xs text-muted-foreground">{seats[t].offer}</p>
+                <p className="mt-0.5 text-xl sm:text-2xl font-semibold tabular-nums leading-tight">
+                  {seats[t].remaining}
+                  <span className="text-xs sm:text-sm font-normal text-muted-foreground"> of {seats[t].limit}<span className="hidden sm:inline"> invites</span> left</span>
+                </p>
+                <p className="mt-0.5 text-[11px] sm:text-xs leading-snug text-muted-foreground">{seats[t].offer}</p>
               </>
             )}
           </div>
@@ -195,7 +200,7 @@ export default function ProgramInvites() {
 
       {!me.emailReady && (
         <p className="rounded-lg border border-amber-300/60 bg-amber-50 p-3 text-sm text-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
-          Email sending isn't set up on the server yet, so invites can't go out. The MTRLZD team has been told.
+          Email sending isn't set up on the server yet, so invites can't go out. Ask the MTRLZD team to finish setting it up.
         </p>
       )}
 
