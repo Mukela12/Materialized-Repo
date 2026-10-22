@@ -520,12 +520,32 @@ function startScheduler() {
       // Certificates checked daily; an expiring or broken one emails the
       // operator two weeks before a visitor would ever see an error page.
       // The day-2 trial nurture: creators, affiliate program, icing on cake.
-      makeTrialFollowupJob(storage as any, {
+      // Stands aside once the Brands email journey is on, which opens with
+      // the same message: one welcome sequence, not two.
+      makeTrialFollowupJob({
+        getBrandsDueTrialFollowup: async (now: Date) => {
+          const { isJourneyOn } = await import("./journeyStore");
+          return (await isJourneyOn("brands")) ? [] : (storage as any).getBrandsDueTrialFollowup(now);
+        },
+        markTrialFollowupSent: (id: string, at: Date) => (storage as any).markTrialFollowupSent(id, at),
+      }, {
         send: async (o) => {
           const { sendTrialFollowupEmail } = await import("./emailService");
           await sendTrialFollowupEmail(o);
         },
       }, { dashboardUrl: `${process.env.APP_URL || "https://www.mtrlzd.com"}/brand` }),
+      // The client's onboarding emails (server/journeys.ts). Each journey is
+      // off until switched on in the admin, so this does nothing until then.
+      {
+        name: "email-journeys",
+        schedule: process.env.JOURNEY_CRON || "*/15 * * * *",
+        run: async () => {
+          const { runJourneys, releaseStuckSends } = await import("./journeyStore");
+          const { sendJourneyEmails } = await import("./emailService");
+          await releaseStuckSends();
+          return runJourneys({ now: new Date(), origin: process.env.APP_URL || "https://www.mtrlzd.com", send: sendJourneyEmails });
+        },
+      },
       makeCertWatchJob(probeCertificate, {
         sendAlert: async (subject, lines) => {
           const { sendOpsAlertEmail } = await import("./emailService");

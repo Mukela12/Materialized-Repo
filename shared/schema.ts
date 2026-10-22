@@ -105,6 +105,10 @@ export const users = pgTable("users", {
   lastLoginAt: timestamp("last_login_at"),
   lastSeenAt: timestamp("last_seen_at"),
   loginCount: integer("login_count").notNull().default(0),
+  /** Email journeys (server/journeys.ts): an admin's choice of journey, the opt-out, the unsubscribe token. */
+  journeySegment: text("journey_segment"),
+  emailOptOutAt: timestamp("email_opt_out_at"),
+  emailToken: text("email_token"),
   /**
    * Free access requires a card. Stamped at voucher redemption — the client's
    * rule is that overage accountability is "the single requirement of having
@@ -1805,6 +1809,49 @@ export const activityEvents = pgTable("activity_events", {
   referrerHost: text("referrer_host"),
   device: text("device"),
   voucherId: varchar("voucher_id").references(() => vouchers.id, { onDelete: "set null" }),
+});
+
+// Email journeys (migrations/0043). Queried with raw SQL in server/journeyStore.ts.
+export const emailJourneys = pgTable("email_journeys", {
+  segment: text("segment").primaryKey(),
+  name: text("name").notNull(),
+  audience: text("audience").notNull(),
+  sort: integer("sort").notNull().default(0),
+  enabledAt: timestamp("enabled_at"),
+  updatedAt: timestamp("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+});
+export const emailJourneySteps = pgTable("email_journey_steps", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  segment: text("segment").notNull().references(() => emailJourneys.segment, { onDelete: "cascade" }),
+  position: integer("position").notNull(),
+  anchor: text("anchor").notNull().default("signup"),
+  day: integer("day").notNull(),
+  condition: text("condition").notNull().default("always"),
+  subject: text("subject").notNull(),
+  body: text("body").notNull(),
+  ctaLabel: text("cta_label"),
+  ctaPath: text("cta_path"),
+  enabled: boolean("enabled").notNull().default(true),
+  reviewNote: text("review_note"),
+  updatedAt: timestamp("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+});
+export const emailJourneyEnrollments = pgTable("email_journey_enrollments", {
+  userId: varchar("user_id").primaryKey().references(() => users.id, { onDelete: "cascade" }),
+  segment: text("segment").notNull().references(() => emailJourneys.segment, { onDelete: "cascade" }),
+  enrolledAt: timestamp("enrolled_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+});
+export const emailJourneySends = pgTable("email_journey_sends", {
+  id: serial("id").primaryKey(),
+  userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  stepId: varchar("step_id").notNull().references(() => emailJourneySteps.id, { onDelete: "cascade" }),
+  status: text("status").notNull(),
+  reason: text("reason"),
+  attempts: integer("attempts").notNull().default(1),
+  at: timestamp("at").notNull().default(sql`CURRENT_TIMESTAMP`),
+});
+export const emailJourneyPartners = pgTable("email_journey_partners", {
+  partner: text("partner").primaryKey(),
+  segment: text("segment").notNull().references(() => emailJourneys.segment, { onDelete: "cascade" }),
 });
 export type VoucherRedemption = typeof voucherRedemptions.$inferSelect;
 

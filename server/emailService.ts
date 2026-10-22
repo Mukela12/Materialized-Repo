@@ -553,6 +553,62 @@ export async function sendProgramInvites(emails: ProgramInviteEmail[]): Promise<
   return { failed, error };
 }
 
+// ── Email journeys (server/journeys.ts) ─────────────────────────────────────
+
+export interface JourneyEmail {
+  to: string;
+  subject: string;
+  bodyHtml: string;
+  text: string;
+  ctaLabel: string | null;
+  ctaUrl: string;
+  unsubscribeUrl: string;
+  /** The one-click endpoint mail clients POST to (RFC 8058). */
+  unsubscribePostUrl: string;
+}
+
+/** A journey email in the site's layout. Exported so the admin preview is the real thing. */
+export function journeyEmailHtml(e: Pick<JourneyEmail, "bodyHtml" | "ctaLabel" | "ctaUrl" | "unsubscribeUrl">): string {
+  const body = `
+    ${e.bodyHtml}
+    ${e.ctaLabel ? `<div class="cta-wrap"><a href="${escapeHtml(e.ctaUrl)}" class="cta">${escapeHtml(e.ctaLabel)}</a></div>` : ""}
+    <p class="note">You're getting this because you have a MTRLZD account.
+      <a href="${escapeHtml(e.unsubscribeUrl)}" style="color:#999;">Unsubscribe from these emails</a>.</p>
+  `;
+  return baseTemplate(body);
+}
+
+/**
+ * Journey emails, through the batch endpoint (100 per call). Each carries
+ * List-Unsubscribe headers, which Gmail and Yahoo require of bulk senders and
+ * which put an "Unsubscribe" link beside the sender's name.
+ */
+export async function sendJourneyEmails(emails: JourneyEmail[]): Promise<{ failed: Set<number>; error?: string }> {
+  const failed = new Set<number>();
+  let error: string | undefined;
+  for (let i = 0; i < emails.length; i += 100) {
+    const chunk = emails.slice(i, i + 100);
+    try {
+      const res: any = await client().batch.send(chunk.map((e) => ({
+        from: `MTRLZD <${FROM_ADDRESS}>`,
+        to: e.to,
+        subject: e.subject,
+        html: journeyEmailHtml(e),
+        text: `${e.text}\n\nUnsubscribe: ${e.unsubscribeUrl}`,
+        headers: {
+          "List-Unsubscribe": `<${e.unsubscribePostUrl}>`,
+          "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+        },
+      })));
+      if (res?.error) throw new Error(res.error.message || String(res.error));
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err);
+      for (let j = 0; j < chunk.length; j++) failed.add(i + j);
+    }
+  }
+  return { failed, error };
+}
+
 // ── Affiliate / Publisher Invitation ─────────────────────────────────────────
 
 export async function sendAffiliateInvitationEmail(opts: {

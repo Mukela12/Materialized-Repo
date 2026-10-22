@@ -58,6 +58,7 @@ import Mailbox from "@/pages/mailbox";
 import WishlistPage from "@/pages/wishlist";
 import Login from "@/pages/login";
 import Register from "@/pages/register";
+import Unsubscribe from "@/pages/unsubscribe";
 import VerifyEmail from "@/pages/verify-email";
 import ForgotPassword from "@/pages/forgot-password";
 import ResetPassword from "@/pages/reset-password";
@@ -599,7 +600,8 @@ function App() {
     location === "/register" ||
     location === "/forgot-password" ||
     location.startsWith("/verify-email") ||
-    location.startsWith("/reset-password");
+    location.startsWith("/reset-password") ||
+    location.startsWith("/unsubscribe/");
   // Public legal pages — kept out of the authenticated shell entirely.
   const isPolicyRoute = location === "/privacy" || location === "/cookies";
 
@@ -615,6 +617,7 @@ function App() {
               <Route path="/verify-email/:token" component={VerifyEmail} />
               <Route path="/forgot-password" component={ForgotPassword} />
               <Route path="/reset-password/:token" component={ResetPassword} />
+              <Route path="/unsubscribe/:token" component={Unsubscribe} />
               <Route path="/privacy" component={Privacy} />
               <Route path="/cookies" component={Cookies} />
             </Switch>

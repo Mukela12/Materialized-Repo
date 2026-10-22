@@ -9,6 +9,7 @@ import { TableToolbar } from "@/components/TableToolbar";
 import { VoucherManager } from "@/components/VoucherManager";
 import { ProgramSendersAdmin } from "@/components/ProgramSendersAdmin";
 import { AdminActivity } from "@/components/AdminActivity";
+import { AdminJourneys } from "@/components/AdminJourneys";
 import { AllowancesEditor } from "@/components/AllowancesEditor";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -1583,7 +1584,7 @@ export default function AdminPipeline() {
    * someone where the vouchers are meant "go to /admin, then find the seventh
    * tab" — and a reload dropped them back on Overview mid-task.
    */
-  const TABS = ["overview", "activity", "users", "videos", "brands", "pipeline", "money", "vouchers"] as const;
+  const TABS = ["overview", "activity", "users", "videos", "brands", "pipeline", "money", "vouchers", "emails"] as const;
   type AdminTab = (typeof TABS)[number];
   const tabFromUrl = () => {
     const t = new URLSearchParams(window.location.search).get("tab") as AdminTab | null;
@@ -1699,6 +1700,7 @@ export default function AdminPipeline() {
 
         {activeTab === "overview" && <AdminOverview />}
         {activeTab === "activity" && <AdminActivity />}
+        {activeTab === "emails" && <AdminJourneys />}
         {activeTab === "users" && <AdminUsers />}
         {activeTab === "videos" && <AdminVideos />}
         {activeTab === "brands" && <AdminBrands />}

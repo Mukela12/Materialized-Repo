@@ -16,7 +16,7 @@ export function pageOf(raw: unknown): string | null {
   const path = raw.split(/[?#]/)[0]
     .replace(UUID, ":id")
     .replace(/\/\d{3,}(?=\/|$)/g, "/:id")
-    .replace(/\/(reset-password|verify-email|accept|brand-authorize)\/[^/]+/g, "/$1/:token")
+    .replace(/\/(reset-password|verify-email|accept|brand-authorize|unsubscribe)\/[^/]+/g, "/$1/:token")
     .slice(0, 160);
   return path || "/";
 }

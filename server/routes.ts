@@ -2577,6 +2577,85 @@ export async function registerRoutes(
     res.json(await activityReport(windowDays(req.query.days)));
   });
 
+  // ── Email journeys (server/journeys.ts) ──────────────────────────────────
+  app.get("/api/admin/journeys", requireAdmin, async (_req, res) => {
+    const { journeysOverview } = await import("./journeyStore");
+    res.json(await journeysOverview());
+  });
+
+  app.put("/api/admin/journeys/:segment", requireAdmin, async (req, res) => {
+    const { setJourneyEnabled } = await import("./journeyStore");
+    const ok = await setJourneyEnabled(req.params.segment, req.body?.enabled === true);
+    if (!ok) return res.status(404).json({ error: "No such journey." });
+    res.json({ ok: true });
+  });
+
+  app.put("/api/admin/journey-steps/:id", requireAdmin, async (req, res) => {
+    const { checkStepEdit } = await import("./journeys");
+    const { updateStep } = await import("./journeyStore");
+    const edit = checkStepEdit(req.body ?? {});
+    if ("error" in edit) return res.status(400).json({ error: edit.error });
+    if (!(await updateStep(req.params.id, edit))) return res.status(404).json({ error: "No such email." });
+    res.json({ ok: true });
+  });
+
+  /**
+   * The email as it would arrive, for the admin's own account, from the draft
+   * being edited (not what is saved), so the preview never lags the editor.
+   * With send=true it is also mailed to the admin.
+   */
+  app.post("/api/admin/journey-steps/:id/preview", requireAdmin, async (req, res) => {
+    const { checkStepEdit, renderStep } = await import("./journeys");
+    const { getStep } = await import("./journeyStore");
+    const { journeyEmailHtml, sendJourneyEmails, isEmailConfigured } = await import("./emailService");
+    const step = await getStep(req.params.id);
+    if (!step) return res.status(404).json({ error: "No such email." });
+    const edit = checkStepEdit({ ...step, ...(req.body ?? {}) });
+    if ("error" in edit) return res.status(400).json({ error: edit.error });
+    const me = await storage.getUser((req.session as any).userId);
+    const role = typeof req.body?.role === "string" ? req.body.role : "creator";
+    const origin = publicOrigin(req);
+    const r = renderStep(edit, { displayName: me?.displayName ?? "Beth", companyName: req.body?.companyName || "Acme Studio", role }, origin);
+    const email = { ...r, to: me?.email ?? "", unsubscribeUrl: `${origin}/unsubscribe/preview`, unsubscribePostUrl: `${origin}/api/email/unsubscribe/preview` };
+    if (req.body?.send === true) {
+      if (!me?.email) return res.status(400).json({ error: "Your account has no email address." });
+      if (!isEmailConfigured()) return res.status(503).json({ error: "Email isn't set up on this server." });
+      const sent = await sendJourneyEmails([{ ...email, subject: `[Test] ${email.subject}` }]);
+      if (sent.failed.size) return res.status(502).json({ error: sent.error || "The email service refused it." });
+    }
+    res.json({ subject: email.subject, html: journeyEmailHtml(email), sentTo: req.body?.send === true ? me?.email : undefined });
+  });
+
+  app.put("/api/admin/journey-partners", requireAdmin, async (req, res) => {
+    const { SEGMENTS } = await import("./journeys");
+    const { setPartnerSegment } = await import("./journeyStore");
+    const partner = typeof req.body?.partner === "string" ? req.body.partner.trim() : "";
+    const segment = req.body?.segment ?? null;
+    if (!partner) return res.status(400).json({ error: "Which partner?" });
+    if (segment !== null && !(SEGMENTS as readonly string[]).includes(segment)) return res.status(400).json({ error: "No such journey." });
+    await setPartnerSegment(partner, segment);
+    res.json({ ok: true });
+  });
+
+  // Unsubscribe. The page asks before acting (link scanners open every link);
+  // mail clients' one-click button POSTs here directly (RFC 8058).
+  app.get("/api/email/preferences/:token", async (req, res) => {
+    const { preferencesFor } = await import("./journeyStore");
+    const p = await preferencesFor(req.params.token);
+    if (!p) return res.status(404).json({ error: "This link isn't valid any more." });
+    res.json(p);
+  });
+  app.post("/api/email/unsubscribe/:token", async (req, res) => {
+    const { setOptOut } = await import("./journeyStore");
+    if (!(await setOptOut(req.params.token, true))) return res.status(404).json({ error: "This link isn't valid any more." });
+    res.json({ ok: true, optedOut: true });
+  });
+  app.post("/api/email/resubscribe/:token", async (req, res) => {
+    const { setOptOut } = await import("./journeyStore");
+    if (!(await setOptOut(req.params.token, false))) return res.status(404).json({ error: "This link isn't valid any more." });
+    res.json({ ok: true, optedOut: false });
+  });
+
   // Admin: which accounts may send, for which program, how many, on whose terms.
   app.get("/api/admin/program-senders", requireAdmin, async (_req, res) => {
     const { listSenders } = await import("./programSenders");
