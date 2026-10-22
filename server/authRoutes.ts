@@ -3,6 +3,7 @@ import { resolveFeeConfig } from "./feeConfig";
 import { ensureOwnBrand } from "./brandAccount";
 import { publicOrigin } from "./publicOrigin";
 import { storage } from "./storage";
+import { recordLogin, recordSignup } from "./activity";
 import { hashPassword, verifyPassword } from "./auth";
 import { checkRedeemable, grantsOf, normaliseCode } from "./vouchers";
 import { sendVerificationEmail, sendPasswordResetEmail, isEmailConfigured } from "./emailService";
@@ -72,6 +73,9 @@ export function registerAuthRoutes(app: Express) {
     await new Promise<void>((resolve, reject) =>
       req.session.save((err) => (err ? reject(err) : resolve()))
     );
+
+    // Counted, never in the way: a sign-in must not fail on a stats write.
+    recordLogin(user.id).catch((e) => console.error("[Activity] login:", e?.message));
 
     res.json({
       id: user.id,
@@ -263,6 +267,7 @@ export function registerAuthRoutes(app: Express) {
       emailVerificationToken: verificationToken,
       emailVerificationExpires: verificationExpires,
     } as any);
+    recordSignup(user.id).catch((e) => console.error("[Activity] signup:", e?.message));
 
     // A brand account gets its brand at once: products, invitations and
     // campaigns all hang off it, and without it the brand could add nothing.
@@ -348,6 +353,7 @@ export function registerAuthRoutes(app: Express) {
       await new Promise<void>((resolve, reject) =>
         req.session.save((err) => (err ? reject(err) : resolve())),
       );
+      recordLogin(user.id).catch((e) => console.error("[Activity] login:", e?.message));
     }
 
     res.status(201).json({
@@ -391,6 +397,7 @@ export function registerAuthRoutes(app: Express) {
     await new Promise<void>((resolve, reject) =>
       req.session.save((err) => (err ? reject(err) : resolve()))
     );
+    recordLogin(user.id).catch((e) => console.error("[Activity] login:", e?.message));
 
     res.json({
       id: user.id,

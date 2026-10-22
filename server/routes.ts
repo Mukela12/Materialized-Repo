@@ -2557,6 +2557,26 @@ export async function registerRoutes(
     res.json(await listSent(userId));
   });
 
+  // A page view from the app's own tracker (see server/activity.ts). Always 204:
+  // the browser does nothing with the answer, and a bad beacon is not an error
+  // worth showing anyone.
+  app.post("/api/activity", async (req, res) => {
+    res.status(204).end();
+    const { cleanPageView } = await import("./activityRules");
+    const view = cleanPageView(req.body ?? {});
+    if (!view) return;
+    const { recordPageView } = await import("./activity");
+    const userId = (req.session as any)?.userId ?? null;
+    recordPageView(view, userId).catch((e) => console.error("[Activity] page view:", e?.message));
+  });
+
+  // Admin: who comes in, where they land and leave, and what the codes did.
+  app.get("/api/admin/activity", requireAdmin, async (req, res) => {
+    const { windowDays } = await import("./activityRules");
+    const { activityReport } = await import("./activity");
+    res.json(await activityReport(windowDays(req.query.days)));
+  });
+
   // Admin: which accounts may send, for which program, how many, on whose terms.
   app.get("/api/admin/program-senders", requireAdmin, async (_req, res) => {
     const { listSenders } = await import("./programSenders");

@@ -9,7 +9,9 @@
  *                      secure in production, 7-day maxAge, Postgres-backed store)
  *    - `sidebar_state` client/src/components/ui/sidebar.tsx (7-day, path=/)
  *    - `theme`         client/src/components/ThemeProvider.tsx (localStorage)
- *  There is currently NO analytics or advertising cookie anywhere in the app.
+ *    - `mtrlzd-vid`, `mtrlzd-sid`  client/src/lib/activity.ts (first-party page
+ *                      counts for the admin Activity tab; local/sessionStorage)
+ *  There is currently NO third-party analytics or advertising cookie in the app.
  *
  *  This text MUST be reviewed and approved by the client and by a qualified
  *  lawyer before launch. It is NOT legal advice.
@@ -24,7 +26,7 @@ import { Link } from "wouter";
 import { LegalPage, LegalSection, LegalList } from "@/components/LegalPage";
 import { COMPANY } from "@/lib/company";
 
-const LAST_UPDATED = "27 July 2026";
+const LAST_UPDATED = "22 October 2026";
 
 interface CookieRow {
   name: string;
@@ -58,6 +60,22 @@ const COOKIES: CookieRow[] = [
       "Remembers your light or dark appearance choice. Stored in your browser and never sent to our servers.",
     category: "Functional",
     duration: "Until you clear site data",
+  },
+  {
+    name: "mtrlzd-vid",
+    provider: "Materialized (first party, stored in localStorage, not a cookie)",
+    purpose:
+      "A random id so we can count visits to our own pages (which pages, and whether an invitation link was opened). Never shared with anyone.",
+    category: "Performance",
+    duration: "Until you clear site data",
+  },
+  {
+    name: "mtrlzd-sid",
+    provider: "Materialized (first party, stored in sessionStorage, not a cookie)",
+    purpose:
+      "A random id that groups the pages of one visit, so we can see where visits start and end.",
+    category: "Performance",
+    duration: "Until you close the tab",
   },
 ];
 
@@ -131,8 +149,8 @@ export default function Cookies() {
       <LegalSection heading="3. What we do not use">
         <p>
           Materialized does not set advertising cookies, does not run a third-party
-          advertising pixel, and does not use a general-purpose web analytics tracker on
-          this site. We do not sell or share cookie data for cross-context behavioral
+          advertising pixel, and does not use a third-party web analytics tracker on
+          this site. Our own page counts (see the table above) stay with us. We do not sell or share cookie data for cross-context behavioral
           advertising.
         </p>
         <p>
@@ -182,8 +200,15 @@ export default function Cookies() {
           interface.
         </p>
         <p>
-          If we later introduce analytics or advertising cookies, we will update this
-          policy and ask for your consent before setting them.
+          The <span className="font-mono text-white/70">mtrlzd-vid</span> and{" "}
+          <span className="font-mono text-white/70">mtrlzd-sid</span> keys only count
+          visits to our own pages. They hold a random id, not your name or address, and
+          are never passed to another company. If your browser sends a Global Privacy
+          Control or Do Not Track signal, they are not set and nothing is counted.
+        </p>
+        <p>
+          If we later introduce third-party analytics or advertising cookies, we will
+          update this policy and ask for your consent before setting them.
         </p>
       </LegalSection>
 

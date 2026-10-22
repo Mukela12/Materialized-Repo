@@ -8,6 +8,7 @@ import { exportToCsv } from "@/lib/exportCsv";
 import { TableToolbar } from "@/components/TableToolbar";
 import { VoucherManager } from "@/components/VoucherManager";
 import { ProgramSendersAdmin } from "@/components/ProgramSendersAdmin";
+import { AdminActivity } from "@/components/AdminActivity";
 import { AllowancesEditor } from "@/components/AllowancesEditor";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -1582,7 +1583,7 @@ export default function AdminPipeline() {
    * someone where the vouchers are meant "go to /admin, then find the seventh
    * tab" — and a reload dropped them back on Overview mid-task.
    */
-  const TABS = ["overview", "users", "videos", "brands", "pipeline", "money", "vouchers"] as const;
+  const TABS = ["overview", "activity", "users", "videos", "brands", "pipeline", "money", "vouchers"] as const;
   type AdminTab = (typeof TABS)[number];
   const tabFromUrl = () => {
     const t = new URLSearchParams(window.location.search).get("tab") as AdminTab | null;
@@ -1665,7 +1666,10 @@ export default function AdminPipeline() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    // min-w-0: this sits in the sidebar wrapper's flex row, where a flex item
+    // grows to its widest child. Without it the tab bar and tables pushed the
+    // whole admin page wider than a phone instead of scrolling within.
+    <div className="min-h-screen bg-background w-full min-w-0">
       <div className="max-w-7xl mx-auto px-4 py-8">
         {/* Admin Header */}
         <div className="flex items-center justify-between mb-6">
@@ -1694,6 +1698,7 @@ export default function AdminPipeline() {
         </div>
 
         {activeTab === "overview" && <AdminOverview />}
+        {activeTab === "activity" && <AdminActivity />}
         {activeTab === "users" && <AdminUsers />}
         {activeTab === "videos" && <AdminVideos />}
         {activeTab === "brands" && <AdminBrands />}

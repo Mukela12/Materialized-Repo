@@ -101,6 +101,10 @@ export const users = pgTable("users", {
    */
   feeTermsAcceptedAt: timestamp("fee_terms_accepted_at"),
   feeTermsPct: decimal("fee_terms_pct", { precision: 5, scale: 2 }),
+  /** Sign-ins and the last time this account loaded a page (migration 0042). */
+  lastLoginAt: timestamp("last_login_at"),
+  lastSeenAt: timestamp("last_seen_at"),
+  loginCount: integer("login_count").notNull().default(0),
   /**
    * Free access requires a card. Stamped at voucher redemption — the client's
    * rule is that overage accountability is "the single requirement of having
@@ -1784,6 +1788,24 @@ export const programSenders = pgTable("program_senders", {
   updatedAt: timestamp("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
 export type ProgramSender = typeof programSenders.$inferSelect;
+
+/**
+ * First-party activity (migration 0042): page views, sign-ups and logins, for
+ * the admin Activity tab. No IP address is stored; visitor_id is a random id
+ * kept in the visitor's own browser.
+ */
+export const activityEvents = pgTable("activity_events", {
+  id: serial("id").primaryKey(),
+  at: timestamp("at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  type: text("type").notNull(),
+  visitorId: text("visitor_id"),
+  sessionId: text("session_id"),
+  userId: varchar("user_id").references(() => users.id, { onDelete: "set null" }),
+  path: text("path"),
+  referrerHost: text("referrer_host"),
+  device: text("device"),
+  voucherId: varchar("voucher_id").references(() => vouchers.id, { onDelete: "set null" }),
+});
 export type VoucherRedemption = typeof voucherRedemptions.$inferSelect;
 
 // ─────────────────────────────────────────────────────────────────────────────
