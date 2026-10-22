@@ -14,8 +14,6 @@ attached_assets/*.mov
 attached_assets/*.docx
 client/public/*.mp4
 .vercel
-temp_auto_push.bat
-temp_interactive_push.bat
 .env*
 
 # Large source videos — all four are served from Cloudinary (see landing.tsx /
@@ -25,4 +23,3 @@ client/public/*.mp4
 
 # One-off operational scripts (contain no secrets, but not part of the app)
 _enable_demo_brand.cjs
-branch_structure.json
