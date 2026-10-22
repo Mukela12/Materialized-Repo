@@ -99,7 +99,7 @@ function pct(n: number, of: number): string {
 
 export function AdminActivity() {
   const [days, setDays] = useState<(typeof WINDOWS)[number]>(30);
-  const { data, isLoading, refetch, isFetching } = useQuery<Report>({
+  const { data, isLoading, isError, refetch, isFetching } = useQuery<Report>({
     queryKey: ["/api/admin/activity", days],
     queryFn: async () => {
       const r = await fetch(`/api/admin/activity?days=${days}`, { credentials: "include" });
@@ -126,6 +126,14 @@ export function AdminActivity() {
       { header: "Last page", value: (p) => p.last_page ?? "" },
     ]);
 
+  if (isError && !data) {
+    return (
+      <div className="py-12 text-center text-sm text-muted-foreground" data-testid="activity-error">
+        <p>Activity couldn't be loaded.</p>
+        <button onClick={() => refetch()} className="mt-2 underline hover:text-foreground">Try again</button>
+      </div>
+    );
+  }
   if (isLoading || !data) {
     return <div className="flex justify-center py-12"><RefreshCw className="w-6 h-6 animate-spin text-muted-foreground" /></div>;
   }
