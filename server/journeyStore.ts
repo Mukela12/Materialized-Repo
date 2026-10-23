@@ -119,9 +119,8 @@ export async function runJourneys(opts: {
   if (people.length === 0) return { status: "skipped", items: 0, detail: `no one enrolled${enrolled ? `, ${enrolled} new` : ""}` };
 
   const steps = rows<any>(await db.execute(sql`select * from email_journey_steps order by segment, position`)).map(stepOf);
-  const done = new Set(rows<{ k: string }>(await db.execute(sql`
-    select user_id || ':' || step_id as k from email_journey_sends
-    where status in ('sent', 'skipped', 'sending') or attempts >= 3`)).map((r) => r.k));
+  const prior = new Map(rows<{ k: string; status: string; attempts: number; at: string }>(await db.execute(sql`
+    select user_id || ':' || step_id as k, status, attempts, at from email_journey_sends`)).map((r) => [r.k, r]));
   const facts = await factsFor(people.map((p) => p.user_id));
 
   const outgoing: { userId: string; stepId: string; email: import("./emailService").JourneyEmail }[] = [];
@@ -129,12 +128,19 @@ export async function runJourneys(opts: {
   for (const p of people as (Candidate & { segment: string })[]) {
     const f = facts.get(p.user_id);
     if (!f) continue;
-    const clock = { createdAt: new Date(p.created_at), freeAccessUntil: p.free_access_until ? new Date(p.free_access_until) : null };
+    const clock = {
+      createdAt: new Date(p.created_at),
+      freeAccessUntil: p.free_access_until ? new Date(p.free_access_until) : null,
+      lastSeenAt: f.lastSeenAt,
+    };
     const recent = p.last_sent && now.getTime() - new Date(p.last_sent).getTime() < MIN_GAP_HOURS * 3_600_000;
     let queued = false;
     for (const step of steps.filter((s) => s.segment === p.segment)) {
-      if (done.has(`${p.user_id}:${step.id}`)) continue;
-      const d = decide(step, clock, f, now);
+      const before = prior.get(`${p.user_id}:${step.id}`);
+      // A "days without visiting" reminder may go again; everything else goes once.
+      const again = step.anchor === "inactive" && before?.status === "sent";
+      if (before && !again && (before.status !== "failed" || before.attempts >= 3)) continue;
+      const d = decide(step, clock, f, now, again ? new Date(before!.at) : null);
       if (d.action === "skip") {
         await db.execute(sql`
           insert into email_journey_sends (user_id, step_id, status, reason) values (${p.user_id}, ${step.id}, 'skipped', ${d.reason})
@@ -143,7 +149,10 @@ export async function runJourneys(opts: {
         skipped++;
       } else if (d.action === "send" && !recent && !queued) {
         // Claim first. A row already there (another run got it) means not ours.
-        const claim = await db.execute(sql`
+        const claim = again ? await db.execute(sql`
+          update email_journey_sends set status = 'sending', at = now()
+          where user_id = ${p.user_id} and step_id = ${step.id} and status = 'sent'
+          returning id`) : await db.execute(sql`
           insert into email_journey_sends (user_id, step_id, status) values (${p.user_id}, ${step.id}, 'sending')
           on conflict (user_id, step_id) do update set status = 'sending', attempts = email_journey_sends.attempts + 1, at = now()
           where email_journey_sends.status = 'failed' and email_journey_sends.attempts < 3
@@ -207,7 +216,8 @@ export async function journeysOverview() {
       count(s.id) filter (where s.status = 'skipped')::int as skipped,
       count(s.id) filter (where s.status = 'failed')::int as failed
     from email_journey_steps t left join email_journey_sends s on s.step_id = t.id
-    group by t.id order by t.segment, t.position`));
+    group by t.id
+    order by t.segment, case t.anchor when 'signup' then 0 when 'trial_end' then 1 else 2 end, t.day, t.position`));
   const partners = rows<any>(await db.execute(sql`
     select coalesce(nullif(v.partner, ''), v.label) as partner, count(*)::int as codes, p.segment
     from vouchers v left join email_journey_partners p on p.partner = coalesce(nullif(v.partner, ''), v.label)

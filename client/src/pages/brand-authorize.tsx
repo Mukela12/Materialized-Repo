@@ -20,6 +20,9 @@ export default function BrandAuthorize() {
   const [, params] = useRoute("/brand-authorize/:token");
   const token = params?.token ?? "";
   const [authorized, setAuthorized] = useState(false);
+  const [declined, setDeclined] = useState(false);
+  const [declining, setDeclining] = useState(false);
+  const [note, setNote] = useState("");
 
   const { data: outreach, isLoading, error } = useQuery<OutreachDetails>({
     queryKey: ["/api/brand-outreach/authorize", token],
@@ -38,6 +41,12 @@ export default function BrandAuthorize() {
     mutationFn: () =>
       apiRequest("POST", `/api/brand-outreach/authorize/${token}`, {}),
     onSuccess: () => setAuthorized(true),
+  });
+
+  // Saying no used to be impossible: the creator was left waiting with no answer.
+  const declineMutation = useMutation({
+    mutationFn: () => apiRequest("POST", `/api/brand-outreach/decline/${token}`, { note }),
+    onSuccess: () => setDeclined(true),
   });
 
   const firstName = outreach?.prContactName?.split(" ")[0] ?? "there";
@@ -59,9 +68,9 @@ export default function BrandAuthorize() {
             {isUsed ? (
               <>
                 <CheckCircle className="w-12 h-12 text-[#1351aa] mx-auto mb-4" />
-                <h1 className="text-white text-xl font-bold mb-2">Already Authorized</h1>
+                <h1 className="text-white text-xl font-bold mb-2">Already answered</h1>
                 <p className="text-white/60 text-sm">
-                  This link has already been used. Please check your email for the Materialized Brand Agreement.
+                  This request has already been answered. If you said yes, the brand agreement is in your inbox.
                 </p>
               </>
             ) : (
@@ -74,7 +83,23 @@ export default function BrandAuthorize() {
               </>
             )}
             <p className="text-white/30 text-xs mt-6">
-              Questions? Visit <a href="https://join.materialized.com" className="text-[#1351aa]">join.materialized.com</a>
+              Questions? Visit <a href="https://www.mtrlzd.com" className="text-[#1351aa]">mtrlzd.com</a>
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  if (declined) {
+    return (
+      <div className="min-h-screen bg-[#202120] flex items-center justify-center px-4">
+        <Card className="max-w-md w-full bg-[#2a2a2a] border-white/10">
+          <CardContent className="p-8 text-center" data-testid="brand-declined">
+            <CheckCircle className="w-12 h-12 text-white/50 mx-auto mb-4" />
+            <h1 className="text-white text-xl font-bold mb-2">Thanks for letting us know</h1>
+            <p className="text-white/60 text-sm leading-relaxed">
+              We've told the creator you're passing this time{note.trim() ? ", with your note" : ""}. Nothing else will be sent about this video.
             </p>
           </CardContent>
         </Card>
@@ -185,10 +210,52 @@ export default function BrandAuthorize() {
               )}
             </Button>
 
+            {!declining ? (
+              <button
+                onClick={() => setDeclining(true)}
+                className="block mx-auto mt-4 text-sm text-white/50 hover:text-white/80 underline underline-offset-4"
+                data-testid="button-brand-decline-open"
+              >
+                Not for us this time
+              </button>
+            ) : (
+              <div className="mt-5 rounded-lg border border-white/10 bg-white/5 p-4 space-y-3" data-testid="brand-decline-form">
+                <label className="block text-white/60 text-xs" htmlFor="decline-note">A note for the creator (optional)</label>
+                <textarea
+                  id="decline-note"
+                  value={note}
+                  onChange={(e) => setNote(e.target.value)}
+                  maxLength={500}
+                  rows={3}
+                  className="w-full rounded-md bg-black/30 border border-white/10 p-2.5 text-sm text-white placeholder:text-white/30"
+                  placeholder="e.g. We're not running video this season, but keep us in mind."
+                  data-testid="input-decline-note"
+                />
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setDeclining(false)}
+                    className="flex-1 rounded-full border border-white/20 py-2 text-sm text-white/80 hover:bg-white/10"
+                  >
+                    Back
+                  </button>
+                  <Button
+                    className="flex-1"
+                    variant="secondary"
+                    onClick={() => declineMutation.mutate()}
+                    disabled={declineMutation.isPending}
+                    data-testid="button-brand-decline"
+                  >
+                    {declineMutation.isPending ? "Sending…" : "Pass on this one"}
+                  </Button>
+                </div>
+                {declineMutation.isError && <p className="text-red-400 text-sm">That didn't go through. Please try again.</p>}
+              </div>
+            )}
+
             {authorizeMutation.isError && (
               <p className="text-red-400 text-sm text-center mt-3">
-                Something went wrong. Please try again or contact us at{" "}
-                <a href="mailto:hello@join.materialized.com" className="underline">hello@join.materialized.com</a>
+                Something went wrong. Please try again in a moment.
               </p>
             )}
 

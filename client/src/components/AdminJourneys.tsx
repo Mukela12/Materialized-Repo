@@ -43,6 +43,7 @@ interface Overview {
 const KEY = ["/api/admin/journeys"];
 
 export function timingLabel(anchor: string, day: number): string {
+  if (anchor === "inactive") return `After ${day} day${day === 1 ? "" : "s"} without visiting`;
   if (anchor === "trial_end") {
     if (day === 0) return "When the free period ends";
     return day < 0 ? `${-day} day${day === -1 ? "" : "s"} before the free period ends` : `${day} day${day === 1 ? "" : "s"} after the free period ends`;
@@ -196,14 +197,14 @@ function JourneyDetail({ journey, data, onBack }: { journey: Journey; data: Over
       )}
 
       <ol className="rounded-xl border divide-y" data-testid="journey-steps">
-        {steps.map((s) => (
+        {steps.map((s, i) => (
           <li key={s.id}>
             <button
               onClick={() => setEditing(s)}
               className="w-full text-left px-4 py-3 hover:bg-muted/40 transition-colors flex gap-3"
               data-testid={`step-${s.position}`}
             >
-              <span className="w-6 shrink-0 text-xs text-muted-foreground tabular-nums pt-0.5">{String(s.position).padStart(2, "0")}</span>
+              <span className="w-6 shrink-0 text-xs text-muted-foreground tabular-nums pt-0.5">{String(i + 1).padStart(2, "0")}</span>
               <span className="min-w-0 flex-1">
                 <span className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
                   <span className="font-medium text-foreground/80">{timingLabel(s.anchor, s.day)}</span>
@@ -321,6 +322,7 @@ function StepEditor({ step, data, onClose }: { step: Step; data: Overview; onClo
             <SelectContent>
               <SelectItem value="signup">Days after sign-up</SelectItem>
               <SelectItem value="trial_end">Days from end of free period</SelectItem>
+              <SelectItem value="inactive">Days without visiting</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -401,7 +403,7 @@ function StepEditor({ step, data, onClose }: { step: Step; data: Overview; onClo
     <Dialog open onOpenChange={(o) => !o && onClose()}>
       <DialogContent className="max-w-5xl max-h-[92vh] overflow-y-auto p-4 sm:p-6" data-testid="step-editor">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2 text-base"><Mail className="h-4 w-4" /> Email {String(step.position).padStart(2, "0")}</DialogTitle>
+          <DialogTitle className="flex items-center gap-2 text-base min-w-0"><Mail className="h-4 w-4 shrink-0" /> <span className="truncate">{step.subject}</span></DialogTitle>
           <DialogDescription>{timingLabel(draft.anchor, Number(draft.day) || 0)}</DialogDescription>
         </DialogHeader>
         <div className="flex lg:hidden rounded-lg border p-0.5 text-sm">

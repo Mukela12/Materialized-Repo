@@ -38,6 +38,7 @@ export const CONDITIONS: Record<string, { label: string; test: (f: Facts, now: D
   always: { label: "Everyone", test: () => true },
   no_upload: { label: "Hasn't uploaded a video", test: (f) => f.uploads === 0 },
   has_upload: { label: "Has uploaded a video", test: (f) => f.uploads > 0 },
+  uploaded_not_tagged: { label: "Uploaded, but hasn't tagged a brand", test: (f) => f.uploads > 0 && !f.brandTagged },
   under_2_uploads: { label: "Fewer than 2 uploads", test: (f) => f.uploads < 2 },
   under_4_uploads: { label: "Fewer than 4 uploads", test: (f) => f.uploads < 4 },
   no_brand_tagged: { label: "Hasn't tagged a brand", test: (f) => !f.brandTagged },
@@ -56,7 +57,11 @@ export const CONDITIONS: Record<string, { label: string; test: (f: Facts, now: D
   needs_feature: { label: "Paused: needs a feature the app doesn't have", test: () => false },
 };
 
-export const ANCHORS = { signup: "Days after sign-up", trial_end: "Days from the end of the free period" } as const;
+export const ANCHORS = {
+  signup: "Days after sign-up",
+  trial_end: "Days from the end of the free period",
+  inactive: "Days without visiting",
+} as const;
 
 const DAY = 86_400_000;
 /** How long past its day an email may still go, if its condition comes true. */
@@ -71,7 +76,10 @@ export interface Step {
   subject: string; body: string; ctaLabel: string | null; ctaPath: string | null; enabled: boolean;
 }
 
-export interface PersonClock { createdAt: Date; freeAccessUntil: Date | null }
+export interface PersonClock { createdAt: Date; freeAccessUntil: Date | null; lastSeenAt?: Date | null }
+
+/** An "inactive" reminder goes again only after the person came back and drifted off, and not within this many days. */
+export const REPEAT_GAP_DAYS = 7;
 
 /**
  * When a step is due for one person. "Trial end" falls back to 30 days after
@@ -90,7 +98,8 @@ export type Decision =
   | { action: "skip"; reason: "late" | "condition" | "paused" };
 
 /** What to do with one step for one person right now. */
-export function decide(step: Step, p: PersonClock, facts: Facts, now: Date): Decision {
+export function decide(step: Step, p: PersonClock, facts: Facts, now: Date, lastSentAt: Date | null = null): Decision {
+  if (step.anchor === "inactive") return decideInactive(step, p, facts, now, lastSentAt);
   const due = dueAt(step, p).getTime();
   if (now.getTime() < due) return { action: "wait" };
   const closes = due + LATE_DAYS * DAY;
@@ -99,6 +108,24 @@ export function decide(step: Step, p: PersonClock, facts: Facts, now: Date): Dec
   if (holds) return now.getTime() <= closes ? { action: "send" } : { action: "skip", reason: "late" };
   if (now.getTime() <= closes) return { action: "wait" };
   return { action: "skip", reason: paused ? "paused" : "condition" };
+}
+
+/**
+ * "We haven't seen you in N days." Not tied to a date, so it never goes stale
+ * and is never skipped: it waits until the person has been away long enough.
+ * It can go again, but only if they came back after the last one and then
+ * drifted off again, and not within REPEAT_GAP_DAYS of it.
+ */
+function decideInactive(step: Step, p: PersonClock, facts: Facts, now: Date, lastSentAt: Date | null): Decision {
+  const lastSeen = p.lastSeenAt ?? p.createdAt;
+  if (now.getTime() < lastSeen.getTime() + step.day * DAY) return { action: "wait" };
+  if (lastSentAt) {
+    const returnedSince = lastSeen.getTime() > lastSentAt.getTime();
+    if (!returnedSince || now.getTime() < lastSentAt.getTime() + REPEAT_GAP_DAYS * DAY) return { action: "wait" };
+  }
+  const paused = !step.enabled || step.condition === "needs_feature";
+  const holds = !paused && (CONDITIONS[step.condition]?.test(facts, now) ?? false);
+  return holds ? { action: "send" } : { action: "wait" };
 }
 
 export interface Person { displayName: string | null; companyName: string | null; role: string }
@@ -198,7 +225,8 @@ export function checkStepEdit(b: Record<string, unknown>): { error: string } | {
   if (!Number.isInteger(day) || day < -60 || day > 365) return { error: "The day needs to be a whole number between -60 and 365." };
   const anchor = String(b.anchor ?? "signup");
   if (!(anchor in ANCHORS)) return { error: "Unknown timing." };
-  if (anchor === "signup" && day < 0) return { error: "Days after sign-up can't be negative." };
+  if (anchor !== "trial_end" && day < 0) return { error: "That number of days can't be negative." };
+  if (anchor === "inactive" && day < 1) return { error: "Days without visiting needs to be at least 1." };
   const condition = String(b.condition ?? "always");
   if (!(condition in CONDITIONS)) return { error: "Unknown condition." };
   const ctaLabel = typeof b.ctaLabel === "string" && b.ctaLabel.trim() ? b.ctaLabel.trim().slice(0, 80) : null;

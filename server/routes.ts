@@ -77,6 +77,7 @@ import { z } from "zod";
 import {
   sendBrandOutreachEmail,
   sendBrandAgreementEmail,
+  sendOutreachAnswerEmail,
   sendDocuSignReminderEmail,
   sendVideoResultsExcitementEmail,
   sendGlobalPitchEmail,
@@ -1033,7 +1034,7 @@ export async function registerRoutes(
     try {
       const outreach = await storage.getBrandOutreachByToken(req.params.token);
       if (!outreach) return res.status(404).json({ error: "Outreach request not found" });
-      if (outreach.status === "authorized" || outreach.status === "agreement_sent" || outreach.status === "completed") {
+      if (outreach.status === "authorized" || outreach.status === "agreement_sent" || outreach.status === "completed" || outreach.status === "declined") {
         return res.status(410).json({ error: "This link has already been used", status: outreach.status });
       }
       // Return safe subset
@@ -1085,10 +1086,37 @@ export async function registerRoutes(
         await storage.updateBrandOutreachStatus(outreach.id, "agreement_sent");
       }
 
+      // Tell the creator their brand said yes. Never in the way of the answer.
+      notifyCreatorOfAnswer(req, outreach, creator, true).catch((e) => console.error("[Brand Outreach] notify:", e?.message));
+
       res.json({ success: true, message: "Authorization received. Agreement email sent." });
     } catch (error) {
       console.error("[Brand Outreach Authorize] Failed:", error);
       res.status(500).json({ error: "Failed to authorize outreach" });
+    }
+  });
+
+  /**
+   * Public: the brand says "not this time". There was no way to decline at all
+   * (23 Oct 2026), so a creator never heard back from a brand that passed, and
+   * the request sat at "email sent" for ever. An optional note goes to the
+   * creator as written.
+   */
+  app.post("/api/brand-outreach/decline/:token", async (req, res) => {
+    try {
+      const outreach = await storage.getBrandOutreachByToken(req.params.token);
+      if (!outreach) return res.status(404).json({ error: "Outreach request not found" });
+      if (outreach.status !== "pending" && outreach.status !== "email_sent") {
+        return res.status(410).json({ error: "This link has already been used" });
+      }
+      const note = typeof req.body?.note === "string" ? req.body.note.trim().slice(0, 500) : "";
+      await storage.updateBrandOutreachStatus(outreach.id, "declined");
+      const creator = await storage.getUser(outreach.creatorId);
+      notifyCreatorOfAnswer(req, outreach, creator, false, note).catch((e) => console.error("[Brand Outreach] notify:", e?.message));
+      res.json({ success: true });
+    } catch (error) {
+      console.error("[Brand Outreach Decline] Failed:", error);
+      res.status(500).json({ error: "Failed to record your answer" });
     }
   });
 
@@ -4881,13 +4909,17 @@ export async function registerRoutes(
         return res.status(404).json({ error: "Listing not found or not available" });
       }
 
-      const { commissionRate } = req.body;
+      // The publisher's rate is the platform's to set, never the publisher's:
+      // this used to take `commissionRate` from the request body (23 Oct 2026),
+      // and that rate later overrides theirs on every sale from this licence.
+      const cfg = resolveFeeConfig(await storage.getPlatformSettings());
+      const commissionRate = userRateOr(user.commissionRateOverride, cfg.publisherPct).toFixed(2);
 
       const purchase = await storage.createVideoLicensePurchase({
         globalListingId: listing.id,
         affiliateId: user.id,
         licenseFee: listing.licenseFee,
-        commissionRate: commissionRate || "10.00",
+        commissionRate,
       });
 
       // Create Stripe payment intent.
@@ -8394,6 +8426,23 @@ ${embedCarouselCss(carousel)}
  * and the renderer never needed it — the playlist id is enough to look up
  * everything, from the server, where it cannot be tampered with.
  */
+/** The creator hears whether the brand they asked said yes or no. */
+async function notifyCreatorOfAnswer(
+  req: Request, outreach: { brandName: string; videoTitle: string | null }, creator: { email: string; displayName: string | null } | undefined,
+  accepted: boolean, note = "",
+): Promise<void> {
+  if (!creator?.email || !isEmailConfigured()) return;
+  await sendOutreachAnswerEmail({
+    to: creator.email,
+    creatorName: creator.displayName ?? "",
+    brandName: outreach.brandName,
+    videoTitle: outreach.videoTitle,
+    accepted,
+    note,
+    dashboardUrl: `${publicOrigin(req)}/creator/my-videos`,
+  });
+}
+
 function buildPlaylistEmbedCode(playlistId: number, _userId: string): string {
   const baseUrl = (process.env.PUBLIC_EMBED_ORIGIN || "https://www.mtrlzd.com").replace(/\/$/, "");
   return `<!-- Materialized playlist -->\n<div id="mat-playlist-${playlistId}" data-playlist="${playlistId}"></div>\n<script src="${baseUrl}/embed/playlist.js" async></script>`;

@@ -5,7 +5,7 @@ import { storage } from './storage';
 import { stripeService } from './stripeService';
 import { recordSaleCommissions } from './commissions';
 import { recordFeeAccrual } from './feeAccruals';
-import { computeSaleSplit } from './feeConfig';
+import { computeSaleSplit, resolveFeeConfig, userRateOr } from './feeConfig';
 import { toCents, centsToAmount } from './feeConfig';
 import { PLAN_CONFIG, isPlanKey, type PlanKey } from './stripeService';
 import { mintBrandConversionToken } from './wallet';
@@ -158,6 +158,24 @@ async function handleInVideoOrderCompleted(session: Stripe.Checkout.Session): Pr
 
   const saleAmount = (order.amountCents / 100).toFixed(2);
 
+  /**
+   * The same rates every other sale uses: the admin's fee settings and each
+   * person's own override. This path used to pass none, so in-video sales paid
+   * the env defaults whatever the admin had set (found 23 Oct 2026). The
+   * marketplace % is read back from the fee actually withheld at checkout, so
+   * the split always matches the money collected.
+   */
+  const cfg = resolveFeeConfig(await storage.getPlatformSettings());
+  const creatorUser = order.creatorId ? await storage.getUser(order.creatorId) : null;
+  const publisherUser = order.affiliateId ? await storage.getUser(order.affiliateId) : null;
+  const rates = {
+    marketplaceFeePct: order.applicationFeeCents != null && order.amountCents > 0
+      ? (order.applicationFeeCents * 100) / order.amountCents
+      : cfg.marketplaceFeePct,
+    creatorPct: userRateOr(creatorUser?.commissionRateOverride, cfg.creatorPct),
+    publisherPct: userRateOr(publisherUser?.commissionRateOverride, cfg.publisherPct),
+  };
+
   // Same helper the store-webhook path uses, so an in-video sale and an
   // on-store sale cannot disagree about what a creator or publisher earns.
   await recordSaleCommissions(
@@ -173,6 +191,7 @@ async function handleInVideoOrderCompleted(session: Stripe.Checkout.Session): Pr
       storeConnectionId: null,
     },
     null,
+    rates,
   );
 
   // Recorded as ALREADY COLLECTED. The fee was withheld at the charge, so an
@@ -192,6 +211,7 @@ async function handleInVideoOrderCompleted(session: Stripe.Checkout.Session): Pr
     attributionState: 'attributed',
     split: computeSaleSplit(order.amountCents, {
       hasPublisher: !!order.affiliateId && order.affiliateId !== order.creatorId,
+      ...rates,
     }),
     alreadyCollected: true,
   });

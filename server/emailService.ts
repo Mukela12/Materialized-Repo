@@ -553,6 +553,47 @@ export async function sendProgramInvites(emails: ProgramInviteEmail[]): Promise<
   return { failed, error };
 }
 
+// ── A brand's answer to a creator's "make it shoppable" request ─────────────
+
+export interface OutreachAnswerEmail {
+  to: string; creatorName: string; brandName: string; videoTitle: string | null;
+  accepted: boolean; note: string; dashboardUrl: string;
+}
+
+/**
+ * Sent to the creator when the brand they asked answers (23 Oct 2026). Before
+ * this the creator was never told either way. Exported for the tests.
+ */
+export function outreachAnswerEmail(e: OutreachAnswerEmail): { subject: string; html: string } {
+  const first = e.creatorName.trim().split(/\s+/)[0] || "there";
+  const brand = escapeHtml(e.brandName);
+  const video = e.videoTitle ? ` for <strong>${escapeHtml(e.videoTitle)}</strong>` : "";
+  const body = e.accepted ? `
+    <h1>${brand} said yes 🎉</h1>
+    <p>Hi ${escapeHtml(first)},</p>
+    <p>${brand} has agreed to your request to make your video shoppable${video}. We've sent them the brand agreement,
+      and once it's signed their products go live in your video.</p>
+    <p>Nothing more to do for now. We'll let you know when it's live.</p>
+    <div class="cta-wrap"><a href="${escapeHtml(e.dashboardUrl)}" class="cta">See My Videos</a></div>
+  ` : `
+    <h1>${brand} has passed for now</h1>
+    <p>Hi ${escapeHtml(first)},</p>
+    <p>${brand} has decided not to go ahead with your request${video} this time.</p>
+    ${e.note ? `<div class="video-box"><p style="margin:0 0 6px;color:#444;">Their note:</p><p style="margin:0;color:#555;">${escapeHtml(e.note).replace(/\n/g, "<br>")}</p></div>` : ""}
+    <p>It's not a no to your video. Tag another brand that appears in it, and they can make it shoppable instead.</p>
+    <div class="cta-wrap"><a href="${escapeHtml(e.dashboardUrl)}" class="cta">Tag Another Brand</a></div>
+  `;
+  return {
+    subject: e.accepted ? `${e.brandName} said yes to your video` : `${e.brandName} has passed on your request`,
+    html: baseTemplate(body),
+  };
+}
+
+export async function sendOutreachAnswerEmail(e: OutreachAnswerEmail): Promise<void> {
+  const { subject, html } = outreachAnswerEmail(e);
+  await sendEmail(e.to, subject.slice(0, 200), html);
+}
+
 // ── Email journeys (server/journeys.ts) ─────────────────────────────────────
 
 export interface JourneyEmail {

@@ -7,7 +7,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import {
-  CONDITIONS, LATE_DAYS, bodyToHtml, checkStepEdit, ctaUrl, decide, defaultSegment, dueAt, firstNameOf, merge,
+  CONDITIONS, LATE_DAYS, REPEAT_GAP_DAYS, bodyToHtml, checkStepEdit, ctaUrl, decide, defaultSegment, dueAt, firstNameOf, merge,
   renderStep, unknownFields, type Facts, type Step,
 } from "../../server/journeys";
 
@@ -75,6 +75,50 @@ describe("decide", () => {
     for (const [k, c] of Object.entries(CONDITIONS)) expect(typeof c.test(facts(), t0), k).toBe("boolean");
     expect(CONDITIONS.inactive_7d.test(facts({ lastSeenAt: at(-8) }), t0)).toBe(true);
     expect(CONDITIONS.inactive_7d.test(facts({ lastSeenAt: at(-1) }), t0)).toBe(false);
+  });
+});
+
+describe("days-without-visiting reminders", () => {
+  const nudge = step({ anchor: "inactive", day: 2 });
+  const seen = (d: number) => ({ createdAt: t0, freeAccessUntil: null, lastSeenAt: at(d) });
+
+  it("waits until someone has been away long enough, counting from their last visit", () => {
+    expect(decide(nudge, seen(5), facts(), at(6))).toEqual({ action: "wait" });
+    expect(decide(nudge, seen(5), facts(), at(7.1))).toEqual({ action: "send" });
+  });
+
+  it("is never skipped as late: someone away for weeks still gets it", () => {
+    expect(decide(nudge, seen(0), facts(), at(40))).toEqual({ action: "send" });
+  });
+
+  it("goes again only after they came back and drifted off, and not within a week", () => {
+    const sent = at(3);
+    expect(decide(nudge, seen(1), facts(), at(20), sent)).toEqual({ action: "wait" });
+    expect(decide(nudge, seen(5), facts(), at(8), sent)).toEqual({ action: "wait" });
+    expect(decide(nudge, seen(5), facts(), at(3 + REPEAT_GAP_DAYS + 0.1), sent)).toEqual({ action: "send" });
+  });
+
+  it("can't be set to fire on the day of a visit", () => {
+    expect(checkStepEdit({ subject: "S", body: "B", anchor: "inactive", day: 0, condition: "always" })).toHaveProperty("error");
+  });
+});
+
+describe("uploaded but not tagged", () => {
+  it("only for people with a video and no brand tagged", () => {
+    expect(CONDITIONS.uploaded_not_tagged.test(facts({ uploads: 1 }), t0)).toBe(true);
+    expect(CONDITIONS.uploaded_not_tagged.test(facts({ uploads: 1, brandTagged: true }), t0)).toBe(false);
+    expect(CONDITIONS.uploaded_not_tagged.test(facts(), t0)).toBe(false);
+  });
+});
+
+describe("the quoted reminders (migration 0044)", () => {
+  const seed = readFileSync(join(__dirname, "../../migrations/0044_journey_reminders.sql"), "utf8");
+  it("every journey gets a 2-day nudge, and creators get the tagging reminder", () => {
+    for (const seg of ["creators", "brands", "publishers", "talent_agencies", "brand_agencies", "fashion_weeks", "film_festivals"]) {
+      expect(seed).toContain(`$j$${seg}$j$, 13, $j$inactive$j$, 2,`);
+    }
+    expect(seed).toContain("$j$uploaded_not_tagged$j$");
+    expect(seed).not.toMatch(/—/);
   });
 });
 
