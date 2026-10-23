@@ -74,6 +74,8 @@ export const ENROL_GRACE_DAYS = 2;
 export interface Step {
   id: string; segment: string; position: number; anchor: string; day: number; condition: string;
   subject: string; body: string; ctaLabel: string | null; ctaPath: string | null; enabled: boolean;
+  /** Sent without the logo and layout, like a personal email. Spam filters are kinder to these. */
+  plain?: boolean;
 }
 
 export interface PersonClock { createdAt: Date; freeAccessUntil: Date | null; lastSeenAt?: Date | null }
@@ -213,7 +215,7 @@ export function renderStep(step: Pick<Step, "subject" | "body" | "ctaLabel" | "c
 /** What an admin may change on a step, checked. */
 export function checkStepEdit(b: Record<string, unknown>): { error: string } | {
   subject: string; body: string; ctaLabel: string | null; ctaPath: string | null;
-  day: number; anchor: string; condition: string; enabled: boolean; resolveNote: boolean;
+  day: number; anchor: string; condition: string; enabled: boolean; resolveNote: boolean; plain: boolean;
 } {
   const subject = typeof b.subject === "string" ? b.subject.trim() : "";
   const body = typeof b.body === "string" ? b.body.trim() : "";
@@ -236,6 +238,21 @@ export function checkStepEdit(b: Record<string, unknown>): { error: string } | {
   }
   return {
     subject, body, ctaLabel, ctaPath: rawPath || null, day, anchor, condition,
-    enabled: b.enabled !== false, resolveNote: b.resolveNote === true,
+    enabled: b.enabled !== false, resolveNote: b.resolveNote === true, plain: b.plain === true,
   };
+}
+
+const EMAIL = /^[^\s@,;<>"]+@[^\s@,;<>"]+\.[^\s@,;<>"]+$/;
+
+/**
+ * Who a journey's emails come from, by name, and where replies go. The
+ * address itself stays the verified noreply@ one; a reply-to is what lets a
+ * recipient's "reply" reach a person.
+ */
+export function checkSender(b: Record<string, unknown>): { error: string } | { fromName: string | null; replyTo: string | null } {
+  const fromName = typeof b.fromName === "string" ? b.fromName.trim() : "";
+  const replyTo = typeof b.replyTo === "string" ? b.replyTo.trim().toLowerCase() : "";
+  if (fromName.length > 60 || /[<>"\r\n@]/.test(fromName)) return { error: "The sender name can't be longer than 60 characters or contain < > \" or @." };
+  if (replyTo && (replyTo.length > 200 || !EMAIL.test(replyTo))) return { error: "That reply-to address doesn't look like an email address." };
+  return { fromName: fromName || null, replyTo: replyTo || null };
 }

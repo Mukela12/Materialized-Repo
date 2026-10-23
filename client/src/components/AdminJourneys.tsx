@@ -27,10 +27,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 interface Journey {
   segment: string; name: string; audience: string; enabled_at: string | null;
   enrolled: number; sent: number; unsubscribed: number;
+  from_name: string | null; reply_to: string | null;
 }
 interface Step {
   id: string; segment: string; position: number; anchor: string; day: number; condition: string;
-  subject: string; body: string; ctaLabel: string | null; ctaPath: string | null; enabled: boolean;
+  subject: string; body: string; ctaLabel: string | null; ctaPath: string | null; enabled: boolean; plain: boolean;
   reviewNote: string | null; sent: number; skipped: number; failed: number;
 }
 interface Overview {
@@ -186,6 +187,8 @@ function JourneyDetail({ journey, data, onBack }: { journey: Journey; data: Over
         </label>
       </div>
 
+      <SenderSettings journey={journey} />
+
       {notes > 0 && (
         <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-sm flex gap-2.5">
           <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
@@ -252,6 +255,45 @@ function JourneyDetail({ journey, data, onBack }: { journey: Journey; data: Over
   );
 }
 
+/**
+ * The name a journey's emails come from and where replies go. Without a
+ * reply-to, a recipient who replies writes to noreply@, which reaches nobody.
+ */
+function SenderSettings({ journey }: { journey: Journey }) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [fromName, setFromName] = useState(journey.from_name ?? "");
+  const [replyTo, setReplyTo] = useState(journey.reply_to ?? "");
+  const dirty = fromName !== (journey.from_name ?? "") || replyTo !== (journey.reply_to ?? "");
+  const save = useMutation({
+    mutationFn: async () => (await apiRequest("PUT", `/api/admin/journeys/${journey.segment}/sender`, { fromName, replyTo })).json(),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: KEY }); toast({ title: "Sender saved" }); },
+    onError: (err) => toast({ title: "Couldn't save", description: serverMessage(err) || "Please try again.", variant: "destructive" }),
+  });
+  return (
+    <div className="rounded-xl border p-4" data-testid="journey-sender">
+      <div className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto] gap-3 sm:items-end">
+        <div className="space-y-1.5">
+          <Label className="text-xs">From name</Label>
+          <Input value={fromName} onChange={(e) => setFromName(e.target.value)} placeholder="MTRLZD" maxLength={60} data-testid="sender-name" />
+        </div>
+        <div className="space-y-1.5">
+          <Label className="text-xs">Replies go to</Label>
+          <Input type="email" value={replyTo} onChange={(e) => setReplyTo(e.target.value)} placeholder="you@yourcompany.com" data-testid="sender-reply-to" />
+        </div>
+        <Button onClick={() => save.mutate()} disabled={!dirty || save.isPending} data-testid="sender-save">
+          {save.isPending ? "Saving…" : "Save"}
+        </Button>
+      </div>
+      {!journey.reply_to && (
+        <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-2">
+          No reply-to yet, so replies go to a no-reply address. Add one so people who reply reach you.
+        </p>
+      )}
+    </div>
+  );
+}
+
 const ROLES = [
   { key: "creator", label: "a creator" },
   { key: "brand", label: "a brand" },
@@ -263,11 +305,11 @@ function StepEditor({ step, data, onClose }: { step: Step; data: Overview; onClo
   const qc = useQueryClient();
   const [draft, setDraft] = useState({
     subject: step.subject, body: step.body, ctaLabel: step.ctaLabel ?? "", ctaPath: step.ctaPath ?? "",
-    day: String(step.day), anchor: step.anchor, condition: step.condition, enabled: step.enabled,
+    day: String(step.day), anchor: step.anchor, condition: step.condition, enabled: step.enabled, plain: step.plain,
   });
   const [checked, setChecked] = useState(false);
   const [role, setRole] = useState(step.segment === "brands" ? "brand" : step.segment === "creators" ? "creator" : "affiliate");
-  const [preview, setPreview] = useState<{ subject: string; html: string } | null>(null);
+  const [preview, setPreview] = useState<{ subject: string; html: string; fromName: string; replyTo: string | null } | null>(null);
   const [previewError, setPreviewError] = useState("");
   const [pane, setPane] = useState<"edit" | "preview">("edit");
   const set = <K extends keyof typeof draft>(k: K, v: (typeof draft)[K]) => setDraft((d) => ({ ...d, [k]: v }));
@@ -365,6 +407,13 @@ function StepEditor({ step, data, onClose }: { step: Step; data: Overview; onClo
         {"{portal} is their dashboard, {upload} where they upload, {plans} their plan page. Or any page, like /brand/inventory."}
       </p>
       <label className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5 cursor-pointer">
+        <span>
+          <span className="block text-sm">Plain email</span>
+          <span className="block text-[11px] text-muted-foreground">No logo or design, like a personal email. Lands in the inbox more often.</span>
+        </span>
+        <Switch checked={draft.plain} onCheckedChange={(v) => set("plain", v)} data-testid="step-plain" />
+      </label>
+      <label className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2.5 cursor-pointer">
         <span className="text-sm">Send this email</span>
         <Switch checked={draft.enabled} onCheckedChange={(v) => set("enabled", v)} data-testid="step-enabled" />
       </label>
@@ -384,6 +433,9 @@ function StepEditor({ step, data, onClose }: { step: Step; data: Overview; onClo
         <p className="text-sm text-destructive py-6 text-center">{previewError}</p>
       ) : preview ? (
         <>
+          <p className="text-[11px] text-muted-foreground truncate" data-testid="preview-from">
+            From {preview.fromName} · {preview.replyTo ? `replies go to ${preview.replyTo}` : "replies go nowhere (no reply-to set)"}
+          </p>
           <p className="text-sm font-medium truncate" data-testid="preview-subject">{preview.subject}</p>
           <iframe
             title="Email preview"

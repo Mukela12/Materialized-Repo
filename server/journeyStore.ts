@@ -15,7 +15,7 @@ const rows = <T>(r: { rows: unknown[] }) => r.rows as T[];
 function stepOf(r: any): Step {
   return {
     id: r.id, segment: r.segment, position: r.position, anchor: r.anchor, day: r.day, condition: r.condition,
-    subject: r.subject, body: r.body, ctaLabel: r.cta_label, ctaPath: r.cta_path, enabled: r.enabled,
+    subject: r.subject, body: r.body, ctaLabel: r.cta_label, ctaPath: r.cta_path, enabled: r.enabled, plain: !!r.plain,
   };
 }
 
@@ -93,6 +93,7 @@ async function emailTokenFor(userId: string): Promise<string> {
 interface Candidate {
   user_id: string; email: string; display_name: string | null; role: string; created_at: string;
   free_access_until: string | null; company: string | null; last_sent: string | null;
+  from_name: string | null; reply_to: string | null;
 }
 
 /**
@@ -111,7 +112,7 @@ export async function runJourneys(opts: {
     select u.id as user_id, u.email, u.display_name, u.role, u.created_at, u.free_access_until,
       (select b.name from brands b where b.owner_id = u.id order by b.name limit 1) as company,
       (select max(s.at) from email_journey_sends s where s.user_id = u.id and s.status = 'sent') as last_sent,
-      e.segment
+      e.segment, j.from_name, j.reply_to
     from email_journey_enrollments e
     join users u on u.id = e.user_id
     join email_journeys j on j.segment = e.segment and j.enabled_at is not null
@@ -163,7 +164,7 @@ export async function runJourneys(opts: {
         outgoing.push({
           userId: p.user_id, stepId: step.id,
           email: {
-            to: p.email, ...r,
+            to: p.email, ...r, plain: step.plain, fromName: p.from_name, replyTo: p.reply_to,
             unsubscribeUrl: `${origin}/unsubscribe/${token}`,
             unsubscribePostUrl: `${origin}/api/email/unsubscribe/${token}`,
           },
@@ -246,14 +247,26 @@ export async function getStep(id: string): Promise<Step | null> {
 
 export async function updateStep(id: string, e: {
   subject: string; body: string; ctaLabel: string | null; ctaPath: string | null;
-  day: number; anchor: string; condition: string; enabled: boolean; resolveNote: boolean;
+  day: number; anchor: string; condition: string; enabled: boolean; resolveNote: boolean; plain: boolean;
 }): Promise<boolean> {
   const r = await db.execute(sql`
     update email_journey_steps set subject = ${e.subject}, body = ${e.body}, cta_label = ${e.ctaLabel}, cta_path = ${e.ctaPath},
-      day = ${e.day}, anchor = ${e.anchor}, condition = ${e.condition}, enabled = ${e.enabled},
+      day = ${e.day}, anchor = ${e.anchor}, condition = ${e.condition}, enabled = ${e.enabled}, plain = ${e.plain},
       review_note = case when ${e.resolveNote} then null else review_note end, updated_at = now()
     where id = ${id}`);
   return (r.rowCount ?? 0) > 0;
+}
+
+export async function setJourneySender(segment: string, v: { fromName: string | null; replyTo: string | null }): Promise<boolean> {
+  const r = await db.execute(sql`
+    update email_journeys set from_name = ${v.fromName}, reply_to = ${v.replyTo}, updated_at = now() where segment = ${segment}`);
+  return (r.rowCount ?? 0) > 0;
+}
+
+export async function journeySender(segment: string): Promise<{ fromName: string | null; replyTo: string | null }> {
+  const r = await db.execute(sql`select from_name, reply_to from email_journeys where segment = ${segment}`);
+  const j = r.rows[0] as any;
+  return { fromName: j?.from_name ?? null, replyTo: j?.reply_to ?? null };
 }
 
 export async function setPartnerSegment(partner: string, segment: string | null): Promise<void> {

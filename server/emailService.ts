@@ -606,10 +606,32 @@ export interface JourneyEmail {
   unsubscribeUrl: string;
   /** The one-click endpoint mail clients POST to (RFC 8058). */
   unsubscribePostUrl: string;
+  /** No logo or layout: reads like a personal email, which spam filters favour. */
+  plain?: boolean;
+  /** The journey's sender name and reply-to (server/journeys.ts checkSender). */
+  fromName?: string | null;
+  replyTo?: string | null;
+}
+
+/**
+ * A plain email: the words, a link if there is one, and the unsubscribe line.
+ * No images, no blocks of colour, no web fonts, which is what makes a first
+ * email from a new sender look like a person wrote it.
+ */
+function plainJourneyHtml(e: Pick<JourneyEmail, "bodyHtml" | "ctaLabel" | "ctaUrl" | "unsubscribeUrl">): string {
+  const link = e.ctaLabel ? `<p><a href="${escapeHtml(e.ctaUrl)}" style="color:#1a56b0;">${escapeHtml(e.ctaLabel)}</a></p>` : "";
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"></head>
+<body style="margin:0;padding:16px;background:#ffffff;">
+<div style="max-width:560px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#222;">
+${e.bodyHtml.replace(/<p>/g, '<p style="margin:0 0 14px;">').replace(/<ul style="[^"]*">/g, '<ul style="margin:0 0 14px;padding-left:20px;">')}
+${link}
+<p style="margin:24px 0 0;font-size:12px;color:#888;">You're getting this because you have a MTRLZD account. <a href="${escapeHtml(e.unsubscribeUrl)}" style="color:#888;">Unsubscribe</a></p>
+</div></body></html>`;
 }
 
 /** A journey email in the site's layout. Exported so the admin preview is the real thing. */
-export function journeyEmailHtml(e: Pick<JourneyEmail, "bodyHtml" | "ctaLabel" | "ctaUrl" | "unsubscribeUrl">): string {
+export function journeyEmailHtml(e: Pick<JourneyEmail, "bodyHtml" | "ctaLabel" | "ctaUrl" | "unsubscribeUrl" | "plain">): string {
+  if (e.plain) return plainJourneyHtml(e);
   const body = `
     ${e.bodyHtml}
     ${e.ctaLabel ? `<div class="cta-wrap"><a href="${escapeHtml(e.ctaUrl)}" class="cta">${escapeHtml(e.ctaLabel)}</a></div>` : ""}
@@ -631,10 +653,11 @@ export async function sendJourneyEmails(emails: JourneyEmail[]): Promise<{ faile
     const chunk = emails.slice(i, i + 100);
     try {
       const res: any = await client().batch.send(chunk.map((e) => ({
-        from: `MTRLZD <${FROM_ADDRESS}>`,
+        from: `${e.fromName || "MTRLZD"} <${FROM_ADDRESS}>`,
         to: e.to,
         subject: e.subject,
         html: journeyEmailHtml(e),
+        ...(e.replyTo ? { replyTo: e.replyTo } : {}),
         text: `${e.text}\n\nUnsubscribe: ${e.unsubscribeUrl}`,
         headers: {
           "List-Unsubscribe": `<${e.unsubscribePostUrl}>`,

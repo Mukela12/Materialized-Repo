@@ -246,3 +246,41 @@ describe("wiring", () => {
     expect(read("server/index.ts")).toMatch(/isJourneyOn\("brands"\)\) \? \[\]/);
   });
 });
+
+describe("plain first email and sender (23 Oct 2026)", () => {
+  it("a sender name can't smuggle in an address, and reply-to must be an email", async () => {
+    const { checkSender } = await import("../../server/journeys");
+    expect(checkSender({ fromName: "Beth at MTRLZD", replyTo: "Beth@One30m.co" })).toEqual({ fromName: "Beth at MTRLZD", replyTo: "beth@one30m.co" });
+    expect(checkSender({ fromName: "", replyTo: "" })).toEqual({ fromName: null, replyTo: null });
+    expect(checkSender({ fromName: "Evil <x@y.com>" })).toHaveProperty("error");
+    expect(checkSender({ replyTo: "not an email" })).toHaveProperty("error");
+  });
+
+  it("a plain email has no logo or layout, but still has the unsubscribe link", async () => {
+    const { journeyEmailHtml } = await import("../../server/emailService");
+    const e = { bodyHtml: "<p>Hi Ana,</p>", ctaLabel: null, ctaUrl: "", unsubscribeUrl: "https://www.mtrlzd.com/unsubscribe/t" };
+    const plain = journeyEmailHtml({ ...e, plain: true });
+    expect(plain).not.toMatch(/<img/);
+    expect(plain).toContain("/unsubscribe/t");
+    expect(journeyEmailHtml(e)).toMatch(/<img/);
+  });
+
+  it("replaces only first emails nobody has edited, and asks for a reply in all 7", () => {
+    const m = readFileSync(join(__dirname, "../../migrations/0045_journey_sender_plain.sql"), "utf8");
+    const updates = m.split("\n").filter((l) => l.startsWith("UPDATE email_journey_steps"));
+    expect(updates.length).toBe(7);
+    for (const u of m.split("UPDATE").slice(1)) {
+      expect(u).toMatch(/AND position = 1 AND subject = \$j\$/);
+      expect(u).toMatch(/plain = true/);
+      expect(u).toMatch(/reply to this email/);
+    }
+    expect(m).not.toMatch(/—/);
+  });
+
+  it("journey emails carry the sender name and reply-to", () => {
+    const mail = readFileSync(join(__dirname, "../../server/emailService.ts"), "utf8");
+    expect(mail).toMatch(/from: `\$\{e\.fromName \|\| "MTRLZD"\} <\$\{FROM_ADDRESS\}>`/);
+    expect(mail).toMatch(/\.\.\.\(e\.replyTo \? \{ replyTo: e\.replyTo \} : \{\}\)/);
+    expect(readFileSync(join(__dirname, "../../server/routes.ts"), "utf8")).toMatch(/app\.put\("\/api\/admin\/journeys\/:segment\/sender", requireAdmin,/);
+  });
+});

@@ -2618,6 +2618,16 @@ export async function registerRoutes(
     res.json({ ok: true });
   });
 
+  // Who a journey's emails come from, by name, and where replies go.
+  app.put("/api/admin/journeys/:segment/sender", requireAdmin, async (req, res) => {
+    const { checkSender } = await import("./journeys");
+    const { setJourneySender } = await import("./journeyStore");
+    const v = checkSender(req.body ?? {});
+    if ("error" in v) return res.status(400).json({ error: v.error });
+    if (!(await setJourneySender(req.params.segment, v))) return res.status(404).json({ error: "No such journey." });
+    res.json({ ok: true });
+  });
+
   app.put("/api/admin/journey-steps/:id", requireAdmin, async (req, res) => {
     const { checkStepEdit } = await import("./journeys");
     const { updateStep } = await import("./journeyStore");
@@ -2634,7 +2644,7 @@ export async function registerRoutes(
    */
   app.post("/api/admin/journey-steps/:id/preview", requireAdmin, async (req, res) => {
     const { checkStepEdit, renderStep } = await import("./journeys");
-    const { getStep } = await import("./journeyStore");
+    const { getStep, journeySender } = await import("./journeyStore");
     const { journeyEmailHtml, sendJourneyEmails, isEmailConfigured } = await import("./emailService");
     const step = await getStep(req.params.id);
     if (!step) return res.status(404).json({ error: "No such email." });
@@ -2644,14 +2654,21 @@ export async function registerRoutes(
     const role = typeof req.body?.role === "string" ? req.body.role : "creator";
     const origin = publicOrigin(req);
     const r = renderStep(edit, { displayName: me?.displayName ?? "Beth", companyName: req.body?.companyName || "Acme Studio", role }, origin);
-    const email = { ...r, to: me?.email ?? "", unsubscribeUrl: `${origin}/unsubscribe/preview`, unsubscribePostUrl: `${origin}/api/email/unsubscribe/preview` };
+    const sender = await journeySender(step.segment);
+    const email = {
+      ...r, to: me?.email ?? "", plain: edit.plain, ...sender,
+      unsubscribeUrl: `${origin}/unsubscribe/preview`, unsubscribePostUrl: `${origin}/api/email/unsubscribe/preview`,
+    };
     if (req.body?.send === true) {
       if (!me?.email) return res.status(400).json({ error: "Your account has no email address." });
       if (!isEmailConfigured()) return res.status(503).json({ error: "Email isn't set up on this server." });
       const sent = await sendJourneyEmails([{ ...email, subject: `[Test] ${email.subject}` }]);
       if (sent.failed.size) return res.status(502).json({ error: sent.error || "The email service refused it." });
     }
-    res.json({ subject: email.subject, html: journeyEmailHtml(email), sentTo: req.body?.send === true ? me?.email : undefined });
+    res.json({
+      subject: email.subject, html: journeyEmailHtml(email), fromName: sender.fromName || "MTRLZD", replyTo: sender.replyTo,
+      sentTo: req.body?.send === true ? me?.email : undefined,
+    });
   });
 
   app.put("/api/admin/journey-partners", requireAdmin, async (req, res) => {
