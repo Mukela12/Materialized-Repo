@@ -176,7 +176,7 @@ export default function ProfilePage() {
   const currentPreview = mediaPreview || form.watch("profileMediaUrl") || user?.avatarUrl || "";
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="space-y-6">
       <div className="flex items-center gap-3">
         <UserCircle className="h-8 w-8 text-primary" />
         <div>
@@ -191,7 +191,7 @@ export default function ProfilePage() {
         {/* ── Profile Media card ─────────────────────────────────────────── */}
         <Card>
           <CardHeader>
-            <CardTitle>Profile Media</CardTitle>
+            <CardTitle className="text-lg">Profile Media</CardTitle>
             <CardDescription>
               Upload a profile photo or video from your computer
             </CardDescription>
@@ -322,7 +322,7 @@ export default function ProfilePage() {
         {/* ── Bio card ───────────────────────────────────────────────────── */}
         <Card>
           <CardHeader>
-            <CardTitle>Bio</CardTitle>
+            <CardTitle className="text-lg">Bio</CardTitle>
             <CardDescription>
               Write a short bio about yourself (max 100 characters)
             </CardDescription>
@@ -349,7 +349,7 @@ export default function ProfilePage() {
       {/* ── Location card ─────────────────────────────────────────────────── */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
+          <CardTitle className="flex items-center gap-2 text-lg">
             <MapPin className="h-5 w-5" />
             Location
           </CardTitle>

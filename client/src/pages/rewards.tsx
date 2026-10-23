@@ -293,7 +293,7 @@ export default function WalletPage() {
                     <Icon className="h-4 w-4 text-muted-foreground" />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium truncate">{label}</p>
+                    <p className="text-sm font-medium leading-snug">{label}</p>
                     <p className="text-xs text-muted-foreground">{cost}</p>
                   </div>
                   <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />

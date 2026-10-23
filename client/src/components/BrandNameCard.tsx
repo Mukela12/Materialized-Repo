@@ -40,7 +40,7 @@ export function BrandNameCard() {
   return (
     <Card data-testid="card-brand-name">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2"><Building2 className="h-4 w-4" /> Brand name</CardTitle>
+        <CardTitle className="flex items-center gap-2 text-lg"><Building2 className="h-4 w-4" /> Brand name</CardTitle>
         <CardDescription>What creators see when they tag your brand, and what invitations say.</CardDescription>
       </CardHeader>
       <CardContent>

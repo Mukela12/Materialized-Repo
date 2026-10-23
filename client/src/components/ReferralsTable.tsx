@@ -99,7 +99,7 @@ export function ReferralsTable({ referrals, isLoading, onResend, resendingId }: 
             onQueryChange={setQuery}
             onExport={handleExport}
             exportDisabled={rows.length === 0}
-            searchPlaceholder="Search brand / contact…"
+            searchPlaceholder="Search brands…"
             data-testid="referrals-toolbar"
           />
           <Badge variant="secondary" className="text-sm shrink-0">
@@ -107,6 +107,17 @@ export function ReferralsTable({ referrals, isLoading, onResend, resendingId }: 
           </Badge>
         </div>
       </CardHeader>
+      {/* With no rows, the message alone: inside a table wider than a phone it
+          was centred off-screen and read "No referra" (mobile QA, 23 Oct 2026). */}
+      {rows.length === 0 ? (
+        <CardContent>
+          <div className="flex flex-col items-center gap-2 py-8 text-center text-muted-foreground">
+            <Building className="h-8 w-8 opacity-50" />
+            <p>{referrals.length === 0 ? "No referrals yet" : "No referrals match your search"}</p>
+            <p className="text-sm">Refer brands while uploading videos to grow the network</p>
+          </div>
+        </CardContent>
+      ) : (
       <CardContent className="p-0 overflow-x-auto">
         <Table>
           <TableHeader>
@@ -189,6 +200,7 @@ export function ReferralsTable({ referrals, isLoading, onResend, resendingId }: 
           </TableBody>
         </Table>
       </CardContent>
+      )}
     </Card>
   );
 }

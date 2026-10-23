@@ -139,8 +139,9 @@ export default function More() {
               <p className="text-sm text-muted-foreground truncate" data-testid="text-username">
                 {username}
               </p>
-              <Badge className="mt-2 bg-chart-2 hover:bg-chart-2/90 capitalize" data-testid="badge-role">
-                {role}
+              {/* Was blue text on a blue fill, unreadable (mobile QA, 23 Oct 2026). */}
+              <Badge variant="secondary" className="mt-2 border-transparent bg-primary/10 text-primary hover:bg-primary/10" data-testid="badge-role">
+                {role === "affiliate" ? "Publisher" : role === "brand" ? "Brand" : "Creator"}
               </Badge>
             </div>
             <Button

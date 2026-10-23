@@ -438,10 +438,10 @@ export default function CreatorSettingsSubscription() {
             */}
             <PricingEstimator plan="creator" className="border-0 shadow-none bg-muted/30" />
 
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <Button
                 data-testid="button-upgrade-plan"
-                className="rounded-full gap-2"
+                className="rounded-full gap-2 flex-1 sm:flex-none"
                 onClick={() => setPlanDialogOpen(true)}
               >
                 <Zap className="h-4 w-4" />
@@ -453,7 +453,7 @@ export default function CreatorSettingsSubscription() {
                 <Button
                   data-testid="button-billing-portal"
                   variant="outline"
-                  className="rounded-full gap-2"
+                  className="rounded-full gap-2 flex-1 sm:flex-none"
                   disabled={portalMut.isPending}
                   onClick={() => portalMut.mutate()}
                 >
@@ -471,10 +471,10 @@ export default function CreatorSettingsSubscription() {
           creator knows the option exists and what unlocks it. */}
       <Card data-testid="card-token-subsidy">
         <CardHeader className="pb-3">
-          <div className="flex items-start justify-between gap-3">
-            <div>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="min-w-0 flex-1">
               <CardTitle className="text-lg flex items-center gap-2">
-                <Coins className="h-4 w-4 text-primary" />
+                <Coins className="h-4 w-4 shrink-0 text-primary" />
                 Reduce your bill with tokens
               </CardTitle>
               <p className="text-sm text-muted-foreground mt-1">

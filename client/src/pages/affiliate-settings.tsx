@@ -112,7 +112,7 @@ export default function AffiliateSettings() {
           <Card>
             <CardHeader className="flex flex-row items-start justify-between gap-4">
               <div>
-                <CardTitle className="flex items-center gap-2">
+                <CardTitle className="flex items-center gap-2 text-lg">
                   <Wallet className="w-5 h-5" />
                   Account Overview
                 </CardTitle>
@@ -138,7 +138,7 @@ export default function AffiliateSettings() {
           <Card>
             <CardHeader className="flex flex-row items-start justify-between gap-4">
               <div>
-                <CardTitle className="flex items-center gap-2">
+                <CardTitle className="flex items-center gap-2 text-lg">
                   <Building2 className="w-5 h-5" />
                   Payout Account
                 </CardTitle>
@@ -222,7 +222,7 @@ export default function AffiliateSettings() {
 
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
+              <CardTitle className="flex items-center gap-2 text-lg">
                 <CreditCard className="w-5 h-5" />
                 Payout Schedule
               </CardTitle>

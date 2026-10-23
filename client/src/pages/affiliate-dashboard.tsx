@@ -243,21 +243,21 @@ export default function AffiliateDashboard() {
           <CardTitle className="text-lg font-semibold">Quick Actions</CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="grid grid-cols-3 gap-2 sm:gap-4">
             <Link href="/affiliate/library">
-              <Button variant="outline" className="w-full h-auto py-4 flex-col gap-2" data-testid="action-browse-videos">
+              <Button variant="outline" className="w-full h-auto py-3 sm:py-4 flex-col gap-1.5 sm:gap-2 whitespace-normal text-xs sm:text-sm leading-tight rounded-xl" data-testid="action-browse-videos">
                 <ShoppingBag className="h-5 w-5" />
                 <span>Browse Videos</span>
               </Button>
             </Link>
             <Link href="/affiliate/campaigns">
-              <Button variant="outline" className="w-full h-auto py-4 flex-col gap-2" data-testid="action-manage-campaigns">
+              <Button variant="outline" className="w-full h-auto py-3 sm:py-4 flex-col gap-1.5 sm:gap-2 whitespace-normal text-xs sm:text-sm leading-tight rounded-xl" data-testid="action-manage-campaigns">
                 <Video className="h-5 w-5" />
                 <span>Manage Campaigns</span>
               </Button>
             </Link>
             <Link href="/affiliate/settings">
-              <Button variant="outline" className="w-full h-auto py-4 flex-col gap-2" data-testid="action-payout-settings">
+              <Button variant="outline" className="w-full h-auto py-3 sm:py-4 flex-col gap-1.5 sm:gap-2 whitespace-normal text-xs sm:text-sm leading-tight rounded-xl" data-testid="action-payout-settings">
                 <DollarSign className="h-5 w-5" />
                 <span>Payout Settings</span>
               </Button>

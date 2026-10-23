@@ -249,10 +249,10 @@ export default function BrandSettingsSubscription() {
             <PricingEstimator plan={currentPlan.id as PlanKey} className="border-0 shadow-none bg-muted/30" />
 
             {/* Plan action buttons */}
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <Button
                 data-testid="button-upgrade-plan"
-                className="rounded-full gap-2"
+                className="rounded-full gap-2 flex-1 sm:flex-none"
                 onClick={() => setPlanDialogOpen(true)}
               >
                 <Zap className="h-4 w-4" />
@@ -261,7 +261,7 @@ export default function BrandSettingsSubscription() {
               <Button
                 data-testid="button-cancel-plan"
                 variant="outline"
-                className="rounded-full gap-2"
+                className="rounded-full gap-2 flex-1 sm:flex-none"
                 disabled={portalMut.isPending}
                 onClick={() => portalMut.mutate()}
               >

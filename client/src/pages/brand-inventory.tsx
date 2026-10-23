@@ -443,7 +443,7 @@ export default function BrandInventory() {
   const activePlatform = PLATFORMS.find((p) => p.id === selectedPlatform);
   const inputPlaceholder = activePlatform
     ? `${activePlatform.label} API key, e.g. ${activePlatform.placeholder}`
-    : "Select a platform above, then enter your API key";
+    : "Pick a platform first";
 
   const { data: brands = [] } = useQuery<Brand[]>({
     queryKey: ["/api/brands"],
@@ -713,7 +713,7 @@ export default function BrandInventory() {
                         {!p.supported && (
                           <Badge
                             variant="secondary"
-                            className="absolute -top-2 -right-2 px-1.5 py-0 text-[9px] font-medium leading-tight pointer-events-none"
+                            className="absolute top-1.5 right-1.5 px-1.5 py-0 text-[9px] font-medium leading-tight pointer-events-none"
                             data-testid={`badge-coming-soon-${p.id}`}
                           >
                             Soon
@@ -972,7 +972,7 @@ export default function BrandInventory() {
                     </div>
                   )}
                   <div className="flex-1 min-w-0">
-                    <p className="font-medium truncate">{product.name}</p>
+                    <p className="font-medium leading-snug line-clamp-2">{product.name}</p>
                     <p className="text-sm text-muted-foreground truncate">{product.description}</p>
                     <div className="flex flex-wrap items-center gap-2 mt-1">
                       <span className="font-semibold text-primary tabular-nums">{CURRENCY_SYMBOL}{product.price}</span>

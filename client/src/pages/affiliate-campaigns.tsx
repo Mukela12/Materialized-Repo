@@ -106,43 +106,43 @@ export default function AffiliateCampaigns() {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="grid grid-cols-3 gap-2 md:gap-4">
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between gap-4 pb-2">
-            <CardTitle className="text-sm font-medium">Total Earnings</CardTitle>
-            <DollarSign className="w-4 h-4 text-primary" />
+          <CardHeader className="flex flex-row items-center justify-between gap-2 p-3 pb-1 md:p-6 md:pb-2">
+            <CardTitle className="text-[11px] leading-tight md:text-sm font-medium">Total Earnings</CardTitle>
+            <DollarSign className="hidden md:block w-4 h-4 text-primary" />
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold" data-testid="text-total-earnings">
+          <CardContent className="p-3 pt-0 md:p-6 md:pt-0">
+            <div className="text-lg md:text-2xl font-bold tabular-nums" data-testid="text-total-earnings">
               ${totalEarnings.toFixed(2)}
             </div>
-            <p className="text-xs text-muted-foreground">From all campaigns</p>
+            <p className="hidden md:block text-xs text-muted-foreground">From all campaigns</p>
           </CardContent>
         </Card>
 
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between gap-4 pb-2">
-            <CardTitle className="text-sm font-medium">Total Clicks</CardTitle>
-            <MousePointerClick className="w-4 h-4 text-muted-foreground" />
+          <CardHeader className="flex flex-row items-center justify-between gap-2 p-3 pb-1 md:p-6 md:pb-2">
+            <CardTitle className="text-[11px] leading-tight md:text-sm font-medium">Total Clicks</CardTitle>
+            <MousePointerClick className="hidden md:block w-4 h-4 text-muted-foreground" />
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold" data-testid="text-total-clicks">
+          <CardContent className="p-3 pt-0 md:p-6 md:pt-0">
+            <div className="text-lg md:text-2xl font-bold tabular-nums" data-testid="text-total-clicks">
               {totalClicks.toLocaleString()}
             </div>
-            <p className="text-xs text-muted-foreground">Across all campaigns</p>
+            <p className="hidden md:block text-xs text-muted-foreground">Across all campaigns</p>
           </CardContent>
         </Card>
 
         <Card>
-          <CardHeader className="flex flex-row items-center justify-between gap-4 pb-2">
-            <CardTitle className="text-sm font-medium">Conversions</CardTitle>
-            <CheckCircle2 className="w-4 h-4 text-chart-2" />
+          <CardHeader className="flex flex-row items-center justify-between gap-2 p-3 pb-1 md:p-6 md:pb-2">
+            <CardTitle className="text-[11px] leading-tight md:text-sm font-medium">Conversions</CardTitle>
+            <CheckCircle2 className="hidden md:block w-4 h-4 text-chart-2" />
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold" data-testid="text-total-conversions">
+          <CardContent className="p-3 pt-0 md:p-6 md:pt-0">
+            <div className="text-lg md:text-2xl font-bold tabular-nums" data-testid="text-total-conversions">
               {totalConversions.toLocaleString()}
             </div>
-            <p className="text-xs text-muted-foreground">Successful purchases</p>
+            <p className="hidden md:block text-xs text-muted-foreground">Successful purchases</p>
           </CardContent>
         </Card>
       </div>

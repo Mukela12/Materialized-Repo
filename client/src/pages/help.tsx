@@ -107,8 +107,8 @@ export default function Help() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <HelpCircle className="h-5 w-5" />
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <HelpCircle className="h-5 w-5 shrink-0" />
             Frequently Asked Questions
           </CardTitle>
         </CardHeader>

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { formatMoney } from "@/lib/currency";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest, serverMessage } from "@/lib/queryClient";
@@ -1591,6 +1591,11 @@ export default function AdminPipeline() {
     return t && (TABS as readonly string[]).includes(t) ? t : "overview";
   };
   const [activeTab, setActiveTabState] = useState<AdminTab>(tabFromUrl);
+  // On a phone the tab row scrolls; keep the open tab in view so it's clear
+  // which one you're on (mobile QA, 23 Oct 2026).
+  useEffect(() => {
+    document.querySelector(`[data-testid="tab-${activeTab}"]`)?.scrollIntoView({ block: "nearest", inline: "center" });
+  }, [activeTab]);
   const setActiveTab = (tab: AdminTab) => {
     setActiveTabState(tab);
     const url = new URL(window.location.href);
@@ -1687,7 +1692,7 @@ export default function AdminPipeline() {
               key={tab}
               onClick={() => setActiveTab(tab)}
               data-testid={`tab-${tab}`}
-              className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px capitalize transition-colors ${
+              className={`shrink-0 whitespace-nowrap px-4 py-2 text-sm font-medium border-b-2 -mb-px capitalize transition-colors ${
                 activeTab === tab
                   ? "border-primary text-foreground"
                   : "border-transparent text-muted-foreground hover:text-foreground"
@@ -1739,7 +1744,7 @@ export default function AdminPipeline() {
         </div>
 
         {/* Filter */}
-        <div className="flex items-center gap-3 mb-4">
+        <div className="flex flex-wrap items-center gap-2 mb-4">
           <span className="text-sm text-muted-foreground">Filter:</span>
           {[
             { value: "all", label: "All" },
@@ -1753,7 +1758,7 @@ export default function AdminPipeline() {
             <button
               key={f.value}
               onClick={() => setFilterStage(f.value)}
-              className={`text-xs px-3 py-1.5 rounded-full border transition-all ${
+              className={`shrink-0 whitespace-nowrap text-xs px-3 py-1.5 rounded-full border transition-all ${
                 filterStage === f.value
                   ? "bg-foreground text-background border-foreground"
                   : "border-border text-muted-foreground hover:text-foreground"

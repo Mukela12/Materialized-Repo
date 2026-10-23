@@ -225,7 +225,8 @@ export default function Register() {
                         <button
                           type="button"
                           onClick={() => setShowPassword((v) => !v)}
-                          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                          aria-label={showPassword ? "Hide password" : "Show password"}
+                          className="absolute right-1 top-1/2 -translate-y-1/2 flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground hover:text-foreground"
                           tabIndex={-1}
                         >
                           {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -274,10 +275,11 @@ export default function Register() {
                             id="accept-fee-terms"
                             checked={field.value === true}
                             onCheckedChange={(v) => field.onChange(v === true)}
+                            className="h-5 w-5"
                             data-testid="checkbox-accept-fee-terms"
                           />
                         </FormControl>
-                        <label htmlFor="accept-fee-terms" className="text-sm font-medium leading-tight">
+                        <label htmlFor="accept-fee-terms" className="text-sm font-medium leading-tight py-0.5 cursor-pointer">
                           I agree to the {feeTerms.marketplaceFeePct}% marketplace fee
                         </label>
                       </div>

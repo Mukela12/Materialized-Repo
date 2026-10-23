@@ -791,11 +791,11 @@ function DataAnalyticsSection() {
                       v.muted = next;
                       setMiroMuted(next);
                     }}
-                    className="absolute top-3 left-3 z-30 bg-black/50 hover:bg-black/70 text-white rounded-full p-2 transition-colors backdrop-blur-sm"
+                    className="absolute top-3 left-3 z-30 bg-black/50 hover:bg-black/70 text-white rounded-full p-3 transition-colors backdrop-blur-sm"
                     data-testid="button-miro-audio-toggle"
                     title={miroMuted ? "Enable audio" : "Mute"}
                   >
-                    {miroMuted ? <VolumeX className="h-3.5 w-3.5" /> : <Volume2 className="h-3.5 w-3.5" />}
+                    {miroMuted ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
                   </button>
                   <video
                     ref={miroVideoRef}

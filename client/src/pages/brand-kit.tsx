@@ -485,8 +485,8 @@ export default function BrandKitPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <FileText className="h-5 w-5" />
+          <CardTitle className="flex items-center gap-2 text-lg">
+            <FileText className="h-5 w-5 shrink-0" />
             Upload Brand Guidelines PDF
           </CardTitle>
         </CardHeader>

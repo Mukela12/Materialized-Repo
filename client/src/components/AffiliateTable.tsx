@@ -79,7 +79,55 @@ export function AffiliateTable({ videos, isLoading, formatMoney }: AffiliateTabl
           data-testid="performance-toolbar"
         />
       </CardHeader>
-      <CardContent className="p-0 overflow-x-auto">
+      {/* Phones: one card per video, its four numbers side by side. Six table
+          columns showed only the first on a phone (mobile QA, 23 Oct 2026). */}
+      <CardContent className="p-3 md:hidden" data-testid="performance-cards">
+        {rows.length === 0 ? (
+          <div className="flex flex-col items-center gap-2 py-8 text-center text-muted-foreground">
+            <Eye className="h-8 w-8 opacity-50" />
+            <p>{videos.length === 0 ? "No video data yet" : "No videos match your search"}</p>
+            <p className="text-sm">Upload your first video to start tracking performance</p>
+          </div>
+        ) : (
+          <ul className="divide-y rounded-lg border">
+            {rows.map((video) => (
+              <li key={video.id} className="p-3" data-testid={`card-video-perf-${video.id}`}>
+                <div className="flex items-start gap-3">
+                  <div className="w-14 h-9 rounded-md bg-muted flex-shrink-0 overflow-hidden">
+                    {video.thumbnailUrl
+                      ? <img src={video.thumbnailUrl} alt="" className="w-full h-full object-cover" />
+                      : <div className="w-full h-full bg-gradient-to-br from-primary/20 to-chart-2/20" />}
+                  </div>
+                  <p className="flex-1 min-w-0 text-sm font-medium leading-snug line-clamp-2">{video.title}</p>
+                  <Badge
+                    variant="secondary"
+                    className={`shrink-0 text-[11px] ${
+                      video.status === "published" ? "bg-green-500/20 text-green-600"
+                        : video.status === "processing" ? "bg-yellow-500/20 text-yellow-600"
+                        : "bg-muted text-muted-foreground"}`}
+                  >
+                    {video.status}
+                  </Badge>
+                </div>
+                <div className="grid grid-cols-4 gap-1.5 mt-2.5 text-center">
+                  {[
+                    ["Views", String(video.totalViews || 0)],
+                    ["Clicks", String(video.totalClicks || 0)],
+                    ["CTR", `${calculateCTR(video.totalClicks || 0, video.totalViews || 0)}%`],
+                    ["Revenue", fmtMoney(Number(video.totalRevenue || 0))],
+                  ].map(([label, value]) => (
+                    <div key={label} className="rounded-md bg-muted/50 py-1.5">
+                      <p className={`text-sm font-semibold tabular-nums truncate px-1 ${label === "Revenue" ? "text-green-600" : ""}`}>{value}</p>
+                      <p className="text-[10px] text-muted-foreground">{label}</p>
+                    </div>
+                  ))}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </CardContent>
+      <CardContent className="p-0 overflow-x-auto hidden md:block">
         <Table>
           <TableHeader>
             <TableRow className="hover:bg-transparent">

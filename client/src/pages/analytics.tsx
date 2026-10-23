@@ -314,9 +314,11 @@ export default function Analytics() {
         <TabsContent value="overview" className="space-y-6">
           <Card>
             <CardHeader>
-              <div className="flex items-center justify-between">
-                <CardTitle className="flex items-center gap-2">
-                  <BarChart3 className="h-5 w-5" />
+              {/* On a phone the range buttons go under the title: side by side they
+                  squeezed it onto three lines (mobile QA, 23 Oct 2026). */}
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <CardTitle className="flex items-center gap-2 text-lg sm:text-xl">
+                  <BarChart3 className="h-5 w-5 shrink-0" />
                   {isPublisherView ? "Views from Your Embeds" : "Views by Date"}
                 </CardTitle>
                 <div className="flex gap-1">
