@@ -90,6 +90,12 @@ export function ShareClipPanel({ videoId, title, shoppableUrl }: {
   };
 
   const canShareFile = !!file && typeof navigator !== "undefined" && !!navigator.canShare?.({ files: [file.file] });
+  /**
+   * Instagram and TikTok take shared videos only through their phone apps, so
+   * they appear in a phone's share menu and never in a computer's (the client
+   * saw AirDrop and Mail on her Mac, 23 Oct 2026). Say so where it matters.
+   */
+  const onPhone = typeof navigator !== "undefined" && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
   const share = async () => {
     if (!file) return;
     try {
@@ -159,6 +165,11 @@ export function ShareClipPanel({ videoId, title, shoppableUrl }: {
             <Link2 className="h-4 w-4" /> Copy shoppable link
           </Button>
           {linkBox && <div className="w-full">{linkBox}</div>}
+          <p className="w-full text-xs text-muted-foreground" data-testid="share-clip-hint">
+            {onPhone && canShareFile
+              ? "Tap Share, then pick Instagram (choose Story) or TikTok."
+              : "Posting to Instagram Stories or TikTok? Open MTRLZD on your phone and tap Share there: those apps only appear in a phone's share menu. Or AirDrop the video to your phone."}
+          </p>
         </div>
       ) : (
         <div className="space-y-2">
