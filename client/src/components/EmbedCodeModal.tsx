@@ -11,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Copy, Check, Code, Monitor, Smartphone, Eye, ExternalLink } from "lucide-react";
+import { Copy, Check, Code, Monitor, Smartphone, Eye, ExternalLink, Clapperboard } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { copyText } from "@/lib/clipboard";
 import type { Video } from "@shared/schema";
@@ -25,7 +25,8 @@ interface EmbedCodeModalProps {
 
 export function EmbedCodeModal({ open, onOpenChange, video }: EmbedCodeModalProps) {
   const [copied, setCopied] = useState(false);
-  const [showPreview, setShowPreview] = useState(false);
+  // Open from the start: the preview with its carousel is what people come here for.
+  const [showPreview, setShowPreview] = useState(true);
   /** Closed by default: the video is what people open this for. */
   const [showCode, setShowCode] = useState(false);
   const { toast } = useToast();
@@ -77,11 +78,11 @@ export function EmbedCodeModal({ open, onOpenChange, video }: EmbedCodeModalProp
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto grid-cols-[minmax(0,1fr)]">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-xl font-bold">
-            <Code className="h-5 w-5" />
-            Embed Code & Preview
+            <Clapperboard className="h-5 w-5" />
+            Preview &amp; share
           </DialogTitle>
           <DialogDescription>
-            Preview your shoppable video and copy the embed code for your website
+            Your video with its product carousel. Download it for socials, or copy the embed code for your website.
           </DialogDescription>
         </DialogHeader>
 

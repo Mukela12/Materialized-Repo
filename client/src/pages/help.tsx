@@ -43,7 +43,7 @@ const faqs = [
   },
   {
     question: "How do I embed videos on my website?",
-    answer: "Open any published video's menu and click 'Get Embed Code'. Copy the iframe code and paste it into your website's HTML. We provide both standard and responsive embed options.",
+    answer: "Open any published video's menu and click 'Preview & Share', or open the video and tap 'Open preview & download'. Copy the embed code and paste it into your website's HTML. We provide both standard and responsive embed options.",
   },
   {
     question: "What analytics are available?",

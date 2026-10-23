@@ -103,7 +103,7 @@ export function VideoCard({ video, onOpen, onEdit, onViewEmbed, onDelete }: Vide
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => onViewEmbed?.(video)}>
               <Code className="h-4 w-4 mr-2" />
-              Get Embed Code
+              Preview &amp; Share
             </DropdownMenuItem>
             <DropdownMenuItem
               onClick={() => onDelete?.(video)}

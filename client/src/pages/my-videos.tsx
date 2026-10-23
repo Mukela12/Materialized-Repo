@@ -330,6 +330,7 @@ export default function MyVideos() {
         video={detailSheetVideo}
         open={detailSheetOpen}
         onOpenChange={setDetailSheetOpen}
+        onPreview={handleViewEmbed}
       />
     </div>
   );

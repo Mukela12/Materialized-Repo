@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
-import { Eye, MousePointer, DollarSign, Image, CheckSquare, Square, Plus, Trash2, Link, ExternalLink, Library, CheckCircle2, Upload } from "lucide-react";
+import { Eye, MousePointer, DollarSign, Image, CheckSquare, Square, Plus, Trash2, Link, ExternalLink, Library, CheckCircle2, Upload, Clapperboard } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { Video } from "@shared/schema";
@@ -68,9 +68,11 @@ interface Props {
   video: Video | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** Opens the preview with its carousel, Download for socials, and the embed code. */
+  onPreview?: (video: Video) => void;
 }
 
-export function VideoDetailSheet({ video, open, onOpenChange }: Props) {
+export function VideoDetailSheet({ video, open, onOpenChange, onPreview }: Props) {
   const { toast } = useToast();
   const [title, setTitle]             = useState("");
   const [description, setDescription] = useState("");
@@ -359,6 +361,34 @@ export function VideoDetailSheet({ video, open, onOpenChange }: Props) {
               <p className="text-xs text-muted-foreground">Revenue</p>
             </div>
           </div>
+
+          {/*
+            Preview & share, where people look for it (23 Oct 2026). The preview
+            with the carousel, Download for socials and Stories lived only behind
+            "Get Embed Code" on the card menu, so from here it looked removed.
+          */}
+          {onPreview && video && (
+            <div className="rounded-xl border border-primary/30 bg-primary/5 p-4" data-testid="sheet-preview-share">
+              <div className="flex items-start gap-3">
+                <div className="h-9 w-9 shrink-0 rounded-lg bg-primary/10 flex items-center justify-center">
+                  <Clapperboard className="h-4 w-4 text-primary" />
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold">Preview &amp; share</p>
+                  <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+                    See it with the product carousel, download it for Stories, Reels or WhatsApp, or copy the embed code for a website.
+                  </p>
+                </div>
+              </div>
+              <Button
+                className="w-full mt-3"
+                onClick={() => { onOpenChange(false); onPreview(video); }}
+                data-testid="button-sheet-preview-share"
+              >
+                Open preview &amp; download
+              </Button>
+            </div>
+          )}
 
           {/* Title */}
           <div className="space-y-1.5">
