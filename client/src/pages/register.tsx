@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { useToast } from "@/hooks/use-toast";
+import { getAttribution } from "@/lib/activity";
 import { apiRequest } from "@/lib/queryClient";
 import materializedLogo from "@assets/MTRLZD_Logo_white_transparent.png";
 import { Eye, EyeOff } from "lucide-react";
@@ -69,7 +70,8 @@ export default function Register() {
   const { data: feeTerms } = useFeeTerms();
 
   const registerMutation = useMutation({
-    mutationFn: (data: FormData) => apiRequest("POST", "/api/auth/register", data),
+    // With the campaign link that first brought them here, for the admin's Source column.
+    mutationFn: (data: FormData) => apiRequest("POST", "/api/auth/register", { ...data, attribution: getAttribution() }),
     onSuccess: async (res: any) => {
       const data = await res.json();
       if (data.needsVerification) {

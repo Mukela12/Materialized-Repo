@@ -9,7 +9,7 @@
  *                      secure in production, 7-day maxAge, Postgres-backed store)
  *    - `sidebar_state` client/src/components/ui/sidebar.tsx (7-day, path=/)
  *    - `theme`         client/src/components/ThemeProvider.tsx (localStorage)
- *    - `mtrlzd-vid`, `mtrlzd-sid`  client/src/lib/activity.ts (first-party page
+ *    - `mtrlzd-vid`, `mtrlzd-sid`, `mtrlzd-attr`  client/src/lib/activity.ts (first-party page
  *                      counts for the admin Activity tab; local/sessionStorage)
  *  There is currently NO third-party analytics or advertising cookie in the app.
  *
@@ -26,7 +26,7 @@ import { Link } from "wouter";
 import { LegalPage, LegalSection, LegalList } from "@/components/LegalPage";
 import { COMPANY } from "@/lib/company";
 
-const LAST_UPDATED = "22 October 2026";
+const LAST_UPDATED = "25 October 2026";
 
 interface CookieRow {
   name: string;
@@ -68,6 +68,14 @@ const COOKIES: CookieRow[] = [
       "A random id so we can count visits to our own pages (which pages, and whether an invitation link was opened). Never shared with anyone.",
     category: "Performance",
     duration: "Until you clear site data",
+  },
+  {
+    name: "mtrlzd-attr",
+    provider: "Materialized (first party, stored in localStorage, not a cookie)",
+    purpose:
+      "Remembers the campaign link that first brought you to our site (for example an ad or a partner's link), so your account can show where you came from if you sign up.",
+    category: "Performance",
+    duration: "90 days",
   },
   {
     name: "mtrlzd-sid",
@@ -202,7 +210,8 @@ export default function Cookies() {
         <p>
           The <span className="font-mono text-white/70">mtrlzd-vid</span> and{" "}
           <span className="font-mono text-white/70">mtrlzd-sid</span> keys only count
-          visits to our own pages. They hold a random id, not your name or address, and
+          visits to our own pages, and <span className="font-mono text-white/70">mtrlzd-attr</span> remembers
+          which campaign link brought you here. They hold a random id, not your name or address, and
           are never passed to another company. If your browser sends a Global Privacy
           Control or Do Not Track signal, they are not set and nothing is counted.
         </p>

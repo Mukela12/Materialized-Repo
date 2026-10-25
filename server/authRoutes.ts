@@ -4,6 +4,7 @@ import { ensureOwnBrand } from "./brandAccount";
 import { publicOrigin } from "./publicOrigin";
 import { storage } from "./storage";
 import { recordLogin, recordSignup } from "./activity";
+import { cleanAttribution } from "./activityRules";
 import { hashPassword, verifyPassword } from "./auth";
 import { checkRedeemable, grantsOf, normaliseCode } from "./vouchers";
 import { sendVerificationEmail, sendPasswordResetEmail, isEmailConfigured } from "./emailService";
@@ -23,6 +24,8 @@ const registerSchema = z.object({
   accessCode: z.string().optional(),
   /** Brands agree to the marketplace fee to sign up (client, 29 Sep 2026). */
   acceptFeeTerms: z.boolean().optional(),
+  /** The campaign link that first brought them here (client/src/lib/activity.ts). */
+  attribution: z.unknown().optional(),
 });
 
 const forgotPasswordSchema = z.object({
@@ -267,7 +270,7 @@ export function registerAuthRoutes(app: Express) {
       emailVerificationToken: verificationToken,
       emailVerificationExpires: verificationExpires,
     } as any);
-    recordSignup(user.id).catch((e) => console.error("[Activity] signup:", e?.message));
+    recordSignup(user.id, cleanAttribution(parsed.data.attribution)).catch((e) => console.error("[Activity] signup:", e?.message));
 
     // A brand account gets its brand at once: products, invitations and
     // campaigns all hang off it, and without it the brand could add nothing.

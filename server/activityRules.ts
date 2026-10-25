@@ -53,3 +53,28 @@ export function windowDays(raw: unknown): number {
   return n === 30 || n === 90 ? n : 7;
 }
 
+
+export interface Attribution { utmSource: string | null; utmMedium: string | null; utmCampaign: string | null; referrer: string | null }
+
+/** A campaign value as stored: short, plain words only. These come from links anyone can craft. */
+function tag(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const v = raw.trim().toLowerCase().replace(/[^a-z0-9 ._+\-]/g, "").slice(0, 60);
+  return v || null;
+}
+
+/**
+ * The first ad or campaign link that brought someone to the site, as the
+ * browser kept it (client/src/lib/activity.ts). A Google Ads click (gclid)
+ * with no UTM tags counts as google / cpc, which is what Google Ads means.
+ */
+export function cleanAttribution(raw: unknown): Attribution {
+  const a = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const gclid = typeof a.gclid === "string" && a.gclid.length > 0;
+  return {
+    utmSource: tag(a.utmSource) ?? (gclid ? "google" : null),
+    utmMedium: tag(a.utmMedium) ?? (gclid ? "cpc" : null),
+    utmCampaign: tag(a.utmCampaign),
+    referrer: referrerHostOf(a.referrer),
+  };
+}

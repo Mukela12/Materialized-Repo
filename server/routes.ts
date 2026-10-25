@@ -2598,6 +2598,21 @@ export async function registerRoutes(
     recordPageView(view, userId).catch((e) => console.error("[Activity] page view:", e?.message));
   });
 
+  // Admin: one person's one-pager (stats, 30-day charts, videos, pages, emails).
+  app.get("/api/admin/activity/people/:id", requireAdmin, async (req, res) => {
+    const { personReport } = await import("./activity");
+    const r = await personReport(req.params.id);
+    if (!r) return res.status(404).json({ error: "No such person." });
+    res.json(r);
+  });
+
+  // Admin: videos ranked by engagement, each with its creator's source.
+  app.get("/api/admin/activity/engagement", requireAdmin, async (req, res) => {
+    const { engagementReport } = await import("./activity");
+    const d = Number(req.query.days);
+    res.json(await engagementReport(d === 7 || d === 30 || d === 90 ? d : null));
+  });
+
   // Admin: who comes in, where they land and leave, and what the codes did.
   app.get("/api/admin/activity", requireAdmin, async (req, res) => {
     const { windowDays } = await import("./activityRules");

@@ -86,11 +86,12 @@ describe("wiring", () => {
 
   it("counts every way a session starts: login, email confirmation, voucher signup", () => {
     expect(auth.match(/recordLogin\(user\.id\)/g)?.length).toBe(3);
-    expect(auth).toMatch(/recordSignup\(user\.id\)/);
+    expect(auth).toMatch(/recordSignup\(user\.id[,)]/);
   });
 
   it("a stats write can never fail a sign-in", () => {
-    for (const m of auth.matchAll(/record(Login|Signup)\(user\.id\)(.{0,10})/g)) expect(m[2]).toMatch(/^\.catch/);
+    for (const m of auth.matchAll(/record(Login|Signup)\(user\.id(?:, cleanAttribution\(parsed\.data\.attribution\))?\)(.{0,10})/g)) expect(m[2]).toMatch(/^\.catch/);
+    expect(auth.match(/record(Login|Signup)\(user\.id/g)?.length).toBe(4);
   });
 
   it("the report is admin only", () => {
@@ -111,5 +112,44 @@ describe("wiring", () => {
     const c = read("client/src/pages/cookies.tsx");
     expect(c).toMatch(/name: "mtrlzd-vid"/);
     expect(c).toMatch(/name: "mtrlzd-sid"/);
+  });
+});
+
+describe("signup source (25 Oct 2026)", () => {
+  it("keeps a campaign as short plain words, from links anyone can craft", async () => {
+    const { cleanAttribution } = await import("../../server/activityRules");
+    expect(cleanAttribution({ utmSource: "Google", utmMedium: "CPC", utmCampaign: "Paris <script>Summit</script>" })).toEqual({
+      utmSource: "google", utmMedium: "cpc", utmCampaign: "paris scriptsummitscript", referrer: null,
+    });
+    expect(cleanAttribution({ utmSource: "x".repeat(200) }).utmSource!.length).toBe(60);
+  });
+
+  it("a Google Ads click with no UTM tags counts as Google Ads", async () => {
+    const { cleanAttribution } = await import("../../server/activityRules");
+    expect(cleanAttribution({ gclid: "abc123" })).toMatchObject({ utmSource: "google", utmMedium: "cpc" });
+  });
+
+  it("keeps only the referring site, and nothing from junk", async () => {
+    const { cleanAttribution } = await import("../../server/activityRules");
+    expect(cleanAttribution({ referrer: "https://l.instagram.com/?u=secret" }).referrer).toBe("l.instagram.com");
+    expect(cleanAttribution(null)).toEqual({ utmSource: null, utmMedium: null, utmCampaign: null, referrer: null });
+    expect(cleanAttribution("nope")).toEqual({ utmSource: null, utmMedium: null, utmCampaign: null, referrer: null });
+  });
+
+  it("is wired: sign-up sends it, the server stores it, the admin reports are admin only", () => {
+    expect(read("client/src/pages/register.tsx")).toMatch(/attribution: getAttribution\(\)/);
+    expect(read("server/authRoutes.ts")).toMatch(/recordSignup\(user\.id, cleanAttribution\(parsed\.data\.attribution\)\)/);
+    const routes = read("server/routes.ts");
+    expect(routes).toMatch(/app\.get\("\/api\/admin\/activity\/people\/:id", requireAdmin,/);
+    expect(routes).toMatch(/app\.get\("\/api\/admin\/activity\/engagement", requireAdmin,/);
+    expect(read("client/src/pages/cookies.tsx")).toMatch(/name: "mtrlzd-attr"/);
+  });
+
+  it("sources read the code first, then the campaign, then the referrer, then Direct", () => {
+    const a = read("server/activity.ts");
+    const src = a.slice(a.indexOf("export const sourceOf"), a.indexOf("export const subscribedAtOf"));
+    expect(src.indexOf("voucher_redemptions")).toBeLessThan(src.indexOf("'Google Ads'"));
+    expect(src.indexOf("'Google Ads'")).toBeLessThan(src.indexOf("u.signup_referrer"));
+    expect(src).toMatch(/'Direct'\)/);
   });
 });

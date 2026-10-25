@@ -12,7 +12,7 @@
  */
 import { sql } from "drizzle-orm";
 import { db } from "./db";
-import type { cleanPageView } from "./activityRules";
+import type { Attribution, cleanPageView } from "./activityRules";
 
 async function voucherIdForCode(code: string | null): Promise<string | null> {
   if (!code) return null;
@@ -40,9 +40,37 @@ export async function recordLogin(userId: string): Promise<void> {
 }
 
 /** An account made. Not a sign-in: most still have an email to confirm first. */
-export async function recordSignup(userId: string): Promise<void> {
+export async function recordSignup(userId: string, from?: Attribution): Promise<void> {
+  if (from && (from.utmSource || from.utmCampaign || from.referrer)) {
+    await db.execute(sql`
+      update users set signup_utm_source = ${from.utmSource}, signup_utm_medium = ${from.utmMedium},
+        signup_utm_campaign = ${from.utmCampaign}, signup_referrer = ${from.referrer}
+      where id = ${userId}`);
+  }
   await db.execute(sql`insert into activity_events (type, user_id) values ('signup', ${userId})`);
 }
+
+/**
+ * Where an account came from, in words, for a row aliased "u". In order: the
+ * code they joined with (a partner or event batch, a brand's invite, a
+ * program's invite), then the campaign link that brought them (paid Google
+ * clicks read "Google Ads"), then the site that referred them, then Direct.
+ */
+export const sourceOf = sql`coalesce(
+  (select case
+      when v.batch_id like 'invite:%' then 'Invited by ' || coalesce((select b.name from brands b where 'invite:' || b.id = v.batch_id), 'a brand')
+      when v.batch_id like 'program:%' then coalesce((select ps.program_name from program_senders ps where v.batch_id like 'program:' || ps.user_id || ':%' limit 1), 'Program invite')
+      else coalesce(nullif(v.partner, ''), nullif(v.label, ''), 'Voucher code') end
+   from voucher_redemptions r join vouchers v on v.id = r.voucher_id where r.user_id = u.id order by r.redeemed_at limit 1),
+  case
+    when u.signup_utm_source = 'google' and u.signup_utm_medium in ('cpc', 'ppc', 'paid', 'paidsearch', 'paid-search') then 'Google Ads'
+    when u.signup_utm_source is not null then initcap(u.signup_utm_source) || coalesce(' · ' || u.signup_utm_campaign, '')
+  end,
+  u.signup_referrer,
+  'Direct')`;
+
+/** When they started paying, if they have. */
+export const subscribedAtOf = sql`(select s.subscribed_at from brand_subscriptions s where s.user_id = u.id and s.status in ('active', 'trialing') limit 1)`;
 
 /**
  * Everything the admin Activity tab shows, for the last `days` days.
@@ -121,11 +149,93 @@ export async function activityReport(days: number) {
   const people = (await db.execute(sql`
     select u.id, u.email, u.display_name, u.role, u.created_at, u.last_login_at, u.last_seen_at, u.login_count,
       (select e.path from activity_events e where e.user_id = u.id and e.type = 'page_view' order by e.at desc limit 1) as last_page,
-      (select coalesce(nullif(v.partner, ''), v.label) from voucher_redemptions r join vouchers v on v.id = r.voucher_id where r.user_id = u.id limit 1) as via_code
+      (select coalesce(nullif(v.partner, ''), v.label) from voucher_redemptions r join vouchers v on v.id = r.voucher_id where r.user_id = u.id limit 1) as via_code,
+      ${sourceOf} as source,
+      ${subscribedAtOf} as subscribed_at
     from users u
     where not u.is_admin
     order by coalesce(u.last_seen_at, u.created_at) desc nulls last
     limit 200`)).rows;
 
   return { days, totals, landing, exits, devices, codes, invites, people };
+}
+
+/**
+ * One person, for the admin's one-pager (client, 24 Oct 2026: "should the users
+ * be clicked on to reveal a one-pager with their stats and charts?"). The
+ * daily series cover the last 30 days.
+ */
+export async function personReport(userId: string) {
+  const person = (await db.execute(sql`
+    select u.id, u.email, u.display_name, u.role, u.created_at, u.last_login_at, u.last_seen_at, u.login_count,
+      u.free_access_until, u.email_opt_out_at, ${sourceOf} as source, ${subscribedAtOf} as subscribed_at,
+      (select s.plan from brand_subscriptions s where s.user_id = u.id and s.status in ('active', 'trialing') limit 1) as plan,
+      (select b.name from brands b where b.owner_id = u.id order by b.name limit 1) as brand_name,
+      (select e.segment from email_journey_enrollments e where e.user_id = u.id) as journey
+    from users u where u.id = ${userId} and not coalesce(u.is_admin, false)`)).rows[0];
+  if (!person) return null;
+
+  const totals = (await db.execute(sql`
+    select
+      (select count(*) from videos v where v.creator_id = ${userId})::int as videos,
+      -- Counted from the events, like the charts and the competition ranking, so
+      -- the headline and the trend can never disagree.
+      (select count(*) from analytics_events a where a.creator_id = ${userId} and a.event_type = 'view')::int as views,
+      (select count(*) from analytics_events a where a.creator_id = ${userId} and a.event_type = 'click')::int as clicks,
+      (select coalesce(sum(v.total_revenue), 0) from videos v where v.creator_id = ${userId})::float as revenue,
+      (select count(distinct vb.brand_id) from videos v join video_brands vb on vb.video_id = v.id where v.creator_id = ${userId})::int as brands_tagged,
+      (select count(*) from activity_events e where e.user_id = ${userId} and e.type = 'page_view')::int as page_views`)).rows[0];
+
+  // One row per day for 30 days, zeros included, so the charts never skip a day.
+  const daily = (await db.execute(sql`
+    with d as (select generate_series(current_date - 29, current_date, interval '1 day')::date as day)
+    select to_char(d.day, 'YYYY-MM-DD') as day,
+      (select count(*) from analytics_events a where a.creator_id = ${userId} and a.event_type = 'view' and a.created_at::date = d.day)::int as views,
+      (select count(*) from analytics_events a where a.creator_id = ${userId} and a.event_type = 'click' and a.created_at::date = d.day)::int as clicks,
+      (select count(*) from activity_events e where e.user_id = ${userId} and e.type = 'page_view' and e.at::date = d.day)::int as visits
+    from d order by d.day`)).rows;
+
+  const videos = (await db.execute(sql`
+    select v.id, v.title, v.status, v.created_at,
+      (select count(*) from analytics_events a where a.video_id = v.id and a.event_type = 'view')::int as views,
+      (select count(*) from analytics_events a where a.video_id = v.id and a.event_type = 'click')::int as clicks,
+      coalesce(v.total_revenue, 0)::float as revenue,
+      (select count(*) from video_brands vb where vb.video_id = v.id)::int as brands
+    from videos v where v.creator_id = ${userId} order by v.created_at desc limit 50`)).rows;
+
+  const pages = (await db.execute(sql`
+    select e.path, e.at, e.device from activity_events e
+    where e.user_id = ${userId} and e.type = 'page_view' order by e.at desc limit 12`)).rows;
+
+  const emails = (await db.execute(sql`
+    select t.subject, t.position, s.status, s.at from email_journey_sends s join email_journey_steps t on t.id = s.step_id
+    where s.user_id = ${userId} and s.status = 'sent' order by s.at desc limit 20`)).rows;
+
+  const { factsFor } = await import("./journeyStore");
+  const f = (await factsFor([userId])).get(userId);
+  return {
+    person, daily, videos, pages, emails,
+    totals: { ...totals, invitesSent: f?.invitesSent ?? 0, invitesJoined: f?.invitesJoined ?? 0, products: f?.products ?? 0 },
+  };
+}
+
+/**
+ * The Most Engaged Video competition (client, 24 Oct 2026): every creator's
+ * videos with views and product clicks over a period, each with its creator's
+ * source, so the admin can compare Paris Creator Week against Partner A and
+ * so on. Counted from the analytics events, so a period means that period.
+ */
+export async function engagementReport(days: number | null) {
+  const since = days ? sql`now() - make_interval(days => ${days})` : sql`'-infinity'::timestamp`;
+  const rows = (await db.execute(sql`
+    select v.id, v.title, v.status, u.id as creator_id, u.display_name as creator, u.email, ${sourceOf} as source,
+      count(a.id) filter (where a.event_type = 'view')::int as views,
+      count(a.id) filter (where a.event_type = 'click')::int as clicks
+    from videos v
+    join users u on u.id = v.creator_id and not coalesce(u.is_admin, false)
+    left join analytics_events a on a.video_id = v.id and a.created_at >= ${since}
+    group by v.id, u.id
+    order by clicks desc, views desc
+    limit 300`)).rows as any[];
+  return rows.map((r) => ({ ...r, ctr: r.views > 0 ? Math.round((r.clicks / r.views) * 1000) / 10 : 0 }));
 }

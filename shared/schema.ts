@@ -109,6 +109,11 @@ export const users = pgTable("users", {
   journeySegment: text("journey_segment"),
   emailOptOutAt: timestamp("email_opt_out_at"),
   emailToken: text("email_token"),
+  /** First-touch campaign that brought them to the site (migrations/0046, server/activityRules.ts). */
+  signupUtmSource: text("signup_utm_source"),
+  signupUtmMedium: text("signup_utm_medium"),
+  signupUtmCampaign: text("signup_utm_campaign"),
+  signupReferrer: text("signup_referrer"),
   /**
    * Free access requires a card. Stamped at voucher redemption — the client's
    * rule is that overage accountability is "the single requirement of having

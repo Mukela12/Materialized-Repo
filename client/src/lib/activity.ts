@@ -80,11 +80,48 @@ export function sendPageView(path: string): void {
   }).catch(() => {});
 }
 
+const ATTRIBUTION_KEY = "mtrlzd-attr";
+const ATTRIBUTION_DAYS = 90;
+
+/**
+ * Remember the first campaign link someone arrives on (utm_* tags, or a Google
+ * Ads click id), so their account can say where they came from when they sign
+ * up later. First touch wins; it is kept 90 days. Same opt-outs as page views.
+ */
+function captureAttribution(): void {
+  if (typeof window === "undefined" || optedOut()) return;
+  const q = new URLSearchParams(window.location.search);
+  const found = {
+    utmSource: q.get("utm_source"), utmMedium: q.get("utm_medium"), utmCampaign: q.get("utm_campaign"),
+    gclid: q.get("gclid"),
+    referrer: document.referrer && !document.referrer.startsWith(window.location.origin) ? document.referrer : "",
+  };
+  if (!found.utmSource && !found.utmCampaign && !found.gclid && !found.referrer) return;
+  try {
+    const kept = JSON.parse(localStorage.getItem(ATTRIBUTION_KEY) || "null");
+    if (kept && Date.now() - kept.at < ATTRIBUTION_DAYS * 86_400_000) return;
+    localStorage.setItem(ATTRIBUTION_KEY, JSON.stringify({ ...found, at: Date.now() }));
+  } catch { /* storage blocked: nothing to remember */ }
+}
+
+/** What sign-up sends: the remembered campaign, if any. */
+export function getAttribution(): Record<string, string | null> | undefined {
+  try {
+    const kept = JSON.parse(localStorage.getItem(ATTRIBUTION_KEY) || "null");
+    if (!kept || Date.now() - kept.at > ATTRIBUTION_DAYS * 86_400_000) return undefined;
+    const { at: _at, ...rest } = kept;
+    return rest;
+  } catch {
+    return undefined;
+  }
+}
+
 /** One page view per route the person actually lands on. */
 export function usePageViews(location: string): void {
   useEffect(() => {
     // The app lower-cases mixed-case addresses with a redirect; count the result.
     if (location !== location.toLowerCase()) return;
+    captureAttribution();
     sendPageView(location);
   }, [location]);
 }
