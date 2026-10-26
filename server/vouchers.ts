@@ -42,6 +42,9 @@ export interface VoucherRecord {
   freeDays: number | null;
   /** Brand codes: creator passes the brand gets to hand out. Null = default. */
   creatorPasses?: number | null;
+  /** Extra creator commission % for whoever redeems it, for creatorBonusMonths (migration 0048). */
+  creatorBonusPct?: string | number | null;
+  creatorBonusMonths?: number | null;
   revokedAt: Date | null;
 }
 

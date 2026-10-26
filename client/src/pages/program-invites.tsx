@@ -27,8 +27,9 @@ import {
 import { cn } from "@/lib/utils";
 import { useProgram } from "@/hooks/useProgram";
 
-type Seat = "brand" | "creator";
-const WORD: Record<Seat, string> = { brand: "Designer", creator: "Influencer" };
+type Seat = "brand" | "creator" | "publisher";
+const WORD: Record<Seat, string> = { brand: "Designer", creator: "Influencer", publisher: "Publisher" };
+const ALL_SEATS: Seat[] = ["brand", "creator", "publisher"];
 
 interface Row { key: number; name: string; email: string; type: Seat | ""; error?: string }
 interface SendResult { email: string; name?: string; type?: string; status: "sent" | "skipped" | "failed"; reason?: string }
@@ -39,6 +40,7 @@ const seatOf = (raw?: string): Seat | "" => {
   const v = (raw ?? "").trim().toLowerCase();
   if (/^(designer|designers|brand|brands|label|labels|house)$/.test(v)) return "brand";
   if (/^(influencer|influencers|creator|creators|talent|model|models)$/.test(v)) return "creator";
+  if (/^(publisher|publishers|publication|publications|magazine|magazines|media|affiliate|affiliates)$/.test(v)) return "publisher";
   return "";
 };
 
@@ -47,6 +49,10 @@ export default function ProgramInvites() {
   const qc = useQueryClient();
   const { data: me, isLoading } = useProgram();
   const { data: sent = [] } = useQuery<SentInvite[]>({ queryKey: ["/api/program/invites"], enabled: !!me?.enabled });
+  // Publisher invites only appear for a program that has some.
+  const shown = ALL_SEATS.filter((t) => t !== "publisher" || (me?.seats?.publisher?.limit ?? 0) > 0);
+  const kinds = shown.map((t) => WORD[t].toLowerCase());
+  const kindsText = kinds.length > 2 ? `${kinds.slice(0, -1).join(", ")} or ${kinds[kinds.length - 1]}` : kinds.join(" or ");
 
   const [rows, setRows] = useState<Row[]>([]);
   const nextKey = useRef(1);
@@ -63,14 +69,14 @@ export default function ProgramInvites() {
     if (me?.enabled) {
       setSubject((s) => s || me.defaultSubject || "");
       setMessage((m) => m || me.defaultMessage || "");
-      const open = (["brand", "creator"] as Seat[]).find((t) => !me.seats?.[t].problem);
+      const open = ALL_SEATS.find((t) => me.seats?.[t] && !me.seats[t].problem);
       if (open) setDefaultType(open);
     }
   }, [me?.enabled]);
 
   const check = (r: Row, all: Row[]): string | undefined => {
     if (!EMAIL.test(r.email.trim())) return "Email doesn't look right";
-    if (!r.type) return "Choose designer or influencer";
+    if (!r.type) return `Choose ${kindsText}`;
     const dup = all.find((o) => o.key !== r.key && o.email.trim().toLowerCase() === r.email.trim().toLowerCase());
     if (dup && dup.key < r.key) return "Listed twice";
     if (sent.some((s) => s.email === r.email.trim().toLowerCase())) return "Already invited";
@@ -81,7 +87,10 @@ export default function ProgramInvites() {
   const checked = useMemo(() => rows.map((r) => ({ ...r, error: check(r, rows) })), [rows, sent, me]);
   const ready = checked.filter((r) => !r.error);
   const count = (t: Seat) => ready.filter((r) => r.type === t).length;
-  const over = (["brand", "creator"] as Seat[]).filter((t) => me?.seats && count(t) > me.seats[t].remaining);
+  const over = shown.filter((t) => me?.seats?.[t] && count(t) > me.seats[t].remaining);
+  /** "2 designers, 1 influencer": every kind on screen, or every kind with someone in it. */
+  const countsText = (all = true) => shown.filter((t) => all || count(t) > 0)
+    .map((t) => `${count(t)} ${WORD[t].toLowerCase()}${count(t) === 1 ? "" : "s"}`);
 
   const addRows = (list: { name: string; email: string; type?: string }[]) =>
     setRows((prev) => [...prev, ...list.map((r) => ({ key: nextKey.current++, name: r.name, email: r.email, type: seatOf(r.type) || defaultType }))]);
@@ -173,14 +182,14 @@ export default function ProgramInvites() {
       <div>
         <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Invite your network</h1>
         <p className="mt-1 text-muted-foreground">
-          {me.programName}: invite your designers and influencers. Each person gets their own free code by email, and you can see who joins.
+          {me.programName}: invite your {shown.length === 3 ? "designers, influencers and publishers" : "designers and influencers"}. Each person gets their own free code by email, and you can see who joins.
         </p>
       </div>
 
       {/* Two tiles that only show numbers: side by side at every width, compact
           on a phone, so they don't push the list and message down the screen. */}
-      <div className="grid grid-cols-2 gap-2 sm:gap-3">
-        {(["brand", "creator"] as Seat[]).map((t) => (
+      <div className={cn("grid gap-2 sm:gap-3", shown.length === 3 ? "grid-cols-3" : "grid-cols-2")}>
+        {shown.map((t) => (
           <div key={t} className="min-w-0 rounded-xl border bg-card p-3 sm:p-4" data-testid={`seat-${t}`}>
             <p className="text-[10px] sm:text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">{WORD[t]}s</p>
             {seats[t].problem ? (
@@ -225,7 +234,7 @@ export default function ProgramInvites() {
                     </Button>
                     <CsvFormatHint
                       required={["Name", "Email"]}
-                      optional={["Type (designer or influencer)"]}
+                      optional={[`Type (${kindsText})`]}
                       example={["Name,Email,Type", "Ava Laurent,ava@laurentstudio.com,designer", "Jordan Ellis,jordan@ellis.co,influencer"]}
                       note="Rows without a type use the choice below."
                       testId="button-program-csv-hint"
@@ -237,8 +246,7 @@ export default function ProgramInvites() {
                   <Select value={defaultType} onValueChange={(v) => setDefaultType(v as Seat)}>
                     <SelectTrigger className="h-8 w-36" data-testid="select-default-type"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="brand">Designers</SelectItem>
-                      <SelectItem value="creator">Influencers</SelectItem>
+                      {shown.map((t) => <SelectItem key={t} value={t}>{WORD[t]}s</SelectItem>)}
                     </SelectContent>
                   </Select>
                 </div>
@@ -257,8 +265,7 @@ export default function ProgramInvites() {
                         <Select value={r.type || undefined} onValueChange={(v) => setRows((p) => p.map((x) => x.key === r.key ? { ...x, type: v as Seat } : x))}>
                           <SelectTrigger className="h-8 w-32" aria-label="Type"><SelectValue placeholder="Type" /></SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="brand">Designer</SelectItem>
-                            <SelectItem value="creator">Influencer</SelectItem>
+                            {shown.map((t) => <SelectItem key={t} value={t}>{WORD[t]}</SelectItem>)}
                           </SelectContent>
                         </Select>
                         <Button size="icon" variant="ghost" className="h-8 w-8 shrink-0" aria-label="Remove"
@@ -278,7 +285,7 @@ export default function ProgramInvites() {
                   </Button>
                   {rows.length > 0 && (
                     <p className="text-xs text-muted-foreground" data-testid="program-counts">
-                      {count("brand")} designer{count("brand") === 1 ? "" : "s"}, {count("creator")} influencer{count("creator") === 1 ? "" : "s"} ready
+                      {countsText().join(", ")} ready
                       {checked.length - ready.length > 0 && `, ${checked.length - ready.length} to fix`}
                     </p>
                   )}
@@ -389,7 +396,7 @@ export default function ProgramInvites() {
           <AlertDialogHeader>
             <AlertDialogTitle>Send {ready.length} invite{ready.length === 1 ? "" : "s"}?</AlertDialogTitle>
             <AlertDialogDescription>
-              {count("brand")} designer{count("brand") === 1 ? "" : "s"} and {count("creator")} influencer{count("creator") === 1 ? "" : "s"} will
+              {(() => { const c = countsText(false); return c.length > 1 ? `${c.slice(0, -1).join(", ")} and ${c[c.length - 1]}` : c[0]; })()} will
               each get your message and their own free code. Replies come to your email.
             </AlertDialogDescription>
           </AlertDialogHeader>

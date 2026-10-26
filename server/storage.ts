@@ -329,6 +329,10 @@ export interface IStorage {
     activeFrom: Date | null;
     /** Rolling free period in days from redemption. NULL = free until expiresAt. */
     freeDays?: number | null;
+    /** Migration 0048: the partner credited for this code's sign-ups, and a creator bonus. */
+    referrerUserId?: string | null;
+    creatorBonusPct?: string | null;
+    creatorBonusMonths?: number | null;
   }): Promise<Voucher>;
   getVoucherByCode(code: string): Promise<VoucherRecord | null>;
   /**
@@ -2199,6 +2203,7 @@ export class MemStorage implements IStorage {
       payoutId: transaction.payoutId ?? null,
       externalOrderId: transaction.externalOrderId ?? null,
       storeConnectionId: transaction.storeConnectionId ?? null,
+      kind: transaction.kind ?? null,
       createdAt: new Date(),
     };
     this.commissionTransactionsMap.set(id, newTx);
@@ -4368,6 +4373,9 @@ export class DatabaseStorage implements IStorage {
       // to the inviting brand and which was never being saved).
       creatorPasses: v.creatorPasses ?? null,
       partner: v.partner ?? null,
+      referrerUserId: v.referrerUserId ?? null,
+      creatorBonusPct: v.creatorBonusPct ?? null,
+      creatorBonusMonths: v.creatorBonusMonths ?? null,
     }).returning();
     return row;
   }
@@ -4398,6 +4406,8 @@ export class DatabaseStorage implements IStorage {
       // behavior — everyone free until 31 Oct instead of 30 days each.
       freeDays: row.freeDays ?? null,
       creatorPasses: row.creatorPasses ?? null,
+      creatorBonusPct: row.creatorBonusPct ?? null,
+      creatorBonusMonths: row.creatorBonusMonths ?? null,
     } : null;
   }
 

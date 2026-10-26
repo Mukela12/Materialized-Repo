@@ -8,6 +8,11 @@ import {
 } from '../../server/commissions';
 
 beforeEach(() => {
+  // These tests check the split's arithmetic under the original model (creator
+  // 8% + publisher 2%). The 7% reserve (Stripe + MTRLZD's floor, 25 Oct 2026)
+  // has its own tests in partner-commissions.test.ts.
+  process.env.PROCESSING_FEE_PCT = '0';
+  process.env.PLATFORM_FLOOR_PCT = '0';
   delete process.env.MARKETPLACE_FEE_PCT;
   delete process.env.PUBLISHER_COMMISSION_PCT;
   // The PLATFORM default creator rate is 0 (creators are paid by brands directly
@@ -329,5 +334,30 @@ describe('clawbackSaleCommissions', () => {
     expect(statUpdates[0].stats.totalConversions).toBe(0);
     expect(statUpdates[0].stats.totalRevenue).toBe('0.00');
     expect(statUpdates[0].stats.totalEarnings).toBe('0.00');
+  });
+});
+
+describe('partner commission rows', () => {
+  it('writes one row per partner, labelled by kind, inside the 7% reserve', async () => {
+    const { store, commissions } = makeStore();
+    const r = await recordSaleCommissions(store, '100.00', {
+      videoId: 'v1', creatorId: 'creator1', affiliateId: 'pub1', campaignAffiliateId: null, resolvedCommissionRate: null,
+    }, null, { creatorPct: 5, publisherPct: 2, partners: [{ userId: 'partner1', pct: 2 }], reservePct: 7 });
+    expect(commissions.map((c) => [c.affiliateId, c.kind, c.commissionAmount])).toEqual([
+      ['creator1', 'creator', '5.00'],
+      ['pub1', 'publisher', '2.00'],
+      // Only 1% of the 8% payable was left for the partner.
+      ['partner1', 'partner', '1.00'],
+    ]);
+    expect(r.partnerCommissionIds).toEqual(['c3']);
+    expect(r.split.platformCents).toBe(700);
+  });
+
+  it('writes no partner row when the room is used up', async () => {
+    const { store, commissions } = makeStore();
+    await recordSaleCommissions(store, '100.00', {
+      videoId: 'v1', creatorId: 'creator1', affiliateId: 'pub1', campaignAffiliateId: null, resolvedCommissionRate: null,
+    }, null, { creatorPct: 6, publisherPct: 2, partners: [{ userId: 'partner1', pct: 2 }], reservePct: 7 });
+    expect(commissions.some((c) => c.kind === 'partner')).toBe(false);
   });
 });

@@ -40,7 +40,7 @@ describe("the message", () => {
 describe("each person", () => {
   it("needs a real email and a type; a missing name comes from the email", () => {
     expect(checkRecipient({ email: "nope", type: "designer" })).toMatchObject({ ok: false, error: "Email doesn't look right" });
-    expect(checkRecipient({ email: "a@b.co", type: "" })).toMatchObject({ ok: false, error: "Choose designer or influencer" });
+    expect(checkRecipient({ email: "a@b.co", type: "" })).toMatchObject({ ok: false, error: "Choose designer, influencer or publisher" });
     expect(checkRecipient({ email: " Ava@Studio.COM ", type: "Designer" })).toEqual({ ok: true, recipient: { name: "ava", email: "ava@studio.com", type: "brand" } });
   });
 });
@@ -113,7 +113,8 @@ describe("the routes", () => {
   it("replies go to the sender, and links carry the code and the right role", () => {
     const body = at('app.post("/api/program/invites"');
     expect(body).toMatch(/replyTo: ctx\.user\?\.email \?\? null/);
-    expect(routes).toMatch(/`\$\{publicOrigin\(req\)\}\/register\?code=\$\{encodeURIComponent\(code\)\}&role=\$\{type\}`/);
+    // A publisher signs up as the affiliate role.
+    expect(routes).toMatch(/`\$\{publicOrigin\(req\)\}\/register\?code=\$\{encodeURIComponent\(code\)\}&role=\$\{type === "publisher" \? "affiliate" : type\}`/);
   });
 
   it("the admin routes are admin-only", () => {

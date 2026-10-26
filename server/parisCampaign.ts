@@ -23,6 +23,9 @@ export const PARIS = {
   partner: "Paris Creator Week",
   freeDays: 30,
   activationDays: 14,
+  /** Creator bonus on the passes: this % of their sales, for this many months. */
+  creatorBonusPct: 5,
+  creatorBonusMonths: 12,
 } as const;
 
 export class ClaimError extends Error {
@@ -69,8 +72,10 @@ export async function claimParisPasses(input: unknown): Promise<{ claim: Claim; 
   try {
     await db.transaction(async (tx) => {
       const insertPass = async (code: string, label: string, assignedTo: string) => (await tx.execute(sql`
-        insert into vouchers (code, label, partner, grant_type, role_restriction, max_redemptions, free_days, expires_at, batch_id, assigned_to)
-        values (${code}, ${label}, ${PARIS.partner}, 'free_access', 'creator', 1, ${PARIS.freeDays}, ${expiresAt}, ${PARIS.campaign}, ${assignedTo})
+        insert into vouchers (code, label, partner, grant_type, role_restriction, max_redemptions, free_days, expires_at, batch_id, assigned_to,
+          creator_bonus_pct, creator_bonus_months)
+        values (${code}, ${label}, ${PARIS.partner}, 'free_access', 'creator', 1, ${PARIS.freeDays}, ${expiresAt}, ${PARIS.campaign}, ${assignedTo},
+          ${PARIS.creatorBonusPct}, ${PARIS.creatorBonusMonths})
         returning id`)).rows[0] as { id: string };
       const mine = await insertPass(creatorCode, "Paris Creator Week: creator pass", `${data.fullName} <${data.email}>`);
       const friend = await insertPass(friendCode, "Paris Creator Week: friend pass", `@${data.friendHandle} (friend of ${data.email})`);

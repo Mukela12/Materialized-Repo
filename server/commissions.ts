@@ -32,6 +32,7 @@ export interface RecordedCommissions {
   split: SaleSplit;
   creatorCommissionId?: string;
   publisherCommissionId?: string;
+  partnerCommissionIds?: string[];
   /** True when the DB unique constraint rejected a duplicate (concurrent retry). */
   deduped?: boolean;
 }
@@ -66,6 +67,8 @@ export interface CommissionStore {
     campaignAffiliateId: string | null;
     externalOrderId?: string | null;
     storeConnectionId?: string | null;
+    /** creator | publisher | partner */
+    kind?: string | null;
   }): Promise<{ id: string }>;
   getCampaignAffiliates(videoId: string): Promise<Array<{
     id: string;
@@ -107,7 +110,7 @@ export async function recordSaleCommissions(
   saleRevenue: string,
   attribution: SaleAttribution,
   analyticsEventId: string | null = null,
-  rates?: { marketplaceFeePct?: number; creatorPct?: number; publisherPct?: number },
+  rates?: { marketplaceFeePct?: number; creatorPct?: number; publisherPct?: number; partners?: Array<{ userId: string; pct: number }>; reservePct?: number },
 ): Promise<RecordedCommissions> {
   const { videoId, creatorId, affiliateId, campaignAffiliateId, resolvedCommissionRate } = attribution;
   const productId = attribution.productId ?? null;
@@ -126,6 +129,8 @@ export async function recordSaleCommissions(
     creatorPct: rates?.creatorPct,
     // A per-repost admin override wins; otherwise the resolved publisher default.
     publisherPct: publisherOverridePct ?? rates?.publisherPct,
+    partners: rates?.partners,
+    reservePct: rates?.reservePct,
   });
 
   const result: RecordedCommissions = { split };
@@ -146,6 +151,7 @@ export async function recordSaleCommissions(
         campaignAffiliateId: null,
         externalOrderId,
         storeConnectionId,
+        kind: "creator",
       });
       result.creatorCommissionId = tx.id;
     } catch (err) {
@@ -169,6 +175,7 @@ export async function recordSaleCommissions(
         campaignAffiliateId,
         externalOrderId,
         storeConnectionId,
+        kind: "publisher",
       });
       result.publisherCommissionId = tx.id;
       publisherInserted = true;
@@ -188,6 +195,32 @@ export async function recordSaleCommissions(
           totalEarnings: centsToAmount(toCents(ca.totalEarnings || "0") + split.publisherCents),
         });
       }
+    }
+  }
+
+  // Partners (server/partners.ts): one row each, already trimmed by the split
+  // so the reserve is never touched. Refunds reverse them with the rest, since
+  // clawback finds every row for the order.
+  for (const p of split.partners) {
+    if (p.cents <= 0) continue;
+    try {
+      const tx = await store.createCommissionTransaction({
+        affiliateId: p.userId,
+        analyticsEventId,
+        videoId,
+        productId,
+        saleAmount: saleRevenue,
+        commissionRate: p.pct.toFixed(2),
+        commissionAmount: centsToAmount(p.cents),
+        campaignAffiliateId: null,
+        externalOrderId,
+        storeConnectionId,
+        kind: "partner",
+      });
+      (result.partnerCommissionIds ??= []).push(tx.id);
+    } catch (err) {
+      if (!isUniqueViolation(err)) throw err;
+      result.deduped = true;
     }
   }
 

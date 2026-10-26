@@ -62,6 +62,8 @@ export const users = pgTable("users", {
   referralCode: text("referral_code").default(sql`'REF_' || substr(gen_random_uuid()::text, 1, 8)`),
   commissionRate: decimal("commission_rate", { precision: 5, scale: 2 }).default("15.00"),
   commissionRateOverride: decimal("commission_rate_override", { precision: 5, scale: 2 }),
+  /** When commissionRateOverride stops applying (migration 0048). Null: no end. */
+  commissionOverrideUntil: timestamp("commission_override_until"),
   charityContribution: decimal("charity_contribution", { precision: 5, scale: 2 }).default("0.00"),
   stripeCustomerId: text("stripe_customer_id"),
   stripeConnectAccountId: text("stripe_connect_account_id"),
@@ -784,6 +786,8 @@ export const commissionTransactions = pgTable("commission_transactions", {
   // order-id collision. Nullable + backward-compatible: legacy rows (internal /api/sales, or
   // pre-migration store rows) carry NULL here and keep working with the 1-arg lookups.
   storeConnectionId: varchar("store_connection_id").references(() => storeConnections.id),
+  /** creator | publisher | partner (migration 0048). Null on rows written before. */
+  kind: text("kind"),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
 }, (t) => ({
   // Prevent concurrent duplicate commissions for the same store order. A single sale
@@ -1766,6 +1770,11 @@ export const vouchers = pgTable("vouchers", {
   creatorPasses: integer("creator_passes"),
   /** Revocation is a timestamp, not a delete: redemptions already made stay valid. */
   revokedAt: timestamp("revoked_at"),
+  /** The partner credited with sign-ups from this code (migration 0048). */
+  referrerUserId: varchar("referrer_user_id"),
+  /** Extra creator commission % given to whoever redeems it, for creatorBonusMonths. */
+  creatorBonusPct: decimal("creator_bonus_pct", { precision: 4, scale: 2 }),
+  creatorBonusMonths: integer("creator_bonus_months"),
   createdBy: varchar("created_by").references(() => users.id),
   createdAt: timestamp("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
 });
@@ -1795,6 +1804,13 @@ export const programSenders = pgTable("program_senders", {
   createdBy: varchar("created_by"),
   createdAt: timestamp("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
   updatedAt: timestamp("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  // Migration 0048: publisher passes, and the partner's commission deal.
+  publisherLimit: integer("publisher_limit").notNull().default(0),
+  publisherTemplateVoucherId: varchar("publisher_template_voucher_id").references(() => vouchers.id, { onDelete: "set null" }),
+  /** % of referred gross sales, 1-3. Null: this sender earns no commission. */
+  commissionPct: decimal("commission_pct", { precision: 4, scale: 2 }),
+  /** When the deal ends. Null: no end. */
+  commissionUntil: timestamp("commission_until"),
 });
 export type ProgramSender = typeof programSenders.$inferSelect;
 

@@ -5,7 +5,7 @@ export interface ProgramMe {
   enabled: boolean;
   programName?: string;
   senderName?: string;
-  seats?: Record<"brand" | "creator", { limit: number; sent: number; remaining: number; offer: string | null; problem: string | null }>;
+  seats?: Record<"brand" | "creator" | "publisher", { limit: number; sent: number; remaining: number; offer: string | null; problem: string | null }>;
   defaultSubject?: string;
   defaultMessage?: string;
   maxRecipients?: number;

@@ -31,6 +31,8 @@ export interface Facts {
   invitesJoined: number;
   inviteeUploads: number;
   subscribed: boolean;
+  /** On the paid plan: subscribed and past the trial (server/inviteVoucher.ts isPayingBrand). */
+  paying?: boolean;
   lastSeenAt: Date | null;
 }
 
@@ -50,6 +52,7 @@ export const CONDITIONS: Record<string, { label: string; test: (f: Facts, now: D
   invites_joined: { label: "Someone they invited has joined", test: (f) => f.invitesJoined > 0 },
   invitee_uploaded: { label: "Someone they invited has uploaded", test: (f) => f.inviteeUploads > 0 },
   not_subscribed: { label: "Not on a paid plan", test: (f) => !f.subscribed },
+  not_paying: { label: "Not paying yet (no plan, or still in the trial)", test: (f) => !f.paying },
   inactive_7d: {
     label: "Not seen in 7 days",
     test: (f, now) => !f.lastSeenAt || now.getTime() - f.lastSeenAt.getTime() > 7 * DAY,
@@ -78,7 +81,11 @@ export interface Step {
   plain?: boolean;
 }
 
-export interface PersonClock { createdAt: Date; freeAccessUntil: Date | null; lastSeenAt?: Date | null }
+export interface PersonClock {
+  createdAt: Date; freeAccessUntil: Date | null; lastSeenAt?: Date | null;
+  /** When the trial on their paid plan ends, if they have started one (the 30-day Stripe trial). */
+  planTrialEndsAt?: Date | null;
+}
 
 /** An "inactive" reminder goes again only after the person came back and drifted off, and not within this many days. */
 export const REPEAT_GAP_DAYS = 7;
@@ -89,7 +96,7 @@ export const REPEAT_GAP_DAYS = 7;
  */
 export function dueAt(step: Pick<Step, "anchor" | "day">, p: PersonClock): Date {
   const base = step.anchor === "trial_end"
-    ? (p.freeAccessUntil ?? new Date(p.createdAt.getTime() + 30 * DAY))
+    ? (p.planTrialEndsAt ?? p.freeAccessUntil ?? new Date(p.createdAt.getTime() + 30 * DAY))
     : p.createdAt;
   return new Date(base.getTime() + step.day * DAY);
 }
@@ -130,7 +137,24 @@ function decideInactive(step: Step, p: PersonClock, facts: Facts, now: Date, las
   return holds ? { action: "send" } : { action: "wait" };
 }
 
-export interface Person { displayName: string | null; companyName: string | null; role: string }
+/** Free passes this person can still hand out, for {{CreatorPasses}} and friends. */
+export interface Passes { creator: number; brand: number; publisher: number }
+export interface Person { displayName: string | null; companyName: string | null; role: string; passes?: Passes }
+
+const PASS_FIELDS: Record<string, keyof Passes> = { creatorpasses: "creator", brandpasses: "brand", publisherpasses: "publisher" };
+const PASS_FIELD = /\{\{\s*(CreatorPasses|BrandPasses|PublisherPasses)\s*\}\}/gi;
+const passOf = (p: Person, field: string) => Math.max(0, Math.floor(p.passes?.[PASS_FIELDS[field.toLowerCase()]] ?? 0));
+
+/**
+ * The client, 26 Oct 2026: one welcome email for everyone, with "you have 10
+ * Creator Passes" only for the people who have some. A line that mentions a
+ * pass count of 0 is left out, and a paragraph left empty goes with it.
+ */
+function dropZeroPassLines(text: string, p: Person): string {
+  return text.replace(/\r\n?/g, "\n").split(/\n{2,}/).map((block) => block.split("\n")
+    .filter((line) => !Array.from(line.matchAll(PASS_FIELD)).some((m) => passOf(p, m[1]) === 0))
+    .join("\n")).filter((block) => block.trim()).join("\n\n");
+}
 
 export function firstNameOf(displayName: string | null | undefined): string {
   const first = (displayName ?? "").trim().split(/\s+/)[0] ?? "";
@@ -145,20 +169,21 @@ export function firstNameOf(displayName: string | null | undefined): string {
 export function merge(text: string, p: Person, opts: { subject?: boolean } = {}): string {
   const first = firstNameOf(p.displayName);
   const company = (p.companyName ?? "").trim() || (p.role === "brand" ? "your brand" : "your team");
-  let t = text;
+  let t = opts.subject ? text : dropZeroPassLines(text, p);
   if (!first) {
     if (opts.subject) t = t.replace(/^\s*\{\{\s*FirstName\s*\}\},?\s*/i, "").replace(/^./, (c) => c.toUpperCase());
     t = t.replace(/\bHi \{\{\s*FirstName\s*\}\}/gi, "Hi there");
   }
   return t
     .replace(/\{\{\s*FirstName\s*\}\}/gi, first || "there")
-    .replace(/\{\{\s*CompanyName\s*\}\}/gi, company);
+    .replace(/\{\{\s*CompanyName\s*\}\}/gi, company)
+    .replace(PASS_FIELD, (_, f: string) => String(passOf(p, f)));
 }
 
 /** Merge fields an admin may use; anything else in double braces is a typo. */
 export function unknownFields(text: string): string[] {
   return Array.from(text.matchAll(/\{\{\s*([^}]*?)\s*\}\}/g), (m) => m[1])
-    .filter((f) => !/^(FirstName|CompanyName)$/i.test(f));
+    .filter((f) => !/^(FirstName|CompanyName|CreatorPasses|BrandPasses|PublisherPasses)$/i.test(f));
 }
 
 const PORTAL: Record<string, string> = { creator: "/creator", brand: "/brand", affiliate: "/affiliate" };
@@ -222,7 +247,7 @@ export function checkStepEdit(b: Record<string, unknown>): { error: string } | {
   if (!subject || subject.length > 200) return { error: "The subject needs to be between 1 and 200 characters." };
   if (!body || body.length > 6000) return { error: "The message needs to be between 1 and 6,000 characters." };
   const bad = unknownFields(subject + "\n" + body + "\n" + String(b.ctaLabel ?? ""));
-  if (bad.length) return { error: `Unknown merge field {{${bad[0]}}}. Use {{FirstName}} or {{CompanyName}}.` };
+  if (bad.length) return { error: `Unknown merge field {{${bad[0]}}}. Use {{FirstName}}, {{CompanyName}}, {{CreatorPasses}}, {{BrandPasses}} or {{PublisherPasses}}.` };
   const day = Number(b.day);
   if (!Number.isInteger(day) || day < -60 || day > 365) return { error: "The day needs to be a whole number between -60 and 365." };
   const anchor = String(b.anchor ?? "signup");

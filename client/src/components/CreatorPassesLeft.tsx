@@ -7,7 +7,8 @@ import { useQuery } from "@tanstack/react-query";
 import { Ticket } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-export interface InvitePasses { limit: number; used: number; remaining: number }
+/** onPaidPlan: how many the paid plan gives, when that is more than now (10 to start, 100 subscribed). */
+export interface InvitePasses { limit: number; used: number; remaining: number; onPaidPlan?: number | null }
 
 export function useInvitePasses() {
   return useQuery<InvitePasses>({ queryKey: ["/api/brands/invite-passes"] });
@@ -30,6 +31,7 @@ export function CreatorPassesLeft({ className }: { className?: string }) {
       {out
         ? `All ${data.limit} creator passes used`
         : `${data.remaining} of ${data.limit} creator ${data.limit === 1 ? "pass" : "passes"} left`}
+      {data.onPaidPlan ? <span className="font-normal opacity-80" data-testid="text-passes-on-paid-plan">· {data.onPaidPlan} on the paid plan</span> : null}
     </p>
   );
 }

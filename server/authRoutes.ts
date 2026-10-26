@@ -149,7 +149,10 @@ export function registerAuthRoutes(app: Express) {
      * working through the transition, but it grants nothing a voucher does not.
      */
     let voucherGrants = { freeAccess: false, waiveSetupFee: false };
-    let voucherToRedeem: { id: string; maxRedemptions: number | null } | null = null;
+    let voucherToRedeem: {
+      id: string; maxRedemptions: number | null;
+      creatorBonusPct?: string | number | null; creatorBonusMonths?: number | null;
+    } | null = null;
     /**
      * When the free period ends.
      *
@@ -191,7 +194,10 @@ export function registerAuthRoutes(app: Express) {
         freeAccessUntil = check.voucher.freeDays != null
           ? new Date(Date.now() + check.voucher.freeDays * 24 * 60 * 60 * 1000)
           : (check.voucher.expiresAt ?? null);
-        voucherToRedeem = { id: check.voucher.id, maxRedemptions: check.voucher.maxRedemptions };
+        voucherToRedeem = {
+          id: check.voucher.id, maxRedemptions: check.voucher.maxRedemptions,
+          creatorBonusPct: check.voucher.creatorBonusPct, creatorBonusMonths: check.voucher.creatorBonusMonths,
+        };
         voucherCreatorPasses = check.voucher.creatorPasses ?? null;
       }
     }
@@ -311,6 +317,17 @@ export function registerAuthRoutes(app: Express) {
         }
         voucherLost = r.reason ?? "exhausted";
         voucherToRedeem = null;
+      } else if (role === "creator" && Number(voucherToRedeem.creatorBonusPct) > 0) {
+        // A creator bonus on the code (e.g. the Paris passes): the creator earns
+        // this % of their sales for the term, then falls back to the default.
+        // Paid out of MTRLZD's fee and never into the reserve (computeSaleSplit).
+        const months = Math.max(1, Number(voucherToRedeem.creatorBonusMonths) || 12);
+        const until = new Date();
+        until.setMonth(until.getMonth() + months);
+        await storage.updateUser(user.id, {
+          commissionRateOverride: Number(voucherToRedeem.creatorBonusPct).toFixed(2),
+          commissionOverrideUntil: until,
+        } as any).catch((e) => console.error("[Auth] creator bonus:", e?.message));
       }
     }
 

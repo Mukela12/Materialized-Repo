@@ -57,6 +57,11 @@ interface VoucherRow {
   partner: string | null;
   /** Brand codes: creator passes the brand gets. Null means the usual limit. */
   creatorPasses?: number | null;
+  /** Creator codes: extra commission % for the creator, for creatorBonusMonths. */
+  creatorBonusPct?: string | null;
+  creatorBonusMonths?: number | null;
+  /** The partner credited with this code's sign-ups. */
+  referrerUserId?: string | null;
   /** Who actually redeemed it, once someone has. */
   redeemedBy: string | null;
 }
@@ -86,7 +91,7 @@ function roleLabel(role: string | null): string {
 export function VoucherManager() {
   const { toast } = useToast();
   const qc = useQueryClient();
-  const [form, setForm] = useState({ ...GTM_DEFAULTS, code: "", activeFrom: "", expiresAt: "", creatorPasses: "" });
+  const [form, setForm] = useState({ ...GTM_DEFAULTS, code: "", activeFrom: "", expiresAt: "", creatorPasses: "", referrerEmail: "", creatorBonusPct: "", creatorBonusMonths: "" });
   const [editing, setEditing] = useState<Record<string, string>>({});
   const [editingPartner, setEditingPartner] = useState<Record<string, string>>({});
   /**
@@ -118,7 +123,7 @@ export function VoucherManager() {
     onSuccess: async (res: any) => {
       qc.invalidateQueries({ queryKey: ["/api/admin/vouchers"] });
       const body = typeof res?.json === "function" ? await res.json() : res;
-      setForm({ ...GTM_DEFAULTS, code: "", activeFrom: "", expiresAt: "", creatorPasses: "" });
+      setForm({ ...GTM_DEFAULTS, code: "", activeFrom: "", expiresAt: "", creatorPasses: "", referrerEmail: "", creatorBonusPct: "", creatorBonusMonths: "" });
       toast({
         title: body?.count > 1 ? `${body.count} vouchers created` : "Voucher created",
         description: body?.count > 1 ? "Export them as CSV to hand to a partner." : undefined,
@@ -394,6 +399,43 @@ export function VoucherManager() {
                 </p>
               </div>
             )}
+            <div>
+              <Label>Credit to partner (optional)</Label>
+              <Input
+                type="email"
+                placeholder="the partner's account email"
+                value={form.referrerEmail}
+                onChange={(e) => setForm({ ...form, referrerEmail: e.target.value })}
+                data-testid="input-voucher-referrer"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                They earn their commission on the sales of whoever joins with these codes. Set their % under Partners.
+              </p>
+            </div>
+            {(form.roleRestriction === "creator" || !form.roleRestriction) && (
+              <div>
+                <Label>Creator bonus (optional)</Label>
+                <div className="flex gap-2">
+                  <Input
+                    type="number" min={0.5} max={8} step={0.5}
+                    placeholder="% e.g. 5"
+                    value={form.creatorBonusPct}
+                    onChange={(e) => setForm({ ...form, creatorBonusPct: e.target.value })}
+                    data-testid="input-voucher-creator-bonus"
+                  />
+                  <Input
+                    type="number" min={1} max={60}
+                    placeholder="months (12)"
+                    value={form.creatorBonusMonths}
+                    onChange={(e) => setForm({ ...form, creatorBonusMonths: e.target.value })}
+                    data-testid="input-voucher-creator-bonus-months"
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  The creator earns this % of their own sales for that many months.
+                </p>
+              </div>
+            )}
           </div>
 
           <Button
@@ -406,6 +448,9 @@ export function VoucherManager() {
               activeFrom: form.activeFrom || null,
               expiresAt: form.expiresAt || null,
               creatorPasses: form.roleRestriction === "brand" && form.creatorPasses !== "" ? Number(form.creatorPasses) : null,
+              referrerEmail: form.referrerEmail.trim() || null,
+              creatorBonusPct: (form.roleRestriction === "creator" || !form.roleRestriction) && form.creatorBonusPct !== "" ? Number(form.creatorBonusPct) : null,
+              creatorBonusMonths: form.creatorBonusMonths !== "" ? Number(form.creatorBonusMonths) : null,
             })}
             disabled={create.isPending}
             data-testid="button-create-voucher"
@@ -624,6 +669,11 @@ export function VoucherManager() {
                         {v.roleRestriction === "brand" && v.creatorPasses != null && (
                           <div className="text-xs text-muted-foreground" data-testid={`text-creator-passes-${v.id}`}>
                             {v.creatorPasses} creator {v.creatorPasses === 1 ? "pass" : "passes"}
+                          </div>
+                        )}
+                        {v.creatorBonusPct != null && Number(v.creatorBonusPct) > 0 && (
+                          <div className="text-xs text-muted-foreground" data-testid={`text-creator-bonus-${v.id}`}>
+                            {Number(v.creatorBonusPct)}% creator bonus, {v.creatorBonusMonths ?? 12} mo
                           </div>
                         )}
                       </td>

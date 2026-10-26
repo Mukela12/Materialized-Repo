@@ -66,10 +66,29 @@ export function inviteOfferEndLabel(end: Date): string {
   return shown.toLocaleDateString("en-GB", { day: "numeric", month: "long", timeZone: "UTC" });
 }
 
-/** How many invite vouchers one brand may mint. Generous, configurable, finite. */
-export function inviteCapPerBrand(): number {
-  const raw = Number(process.env.INVITE_VOUCHER_CAP);
-  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : 100;
+/**
+ * How many creator passes one brand may hand out (client offer, 26 Oct 2026):
+ * 10 while it is starting out (setup fee paid, in its trial), 100 once it is on
+ * the paid plan. Both configurable. A brand whose sign-up code set its own
+ * limit (10 for Brooklyn) keeps that instead; see invitePasses in routes.ts.
+ */
+export function inviteCapPerBrand(paying = true): number {
+  const raw = Number(paying ? process.env.INVITE_VOUCHER_CAP : process.env.INVITE_VOUCHER_CAP_STARTER);
+  return Number.isFinite(raw) && raw > 0 ? Math.floor(raw) : paying ? 100 : 10;
+}
+
+/**
+ * On the paid plan: an active subscription whose trial is over. Stripe's
+ * `trialing` is stored as 'active' (mapStripeStatus), so the trial is told
+ * apart by its length from the day they subscribed.
+ */
+export function isPayingBrand(
+  sub: { status: string; subscribedAt: Date | string | null } | null | undefined,
+  trialDays: number,
+  now: Date = new Date(),
+): boolean {
+  if (!sub || sub.status !== "active" || !sub.subscribedAt) return false;
+  return new Date(sub.subscribedAt).getTime() + trialDays * 86_400_000 <= now.getTime();
 }
 
 /** Groups every voucher a brand minted through invitations, for counting and admin. */

@@ -7,7 +7,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { db } from "./db";
 import { programSenders, users, vouchers, type ProgramSender } from "@shared/schema";
 import { canonicalCode } from "./vouchers";
-import { programBatchId, type SeatType, type TemplateVoucher } from "./programInvites";
+import { programBatchId, SEAT_TYPES, type SeatType, type TemplateVoucher } from "./programInvites";
 
 export async function getSender(userId: string): Promise<ProgramSender | null> {
   const [row] = await db.select().from(programSenders).where(eq(programSenders.userId, userId));
@@ -38,7 +38,7 @@ export async function countSent(userId: string, type: SeatType): Promise<number>
 /** Emails this account has already invited, lowercased. */
 export async function invitedEmails(userId: string): Promise<Set<string>> {
   const rows = await db.select({ email: vouchers.assignedTo }).from(vouchers)
-    .where(inArray(vouchers.batchId, [programBatchId(userId, "brand"), programBatchId(userId, "creator")]));
+    .where(inArray(vouchers.batchId, SEAT_TYPES.map((t) => programBatchId(userId, t))));
   return new Set(rows.map((r) => (r.email ?? "").toLowerCase()).filter(Boolean));
 }
 
@@ -59,14 +59,14 @@ export async function listSent(userId: string): Promise<SentInvite[]> {
     // bare "id", which resolves to the redemption's own id and never matches.
     joined: sql<boolean>`exists (select 1 from voucher_redemptions r where r.voucher_id = "vouchers"."id")`,
   }).from(vouchers)
-    .where(inArray(vouchers.batchId, [programBatchId(userId, "brand"), programBatchId(userId, "creator")]))
+    .where(inArray(vouchers.batchId, SEAT_TYPES.map((t) => programBatchId(userId, t))))
     .orderBy(sql`${vouchers.createdAt} desc`);
   return rows.map((r) => ({
     id: r.id,
     // The label is "<program>: <name>".
     name: (r.label ?? "").replace(/^[^:]*:\s*/, "") || (r.email ?? ""),
     email: r.email ?? "",
-    type: (r.batchId ?? "").endsWith(":brand") ? "brand" : "creator",
+    type: (SEAT_TYPES.find((t) => (r.batchId ?? "").endsWith(`:${t}`)) ?? "creator"),
     sentAt: new Date(r.createdAt as any).toISOString(),
     joined: !!r.joined,
   }));
@@ -93,6 +93,12 @@ export interface SenderSummary {
   creatorLimit: number;
   creatorTemplateCode: string | null;
   creatorSent: number;
+  publisherLimit: number;
+  publisherTemplateCode: string | null;
+  publisherSent: number;
+  /** The partner's commission deal: % of their people's sales, until when. */
+  commissionPct: number | null;
+  commissionUntil: string | null;
   joined: number;
 }
 
@@ -101,14 +107,18 @@ export async function listSenders(): Promise<SenderSummary[]> {
     .from(programSenders).innerJoin(users, eq(users.id, programSenders.userId));
   const out: SenderSummary[] = [];
   for (const { s, email, displayName, role } of rows) {
-    const [bt, ct, sent] = await Promise.all([
-      getVoucherById(s.brandTemplateVoucherId), getVoucherById(s.creatorTemplateVoucherId), listSent(s.userId),
+    const [bt, ct, pt, sent] = await Promise.all([
+      getVoucherById(s.brandTemplateVoucherId), getVoucherById(s.creatorTemplateVoucherId),
+      getVoucherById(s.publisherTemplateVoucherId), listSent(s.userId),
     ]);
     out.push({
       userId: s.userId, email, displayName, role: role ?? "",
       programName: s.programName,
       brandLimit: s.brandLimit, brandTemplateCode: bt?.code ?? null, brandSent: sent.filter((x) => x.type === "brand").length,
       creatorLimit: s.creatorLimit, creatorTemplateCode: ct?.code ?? null, creatorSent: sent.filter((x) => x.type === "creator").length,
+      publisherLimit: s.publisherLimit ?? 0, publisherTemplateCode: pt?.code ?? null, publisherSent: sent.filter((x) => x.type === "publisher").length,
+      commissionPct: s.commissionPct != null ? Number(s.commissionPct) : null,
+      commissionUntil: s.commissionUntil ? new Date(s.commissionUntil as any).toISOString() : null,
       joined: sent.filter((x) => x.joined).length,
     });
   }
@@ -119,14 +129,19 @@ export async function saveSender(v: {
   userId: string; programName: string;
   brandLimit: number; brandTemplateVoucherId: string | null;
   creatorLimit: number; creatorTemplateVoucherId: string | null;
+  publisherLimit: number; publisherTemplateVoucherId: string | null;
+  commissionPct: number | null; commissionUntil: Date | null;
   createdBy: string;
 }): Promise<void> {
-  await db.insert(programSenders).values({ ...v, updatedAt: new Date() })
+  const row = { ...v, commissionPct: v.commissionPct != null ? v.commissionPct.toFixed(2) : null };
+  await db.insert(programSenders).values({ ...row, updatedAt: new Date() })
     .onConflictDoUpdate({
       target: programSenders.userId,
       set: {
         programName: v.programName, brandLimit: v.brandLimit, brandTemplateVoucherId: v.brandTemplateVoucherId,
-        creatorLimit: v.creatorLimit, creatorTemplateVoucherId: v.creatorTemplateVoucherId, updatedAt: new Date(),
+        creatorLimit: v.creatorLimit, creatorTemplateVoucherId: v.creatorTemplateVoucherId,
+        publisherLimit: v.publisherLimit, publisherTemplateVoucherId: v.publisherTemplateVoucherId,
+        commissionPct: row.commissionPct, commissionUntil: v.commissionUntil, updatedAt: new Date(),
       },
     });
 }

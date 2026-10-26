@@ -158,6 +158,20 @@ export interface SplitRates {
   marketplaceFeePct?: number;
   creatorPct?: number;
   publisherPct?: number;
+  /** Partners credited with this sale, each with their % (server/partners.ts). */
+  partners?: Array<{ userId: string; pct: number }>;
+  /** Of the fee, kept back whatever else is paid: see reserveOfFeePct(). */
+  reservePct?: number;
+}
+
+/**
+ * The part of the marketplace fee nothing may be paid out of (client, 25 Oct
+ * 2026): Stripe's processing fee (3.9%) plus MTRLZD's own minimum (3.1%). On a
+ * 15% fee that leaves at most 8% for creators, publishers and partners
+ * together. Both parts are adjustable by environment.
+ */
+export function reserveOfFeePct(): number {
+  return pctFromEnv("PROCESSING_FEE_PCT", 3.9) + pctFromEnv("PLATFORM_FLOOR_PCT", 3.1);
 }
 
 export interface SaleSplit {
@@ -170,6 +184,8 @@ export interface SaleSplit {
   creatorCents: number;
   /** Publisher commission (0 when no publisher attributed). */
   publisherCents: number;
+  /** Partner commissions, each after any trimming to respect the reserve. */
+  partners: Array<{ userId: string; pct: number; cents: number }>;
   /** Remainder of the fee kept by the platform. */
   platformCents: number;
   /** The rates actually applied, after clamping. */
@@ -195,19 +211,33 @@ export function computeSaleSplit(
   const marketplaceFeePct = Math.max(0, opts.marketplaceFeePct ?? cfg.marketplaceFeePct);
   let creatorPct = Math.max(0, opts.creatorPct ?? cfg.creatorPct);
   let publisherPct = opts.hasPublisher ? Math.max(0, opts.publisherPct ?? cfg.publisherPct) : 0;
+  // What may be paid out at all: the fee less the reserve (Stripe + MTRLZD's floor).
+  const payablePct = Math.max(0, marketplaceFeePct - Math.max(0, opts.reservePct ?? reserveOfFeePct()));
 
-  // Cap payouts at the marketplace fee: reduce publisher first, then creator.
-  if (publisherPct > marketplaceFeePct) publisherPct = marketplaceFeePct;
-  if (creatorPct + publisherPct > marketplaceFeePct) {
-    creatorPct = Math.max(0, marketplaceFeePct - publisherPct);
+  // Cap payouts: reduce publisher first, then creator.
+  if (publisherPct > payablePct) publisherPct = payablePct;
+  if (creatorPct + publisherPct > payablePct) {
+    creatorPct = Math.max(0, payablePct - publisherPct);
   }
+  // Partners share whatever room is left, trimmed in proportion if they don't
+  // all fit, so they are always the first thing reduced.
+  const asked = (opts.partners ?? []).filter((p) => p.pct > 0);
+  const room = Math.max(0, payablePct - creatorPct - publisherPct);
+  const want = asked.reduce((n, p) => n + p.pct, 0);
+  const scale = want > room ? room / want : 1;
 
   const sale = Math.max(0, Math.round(saleCents));
   const marketplaceFeeCents = pctCents(sale, marketplaceFeePct);
   const brandCents = sale - marketplaceFeeCents; // absorbs fee rounding
   const creatorCents = pctCents(sale, creatorPct);
   const publisherCents = pctCents(sale, publisherPct);
-  const platformCents = marketplaceFeeCents - creatorCents - publisherCents; // absorbs remainder
+  const partners = asked.map((p) => {
+    // Rounded down, so the trimmed shares never add up to more than the room.
+    const pct = scale === 1 ? p.pct : Math.floor(p.pct * scale * 100 + 1e-9) / 100;
+    return { userId: p.userId, pct, cents: pctCents(sale, pct) };
+  });
+  const partnerCents = partners.reduce((n, p) => n + p.cents, 0);
+  const platformCents = marketplaceFeeCents - creatorCents - publisherCents - partnerCents; // absorbs remainder
 
   return {
     saleCents: sale,
@@ -215,6 +245,7 @@ export function computeSaleSplit(
     marketplaceFeeCents,
     creatorCents,
     publisherCents,
+    partners,
     platformCents,
     effectiveRates: { marketplaceFeePct, creatorPct, publisherPct },
   };

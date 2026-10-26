@@ -32,7 +32,7 @@ import { checkRedeemable, grantsOf, normaliseCode, generateVoucherCode, mintCode
 import { isEntitled, hasFreeAccess, owesCardOnFile } from "./entitlement";
 import { owesSetupFee, oweableRole, setupFeeAudience } from "./setupFee";
 import { planForRole, planAmountMajor, roleLabel, portalHome } from "./subscriptionPlan";
-import { inviteVoucherFields, inviteBatchId, inviteCapPerBrand, inviteOfferEndFor, inviteOfferEndLabel } from "./inviteVoucher";
+import { inviteVoucherFields, inviteBatchId, inviteCapPerBrand, isPayingBrand, inviteOfferEndFor, inviteOfferEndLabel } from "./inviteVoucher";
 import { videoDeliveryUrl, videoPosterUrl } from "@shared/videoDelivery";
 import { feeInvoiceStripeAdapter } from "./feeInvoiceStripe";
 
@@ -1619,9 +1619,20 @@ export async function registerRoutes(
       // Resolve effective rates: admin platform settings over env defaults, plus
       // each party's per-user override. (A per-repost publisher override on the
       // campaign affiliate still wins inside recordSaleCommissions.)
-      const cfg = resolveFeeConfig(await storage.getPlatformSettings());
       const creatorUser = video.creatorId ? await storage.getUser(video.creatorId) : null;
       const publisherUser = affiliateId ? await storage.getUser(affiliateId) : null;
+      // The brand behind the sale: the brand recording it, or the product's brand.
+      let brandOwnerId: string | null = actor.role === "brand" ? actor.id : null;
+      if (!brandOwnerId && productId) {
+        const product = await storage.getProduct(productId).catch(() => null);
+        const brand = product?.brandId ? await storage.getBrand(product.brandId).catch(() => null) : null;
+        brandOwnerId = brand?.ownerId ?? null;
+      }
+      const { saleRates } = await import("./partners");
+      const rates = await saleRates({
+        settings: await storage.getPlatformSettings(),
+        creator: creatorUser ?? null, publisher: publisherUser ?? null, brandOwnerId,
+      });
 
       const result = await recordSaleCommissions(storage, revenueNum.toFixed(2), {
         videoId,
@@ -1630,11 +1641,7 @@ export async function registerRoutes(
         campaignAffiliateId,
         resolvedCommissionRate,
         productId: productId ?? null,
-      }, null, {
-        marketplaceFeePct: cfg.marketplaceFeePct,
-        creatorPct: userRateOr(creatorUser?.commissionRateOverride, cfg.creatorPct),
-        publisherPct: userRateOr(publisherUser?.commissionRateOverride, cfg.publisherPct),
-      });
+      }, null, rates);
 
       res.json({ ok: true, split: result.split });
     } catch (error) {
@@ -2240,9 +2247,14 @@ export async function registerRoutes(
       const video = await storage.getVideo(resolved.videoId);
       if (!video) return await ackUnattributed("video_missing");
 
-      const cfg = resolveFeeConfig(await storage.getPlatformSettings());
       const creatorUser = video.creatorId ? await storage.getUser(video.creatorId) : null;
       const publisherUser = resolved.affiliateId ? await storage.getUser(resolved.affiliateId) : null;
+      // Partners too (server/partners.ts): the store belongs to the brand.
+      const { saleRates } = await import("./partners");
+      const rates = await saleRates({
+        settings: await storage.getPlatformSettings(),
+        creator: creatorUser ?? null, publisher: publisherUser ?? null, brandOwnerId: connection.userId ?? null,
+      });
 
       const result = await recordSaleCommissions(storage, attribution.amount, {
         videoId: resolved.videoId,
@@ -2252,11 +2264,7 @@ export async function registerRoutes(
         resolvedCommissionRate: resolved.commissionRate,
         externalOrderId: attribution.externalOrderId,
         storeConnectionId: connection.id,
-      }, null, {
-        marketplaceFeePct: cfg.marketplaceFeePct,
-        creatorPct: userRateOr(creatorUser?.commissionRateOverride, cfg.creatorPct),
-        publisherPct: userRateOr(publisherUser?.commissionRateOverride, cfg.publisherPct),
-      });
+      }, null, rates);
 
       /**
        * Persist what the brand owes. The split was previously computed, echoed
@@ -2437,23 +2445,24 @@ export async function registerRoutes(
 
   async function programContext(userId: string) {
     const { getSender, getVoucherById, countSent } = await import("./programSenders");
-    const { templateProblem, offerLine } = await import("./programInvites");
+    const { templateProblem, offerLine, SEAT_TYPES, SEAT_WORD } = await import("./programInvites");
     const sender = await getSender(userId);
     if (!sender) return null;
     const user = await storage.getUser(userId);
-    const seats = {} as Record<"brand" | "creator", { limit: number; sent: number; remaining: number; offer: string | null; problem: string | null; template: any }>;
-    for (const type of ["brand", "creator"] as const) {
-      const template = await getVoucherById(type === "brand" ? sender.brandTemplateVoucherId : sender.creatorTemplateVoucherId);
-      const limit = type === "brand" ? sender.brandLimit : sender.creatorLimit;
+    const seats = {} as Record<"brand" | "creator" | "publisher", { limit: number; sent: number; remaining: number; offer: string | null; problem: string | null; template: any }>;
+    for (const type of SEAT_TYPES) {
+      const template = await getVoucherById(
+        type === "brand" ? sender.brandTemplateVoucherId : type === "creator" ? sender.creatorTemplateVoucherId : sender.publisherTemplateVoucherId);
+      const limit = type === "brand" ? sender.brandLimit : type === "creator" ? sender.creatorLimit : (sender.publisherLimit ?? 0);
       const sent = await countSent(userId, type);
-      const problem = limit <= 0 ? `Invites for ${type === "brand" ? "designers" : "influencers"} aren't switched on` : templateProblem(template, type);
+      const problem = limit <= 0 ? `Invites for ${SEAT_WORD[type]}s aren't switched on` : templateProblem(template, type);
       seats[type] = { limit, sent, remaining: Math.max(0, limit - sent), offer: template && !problem ? offerLine(template, type) : null, problem, template };
     }
     return { sender, user, seats, senderName: user?.displayName || user?.username || user?.email || "Your host" };
   }
 
-  const programSignupUrl = (req: Request, code: string, type: "brand" | "creator") =>
-    `${publicOrigin(req)}/register?code=${encodeURIComponent(code)}&role=${type}`;
+  const programSignupUrl = (req: Request, code: string, type: "brand" | "creator" | "publisher") =>
+    `${publicOrigin(req)}/register?code=${encodeURIComponent(code)}&role=${type === "publisher" ? "affiliate" : type}`;
 
   app.get("/api/program/me", async (req, res) => {
     const userId = (req.session as any)?.userId;
@@ -2461,13 +2470,13 @@ export async function registerRoutes(
     const ctx = await programContext(userId);
     if (!ctx) return res.json({ enabled: false });
     const { DEFAULT_MESSAGE, DEFAULT_SUBJECT, MAX_RECIPIENTS } = await import("./programInvites");
-    const seat = (t: "brand" | "creator") => {
+    const seat = (t: "brand" | "creator" | "publisher") => {
       const { template, ...rest } = ctx.seats[t];
       return rest;
     };
     res.json({
       enabled: true, programName: ctx.sender.programName, senderName: ctx.senderName,
-      seats: { brand: seat("brand"), creator: seat("creator") },
+      seats: { brand: seat("brand"), creator: seat("creator"), publisher: seat("publisher") },
       defaultSubject: DEFAULT_SUBJECT, defaultMessage: DEFAULT_MESSAGE, maxRecipients: MAX_RECIPIENTS,
       emailReady: isEmailConfigured(),
     });
@@ -2518,7 +2527,11 @@ export async function registerRoutes(
 
         const already = await S.invitedEmails(userId);
         const seen = new Set<string>();
-        const left = { brand: ctx.seats.brand.problem ? 0 : ctx.seats.brand.remaining, creator: ctx.seats.creator.problem ? 0 : ctx.seats.creator.remaining };
+        const left = {
+          brand: ctx.seats.brand.problem ? 0 : ctx.seats.brand.remaining,
+          creator: ctx.seats.creator.problem ? 0 : ctx.seats.creator.remaining,
+          publisher: ctx.seats.publisher.problem ? 0 : ctx.seats.publisher.remaining,
+        };
         const results: { email: string; name?: string; type?: string; status: "sent" | "skipped" | "failed"; reason?: string }[] = [];
         const toSend: { idx: number; voucherId: string; email: any }[] = [];
 
@@ -2566,7 +2579,7 @@ export async function registerRoutes(
           body: {
             sent: results.filter((r) => r.status === "sent").length,
             results,
-            remaining: { brand: after?.seats.brand.remaining ?? 0, creator: after?.seats.creator.remaining ?? 0 },
+            remaining: { brand: after?.seats.brand.remaining ?? 0, creator: after?.seats.creator.remaining ?? 0, publisher: after?.seats.publisher.remaining ?? 0 },
           },
         };
       });
@@ -2671,7 +2684,13 @@ export async function registerRoutes(
     const me = await storage.getUser((req.session as any).userId);
     const role = typeof req.body?.role === "string" ? req.body.role : "creator";
     const origin = publicOrigin(req);
-    const r = renderStep(edit, { displayName: me?.displayName ?? "Beth", companyName: req.body?.companyName || "Acme Studio", role }, origin);
+    // Sample pass counts, so every pass line shows in the preview. A real
+    // recipient with 0 of a kind doesn't get that line.
+    const passes = { creator: 10, brand: 40, publisher: 20, ...(req.body?.passes ?? {}) };
+    const r = renderStep(edit, {
+      displayName: me?.displayName ?? "Beth", companyName: req.body?.companyName || "Acme Studio", role,
+      passes: { creator: Number(passes.creator) || 0, brand: Number(passes.brand) || 0, publisher: Number(passes.publisher) || 0 },
+    }, origin);
     const sender = await journeySender(step.segment);
     const email = {
       ...r, to: me?.email ?? "", plain: edit.plain, ...sender,
@@ -2732,14 +2751,29 @@ export async function registerRoutes(
     const email = String(req.body?.email ?? "").trim().toLowerCase();
     const programName = String(req.body?.programName ?? "").trim().slice(0, 120);
     const num = (v: unknown) => Math.max(0, Math.min(5000, Math.floor(Number(v) || 0)));
-    const brandLimit = num(req.body?.brandLimit), creatorLimit = num(req.body?.creatorLimit);
+    const brandLimit = num(req.body?.brandLimit), creatorLimit = num(req.body?.creatorLimit), publisherLimit = num(req.body?.publisherLimit);
+    // The partner deal: blank means no commission; otherwise 1-3 %, until a date or open-ended.
+    const { PARTNER_PCT } = await import("./partners");
+    const pctRaw = String(req.body?.commissionPct ?? "").trim();
+    const commissionPct = pctRaw === "" ? null : Number(pctRaw);
+    if (commissionPct != null && !(commissionPct >= PARTNER_PCT.min && commissionPct <= PARTNER_PCT.max)) {
+      return res.status(400).json({ error: `Commission is ${PARTNER_PCT.min} to ${PARTNER_PCT.max}%, or leave it blank for none` });
+    }
+    const untilRaw = String(req.body?.commissionUntil ?? "").trim();
+    // A date is the last day of the deal, so it ends the morning after.
+    const commissionUntil = untilRaw ? new Date(`${untilRaw.slice(0, 10)}T00:00:00Z`) : null;
+    if (commissionUntil) {
+      if (Number.isNaN(commissionUntil.getTime())) return res.status(400).json({ error: "That end date doesn't look right" });
+      commissionUntil.setUTCDate(commissionUntil.getUTCDate() + 1);
+    }
     if (!email) return res.status(400).json({ error: "Which account? Enter its email." });
     if (!programName) return res.status(400).json({ error: "Name the program, e.g. Fashion Week Brooklyn" });
     const user = await storage.getUserByEmail(email);
     if (!user) return res.status(404).json({ error: `No account uses ${email}` });
-    const resolve = async (code: unknown, type: "brand" | "creator", limit: number) => {
+    const { SEAT_WORD } = await import("./programInvites");
+    const resolve = async (code: unknown, type: "brand" | "creator" | "publisher", limit: number) => {
       const raw = String(code ?? "").trim();
-      if (!raw) return limit > 0 ? { error: `Add a template code for ${type === "brand" ? "designer" : "influencer"} invites` } : { id: null };
+      if (!raw) return limit > 0 ? { error: `Add a template code for ${SEAT_WORD[type]} invites` } : { id: null };
       const v = await findVoucherByCode(raw);
       if (!v) return { error: `No code ${raw.toUpperCase()}` };
       const problem = templateProblem(v, type);
@@ -2749,7 +2783,12 @@ export async function registerRoutes(
     const c = await resolve(req.body?.creatorTemplateCode, "creator", creatorLimit);
     if ("error" in b) return res.status(400).json({ error: b.error });
     if ("error" in c) return res.status(400).json({ error: c.error });
-    await saveSender({ userId: user.id, programName, brandLimit, brandTemplateVoucherId: b.id, creatorLimit, creatorTemplateVoucherId: c.id, createdBy: adminId });
+    const p = await resolve(req.body?.publisherTemplateCode, "publisher", publisherLimit);
+    if ("error" in p) return res.status(400).json({ error: p.error });
+    await saveSender({
+      userId: user.id, programName, brandLimit, brandTemplateVoucherId: b.id, creatorLimit, creatorTemplateVoucherId: c.id,
+      publisherLimit, publisherTemplateVoucherId: p.id, commissionPct, commissionUntil, createdBy: adminId,
+    });
     res.json({ ok: true });
   });
 
@@ -2762,11 +2801,16 @@ export async function registerRoutes(
    * A brand's creator-pass allowance: its own limit when its sign-up code set
    * one (10 for Brooklyn), otherwise the platform default.
    */
-  async function invitePasses(brandId: string): Promise<{ limit: number; used: number; remaining: number }> {
+  async function invitePasses(brandId: string): Promise<{ limit: number; used: number; remaining: number; onPaidPlan: number | null }> {
     const brand = await storage.getBrand(brandId);
-    const limit = brand?.invitePassLimit ?? inviteCapPerBrand();
+    const sub = brand?.ownerId ? await storage.getBrandSubscription(brand.ownerId) : undefined;
+    const { TRIAL_DAYS: PLAN_TRIAL_DAYS } = await import("../shared/plans");
+    const paying = isPayingBrand(sub, PLAN_TRIAL_DAYS);
+    const limit = brand?.invitePassLimit ?? inviteCapPerBrand(paying);
     const used = await storage.countVouchersInBatch(inviteBatchId(brandId));
-    return { limit, used, remaining: Math.max(0, limit - used) };
+    // What the paid plan would give, when it gives more: for "subscribe for 100".
+    const onPaid = brand?.invitePassLimit == null && !paying ? inviteCapPerBrand(true) : null;
+    return { limit, used, remaining: Math.max(0, limit - used), onPaidPlan: onPaid && onPaid > limit ? onPaid : null };
   }
 
   /** How many more passes this brand can hand out under its limit. */
@@ -2774,8 +2818,10 @@ export async function registerRoutes(
     return (await invitePasses(brandId)).remaining;
   }
 
-  function passLimitMessage(limit: number): string {
-    return `You've used all ${limit} of your creator passes. Contact Materialized to add more.`;
+  function passLimitMessage(p: { limit: number; onPaidPlan: number | null }): string {
+    return p.onPaidPlan
+      ? `You've used all ${p.limit} of your creator passes. Brands on the paid plan get ${p.onPaidPlan}.`
+      : `You've used all ${p.limit} of your creator passes. Contact Materialized to add more.`;
   }
 
   /**
@@ -2870,7 +2916,7 @@ export async function registerRoutes(
       try {
         if ((await invitePassesLeft(useBrandId)) === 0) {
           return res.status(429).json({
-            error: passLimitMessage((await invitePasses(useBrandId)).limit),
+            error: passLimitMessage(await invitePasses(useBrandId)),
             reason: "invite_cap",
           });
         }
@@ -2971,7 +3017,7 @@ export async function registerRoutes(
       const room = await invitePassesLeft(useBrandId);
       if (room === 0 && validInvitations.length > 0) {
         return res.status(429).json({
-          error: passLimitMessage((await invitePasses(useBrandId)).limit),
+          error: passLimitMessage(await invitePasses(useBrandId)),
           reason: "invite_cap",
         });
       }
@@ -4948,7 +4994,8 @@ export async function registerRoutes(
       // this used to take `commissionRate` from the request body (23 Oct 2026),
       // and that rate later overrides theirs on every sale from this licence.
       const cfg = resolveFeeConfig(await storage.getPlatformSettings());
-      const commissionRate = userRateOr(user.commissionRateOverride, cfg.publisherPct).toFixed(2);
+      const { activeOverride } = await import("./partners");
+      const commissionRate = userRateOr(activeOverride(user, new Date()), cfg.publisherPct).toFixed(2);
 
       const purchase = await storage.createVideoLicensePurchase({
         globalListingId: listing.id,
@@ -6272,6 +6319,26 @@ export async function registerRoutes(
         return res.status(400).json({ error: "The activation date must be before the expiry date" });
       }
 
+      // Partner commissions (migration 0048): who to credit for whoever joins
+      // with these codes, and a creator bonus for the creators who redeem them.
+      let referrerUserId: string | null = null;
+      const referrerEmail = typeof req.body?.referrerEmail === "string" ? req.body.referrerEmail.trim().toLowerCase() : "";
+      if (referrerEmail) {
+        const partner = await storage.getUserByEmail(referrerEmail);
+        if (!partner) return res.status(400).json({ error: `No account uses ${referrerEmail}, so there's no partner to credit` });
+        referrerUserId = partner.id;
+      }
+      const rawBonus = req.body?.creatorBonusPct;
+      const creatorBonusPct = rawBonus == null || rawBonus === "" || (roleRestriction && roleRestriction !== "creator") ? null : Number(rawBonus);
+      if (creatorBonusPct != null && !(creatorBonusPct > 0 && creatorBonusPct <= 8)) {
+        return res.status(400).json({ error: "The creator bonus is a % from above 0 to 8" });
+      }
+      const rawMonths = req.body?.creatorBonusMonths;
+      const creatorBonusMonths = creatorBonusPct == null ? null : rawMonths == null || rawMonths === "" ? 12 : Number(rawMonths);
+      if (creatorBonusMonths != null && (!Number.isInteger(creatorBonusMonths) || creatorBonusMonths < 1 || creatorBonusMonths > 60)) {
+        return res.status(400).json({ error: "The creator bonus lasts 1 to 60 months" });
+      }
+
       /**
        * `quantity` mints N DISTINCT codes in one batch.
        *
@@ -6319,6 +6386,9 @@ export async function registerRoutes(
           expiresAt: expiry,
           freeDays: days,
           creatorPasses,
+          referrerUserId,
+          creatorBonusPct: creatorBonusPct != null ? creatorBonusPct.toFixed(2) : null,
+          creatorBonusMonths,
           createdBy: (req.session as any)?.userId ?? null,
           batchId,
           assignedTo,

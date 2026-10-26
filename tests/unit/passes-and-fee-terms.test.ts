@@ -14,7 +14,7 @@ const auth = code("server/authRoutes.ts");
 
 describe("creator passes", () => {
   it("a brand's own limit wins over the platform default", () => {
-    expect(routes).toMatch(/const limit = brand\?\.invitePassLimit \?\? inviteCapPerBrand\(\);/);
+    expect(routes).toMatch(/const limit = brand\?\.invitePassLimit \?\? inviteCapPerBrand\(paying\);/);
   });
 
   it("the sign-up code's passes become the brand's limit, and a lost voucher takes them back", () => {

@@ -9,6 +9,11 @@ import {
 
 // Ensure a clean, deterministic default config regardless of the host env.
 beforeEach(() => {
+  // These tests check the split's arithmetic under the original model (creator
+  // 8% + publisher 2%). The 7% reserve (Stripe + MTRLZD's floor, 25 Oct 2026)
+  // has its own tests in partner-commissions.test.ts.
+  process.env.PROCESSING_FEE_PCT = '0';
+  process.env.PLATFORM_FLOOR_PCT = '0';
   delete process.env.MARKETPLACE_FEE_PCT;
   delete process.env.CREATOR_COMMISSION_PCT;
   delete process.env.PUBLISHER_COMMISSION_PCT;

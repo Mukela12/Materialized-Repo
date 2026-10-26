@@ -43,8 +43,11 @@ describe("the creator hears the brand's answer", () => {
 describe("commission rules apply everywhere", () => {
   it("in-video sales use the admin's settings and each person's override", () => {
     const wh = read("server/webhookHandlers.ts");
-    expect(wh).toMatch(/resolveFeeConfig\(await storage\.getPlatformSettings\(\)\)/);
-    expect(wh).toMatch(/creatorPct: userRateOr\(creatorUser\?\.commissionRateOverride, cfg\.creatorPct\)/);
+    // One place works out every rate (server/partners.ts saleRates): the
+    // admin's settings, each person's override while it lasts, the partners.
+    expect(wh).toMatch(/saleRates\(\{\s*settings: await storage\.getPlatformSettings\(\)/);
+    expect(wh).toMatch(/creator: creatorUser/);
+    expect(read("server/partners.ts")).toMatch(/creatorPct: userRateOr\(activeOverride\(args\.creator, now\), cfg\.creatorPct\)/);
     expect(wh).toMatch(/null,\s*rates,\s*\);/);
     expect(wh).toMatch(/\.\.\.rates,\s*\}\),/);
   });
@@ -54,6 +57,6 @@ describe("commission rules apply everywhere", () => {
     const start = routes.indexOf('app.post("/api/library/:id/purchase"');
     const body = routes.slice(start, routes.indexOf("\n  app.", start + 10));
     expect(body).not.toMatch(/req\.body/);
-    expect(body).toMatch(/userRateOr\(user\.commissionRateOverride, cfg\.publisherPct\)/);
+    expect(body).toMatch(/userRateOr\(activeOverride\(user, new Date\(\)\), cfg\.publisherPct\)/);
   });
 });

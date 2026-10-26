@@ -21,7 +21,11 @@
 
 import { voucherInstantToDay } from "../shared/voucherDates";
 
-export type SeatType = "brand" | "creator";
+export type SeatType = "brand" | "creator" | "publisher";
+export const SEAT_TYPES: readonly SeatType[] = ["brand", "creator", "publisher"];
+
+/** The account role each seat signs up as (a publisher is `affiliate` internally). */
+export const SEAT_ROLE: Record<SeatType, "brand" | "creator" | "affiliate"> = { brand: "brand", creator: "creator", publisher: "affiliate" };
 
 /** Words people put in a "type" column, to the seat they mean. */
 export function seatTypeOf(raw: string | null | undefined): SeatType | null {
@@ -29,10 +33,11 @@ export function seatTypeOf(raw: string | null | undefined): SeatType | null {
   if (!v) return null;
   if (/^(designer|designers|brand|brands|label|labels|house)$/.test(v)) return "brand";
   if (/^(influencer|influencers|creator|creators|talent|model|models)$/.test(v)) return "creator";
+  if (/^(publisher|publishers|publication|publications|magazine|magazines|media|affiliate|affiliates)$/.test(v)) return "publisher";
   return null;
 }
 
-export const SEAT_WORD: Record<SeatType, string> = { brand: "designer", creator: "influencer" };
+export const SEAT_WORD: Record<SeatType, string> = { brand: "designer", creator: "influencer", publisher: "publisher" };
 
 /** {first_name} and {name} in a message, filled for one person. Unknown braces are left alone. */
 export function mergeFields(template: string, person: { name: string }): string {
@@ -71,7 +76,7 @@ export function checkRecipient(r: RecipientIn): RecipientCheck {
   const email = String(r.email ?? "").trim().toLowerCase();
   if (!EMAIL.test(email)) return { ok: false, email, error: "Email doesn't look right" };
   const type = seatTypeOf(String(r.type ?? ""));
-  if (!type) return { ok: false, email, error: "Choose designer or influencer" };
+  if (!type) return { ok: false, email, error: "Choose designer, influencer or publisher" };
   const name = String(r.name ?? "").trim().slice(0, 120) || email.split("@")[0];
   return { ok: true, recipient: { name, email, type } };
 }
@@ -87,6 +92,8 @@ export interface TemplateVoucher {
   freeDays: number | null;
   creatorPasses: number | null;
   partner: string | null;
+  creatorBonusPct?: string | null;
+  creatorBonusMonths?: number | null;
   revokedAt: Date | null;
 }
 
@@ -95,7 +102,7 @@ export function templateProblem(t: TemplateVoucher | null | undefined, type: Sea
   if (!t) return `Invites for ${SEAT_WORD[type]}s aren't set up yet`;
   if (t.revokedAt) return `The ${SEAT_WORD[type]} offer has been withdrawn`;
   if (t.expiresAt && t.expiresAt.getTime() <= now.getTime()) return `The ${SEAT_WORD[type]} offer has ended`;
-  if (t.roleRestriction && t.roleRestriction !== type) return `The ${SEAT_WORD[type]} template code is for another kind of account`;
+  if (t.roleRestriction && t.roleRestriction !== SEAT_ROLE[type]) return `The ${SEAT_WORD[type]} template code is for another kind of account`;
   return null;
 }
 
@@ -113,13 +120,16 @@ export function inviteVoucherFromTemplate(args: {
     label: `${args.programName}: ${args.recipient.name}`.slice(0, 200),
     grantType: t.grantType,
     brandUserId: null,
-    roleRestriction: args.type,
+    roleRestriction: SEAT_ROLE[args.type],
     maxRedemptions: 1,
     activeFrom: t.activeFrom,
     expiresAt: t.expiresAt,
     freeDays: t.freeDays,
     // Designers get the program's creator passes; an influencer seat has none.
     creatorPasses: args.type === "brand" ? t.creatorPasses : null,
+    // An influencer seat carries the template's creator bonus, if it has one.
+    creatorBonusPct: args.type === "creator" ? t.creatorBonusPct ?? null : null,
+    creatorBonusMonths: args.type === "creator" ? t.creatorBonusMonths ?? null : null,
     partner: t.partner ?? args.programName,
     assignedTo: args.recipient.email,
     createdBy: args.sender.id,

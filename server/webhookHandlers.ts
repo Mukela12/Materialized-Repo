@@ -5,7 +5,7 @@ import { storage } from './storage';
 import { stripeService } from './stripeService';
 import { recordSaleCommissions } from './commissions';
 import { recordFeeAccrual } from './feeAccruals';
-import { computeSaleSplit, resolveFeeConfig, userRateOr } from './feeConfig';
+import { computeSaleSplit } from './feeConfig';
 import { toCents, centsToAmount } from './feeConfig';
 import { PLAN_CONFIG, isPlanKey, type PlanKey } from './stripeService';
 import { mintBrandConversionToken } from './wallet';
@@ -165,16 +165,19 @@ async function handleInVideoOrderCompleted(session: Stripe.Checkout.Session): Pr
    * marketplace % is read back from the fee actually withheld at checkout, so
    * the split always matches the money collected.
    */
-  const cfg = resolveFeeConfig(await storage.getPlatformSettings());
+  // Partners (server/partners.ts) too: whoever brought this creator or brand in.
+  const { saleRates } = await import('./partners');
   const creatorUser = order.creatorId ? await storage.getUser(order.creatorId) : null;
-  const publisherUser = order.affiliateId ? await storage.getUser(order.affiliateId) : null;
-  const rates = {
+  const publisherUser = order.affiliateId && order.affiliateId !== order.creatorId ? await storage.getUser(order.affiliateId) : null;
+  const rates = await saleRates({
+    settings: await storage.getPlatformSettings(),
+    creator: creatorUser ?? null,
+    publisher: publisherUser ?? null,
+    brandOwnerId: order.brandUserId ?? null,
     marketplaceFeePct: order.applicationFeeCents != null && order.amountCents > 0
       ? (order.applicationFeeCents * 100) / order.amountCents
-      : cfg.marketplaceFeePct,
-    creatorPct: userRateOr(creatorUser?.commissionRateOverride, cfg.creatorPct),
-    publisherPct: userRateOr(publisherUser?.commissionRateOverride, cfg.publisherPct),
-  };
+      : undefined,
+  });
 
   // Same helper the store-webhook path uses, so an in-video sale and an
   // on-store sale cannot disagree about what a creator or publisher earns.

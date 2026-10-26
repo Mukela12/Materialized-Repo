@@ -390,7 +390,7 @@ function StepEditor({ step, data, onClose }: { step: Step; data: Overview; onClo
         <Label className="text-xs">Message</Label>
         <Textarea value={draft.body} onChange={(e) => set("body", e.target.value)} rows={12} className="text-sm leading-relaxed" data-testid="step-body" />
         <p className="text-[11px] text-muted-foreground">
-          {"{{FirstName}} and {{CompanyName}} fill in for each person. A blank line starts a new paragraph; lines starting with • make a list."}
+          {"{{FirstName}} and {{CompanyName}} fill in for each person. {{CreatorPasses}}, {{BrandPasses}} and {{PublisherPasses}} fill in how many free passes they have; a line with a count of 0 is left out. A blank line starts a new paragraph; lines starting with • make a list."}
         </p>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
