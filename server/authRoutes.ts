@@ -321,7 +321,7 @@ export function registerAuthRoutes(app: Express) {
         // A creator bonus on the code (e.g. the Paris passes): the creator earns
         // this % of their sales for the term, then falls back to the default.
         // Paid out of MTRLZD's fee and never into the reserve (computeSaleSplit).
-        const months = Math.max(1, Number(voucherToRedeem.creatorBonusMonths) || 12);
+        const months = Math.max(1, Number(voucherToRedeem.creatorBonusMonths) || 3);
         const until = new Date();
         until.setMonth(until.getMonth() + months);
         await storage.updateUser(user.id, {

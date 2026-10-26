@@ -425,7 +425,7 @@ export function VoucherManager() {
                   />
                   <Input
                     type="number" min={1} max={60}
-                    placeholder="months (12)"
+                    placeholder="months (3)"
                     value={form.creatorBonusMonths}
                     onChange={(e) => setForm({ ...form, creatorBonusMonths: e.target.value })}
                     data-testid="input-voucher-creator-bonus-months"

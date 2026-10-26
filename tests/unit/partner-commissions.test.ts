@@ -7,6 +7,8 @@
  * itself, so no more than 8% of a sale is ever paid out.
  */
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 vi.mock("../../server/db", () => ({ db: {} }));
 
@@ -247,5 +249,34 @@ describe("bulk commission (Admin > Users)", () => {
     expect(checkCommissionEdit({ userIds: [], pct: "5" })).toHaveProperty("error");
     expect(checkCommissionEdit({ userIds: ["a"], pct: "9" })).toHaveProperty("error");
     expect(checkCommissionEdit({ userIds: ["a"], pct: "5", until: "31/10/2027" })).toHaveProperty("error");
+  });
+});
+
+describe("partner limits (client, 26 Oct 2026)", () => {
+  it("earn on each referral for 90 days from when it joined", async () => {
+    const { withinReferralWindow, partnerReferralDays } = await import("../../server/partners");
+    delete process.env.PARTNER_REFERRAL_DAYS;
+    expect(partnerReferralDays()).toBe(90);
+    const joined = new Date(now.getTime() - 89 * DAY);
+    expect(withinReferralWindow(joined, now)).toBe(true);
+    expect(withinReferralWindow(new Date(now.getTime() - 90 * DAY), now)).toBe(false);
+  });
+
+  it("can be changed per environment", async () => {
+    const { partnerReferralDays } = await import("../../server/partners");
+    process.env.PARTNER_REFERRAL_DAYS = "120";
+    expect(partnerReferralDays()).toBe(120);
+    delete process.env.PARTNER_REFERRAL_DAYS;
+  });
+
+  it("only pay a partner whose own account is active", () => {
+    const src = readFileSync(join(__dirname, "../../server/partners.ts"), "utf8");
+    expect(src).toMatch(/s\.status in \('active', 'trialing'\)/);
+    expect(src).toMatch(/u\.free_access and \(u\.free_access_until is null or u\.free_access_until > \$\{now\}\)/);
+  });
+
+  it("give Paris creators their extra 5% for 3 months", () => {
+    const src = readFileSync(join(__dirname, "../../server/parisCampaign.ts"), "utf8");
+    expect(src).toMatch(/creatorBonusMonths: 3,/);
   });
 });

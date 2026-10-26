@@ -23,9 +23,13 @@ export const PARIS = {
   partner: "Paris Creator Week",
   freeDays: 30,
   activationDays: 14,
-  /** Creator bonus on the passes: this % of their sales, for this many months. */
+  /**
+   * Creator bonus on the passes: this % of their sales, for this many months.
+   * Three (client, 26 Oct 2026): "ample time to test, publish and see
+   * results", then a reason to earn it again rather than keep it for good.
+   */
   creatorBonusPct: 5,
-  creatorBonusMonths: 12,
+  creatorBonusMonths: 3,
 } as const;
 
 export class ClaimError extends Error {

@@ -245,7 +245,8 @@ function AdminUsers() {
   const [roleFilter, setRoleFilter] = useState<string>("all");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkPct, setBulkPct] = useState("5");
-  const [bulkUntil, setBulkUntil] = useState("");
+  // 90 days by default: the client's promo period, then creators earn it again.
+  const [bulkUntil, setBulkUntil] = useState(() => new Date(Date.now() + 89 * 86_400_000).toISOString().slice(0, 10));
   const shownUsers = roleFilter === "all" ? users : users.filter((u) => u.role === roleFilter);
   const commissionMutation = useMutation({
     mutationFn: async (pct: string | null) =>

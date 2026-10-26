@@ -6335,7 +6335,7 @@ export async function registerRoutes(
         return res.status(400).json({ error: "The creator bonus is a % from above 0 to 8" });
       }
       const rawMonths = req.body?.creatorBonusMonths;
-      const creatorBonusMonths = creatorBonusPct == null ? null : rawMonths == null || rawMonths === "" ? 12 : Number(rawMonths);
+      const creatorBonusMonths = creatorBonusPct == null ? null : rawMonths == null || rawMonths === "" ? 3 : Number(rawMonths);
       if (creatorBonusMonths != null && (!Number.isInteger(creatorBonusMonths) || creatorBonusMonths < 1 || creatorBonusMonths > 60)) {
         return res.status(400).json({ error: "The creator bonus lasts 1 to 60 months" });
       }

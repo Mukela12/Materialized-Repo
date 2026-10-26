@@ -13,12 +13,31 @@
  * The deal itself (%, 1-3, default 2; until when) lives on program_senders.
  * Each partner is paid once per sale, never on a sale of their own, and the
  * total never eats into the reserve (server/feeConfig.ts computeSaleSplit).
+ *
+ * Two limits (client, 26 Oct 2026):
+ *   - a partner earns only while their own MTRLZD account is active (a plan,
+ *     a trial or free access). "If they unsubscribe, their referrals remain on
+ *     mtrlzd as independent users and the Partner's fee is absorbed by mtrlzd."
+ *   - on each referral for 90 days from when it joined, counted from the
+ *     account the partner brought in (a brand's creators count from the
+ *     brand), "to encourage their continued brand referrals".
  */
 import { sql } from "drizzle-orm";
 import { db } from "./db";
 import { resolveFeeConfig, userRateOr, type SplitRates } from "./feeConfig";
 
 export const PARTNER_PCT = { min: 1, max: 3, default: 2 } as const;
+
+/** How long a partner earns on one referral. */
+export function partnerReferralDays(): number {
+  const n = Number(process.env.PARTNER_REFERRAL_DAYS);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : 90;
+}
+
+/** Whether a referral that joined at `since` still earns its partner at `now`. */
+export function withinReferralWindow(since: Date | string, now: Date, days = partnerReferralDays()): boolean {
+  return now.getTime() < new Date(since).getTime() + days * 86_400_000;
+}
 
 /** A partner's % if their deal is active at `now`, else null. */
 export function activeDealPct(deal: { commission_pct: string | number | null; commission_until: string | Date | null } | undefined, now: Date): number | null {
@@ -36,16 +55,24 @@ export function activeOverride(user: { commissionRateOverride?: string | number 
   return user.commissionRateOverride;
 }
 
-/** Who brought this account in: the partner credited on the code it joined with. */
-async function creditedPartner(userId: string, depth = 0): Promise<string | null> {
+/**
+ * Who brought this account in, and when the account they referred joined:
+ * the partner credited on the code it joined with. A creator invited by a
+ * brand is credited to whoever brought the brand in, from the brand's date.
+ */
+async function creditedPartner(userId: string, depth = 0): Promise<{ partnerId: string; since: Date } | null> {
   const r = await db.execute(sql`
-    select v.referrer_user_id, v.batch_id from voucher_redemptions r join vouchers v on v.id = r.voucher_id
+    select v.referrer_user_id, v.batch_id, r.redeemed_at from voucher_redemptions r join vouchers v on v.id = r.voucher_id
     where r.user_id = ${userId} order by r.redeemed_at limit 1`);
-  const row = r.rows[0] as { referrer_user_id: string | null; batch_id: string | null } | undefined;
+  const row = r.rows[0] as { referrer_user_id: string | null; batch_id: string | null; redeemed_at: string | Date } | undefined;
   if (!row) return null;
-  if (row.referrer_user_id) return row.referrer_user_id;
+  const since = new Date(row.redeemed_at);
+  if (row.referrer_user_id) return { partnerId: row.referrer_user_id, since };
   const batch = row.batch_id ?? "";
-  if (batch.startsWith("program:")) return batch.split(":")[1] || null;
+  if (batch.startsWith("program:")) {
+    const id = batch.split(":")[1];
+    return id ? { partnerId: id, since } : null;
+  }
   // Invited by a brand: credit whoever brought the brand in (one level only).
   if (batch.startsWith("invite:") && depth === 0) {
     const b = await db.execute(sql`select owner_id from brands where id = ${batch.slice("invite:".length)}`);
@@ -66,14 +93,22 @@ export async function partnersForSale(args: {
   const ids = new Set<string>();
   for (const who of [args.creatorId, args.brandOwnerId]) {
     if (!who) continue;
-    const p = await creditedPartner(who);
-    if (p && p !== args.creatorId && p !== args.brandOwnerId && p !== args.publisherId) ids.add(p);
+    const c = await creditedPartner(who);
+    if (!c || !withinReferralWindow(c.since, now)) continue;
+    const p = c.partnerId;
+    if (p !== args.creatorId && p !== args.brandOwnerId && p !== args.publisherId) ids.add(p);
   }
   if (ids.size === 0) return [];
   const list = Array.from(ids);
+  // Only partners whose own account is active: a plan (or its trial), or free access.
   const deals = await db.execute(sql`
-    select user_id, commission_pct, commission_until from program_senders
-    where user_id in (${sql.join(list.map((id) => sql`${id}`), sql`, `)})`);
+    select ps.user_id, ps.commission_pct, ps.commission_until from program_senders ps
+    join users u on u.id = ps.user_id
+    where ps.user_id in (${sql.join(list.map((id) => sql`${id}`), sql`, `)})
+      and (
+        exists (select 1 from brand_subscriptions s where s.user_id = u.id and s.status in ('active', 'trialing'))
+        or (u.free_access and (u.free_access_until is null or u.free_access_until > ${now}))
+      )`);
   const out: Array<{ userId: string; pct: number }> = [];
   for (const d of deals.rows as Array<{ user_id: string; commission_pct: string | null; commission_until: string | null }>) {
     const pct = activeDealPct(d, now);
