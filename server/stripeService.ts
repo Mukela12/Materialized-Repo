@@ -656,6 +656,8 @@ export class StripeService {
     amountCents: number;
     applicationFeeCents: number;
     currency: string;
+    /** Shown under the product name, e.g. the price in the brand's currency. */
+    description?: string;
     returnUrl: string;
     metadata: Record<string, string>;
     idempotencyKey: string;
@@ -672,6 +674,7 @@ export class StripeService {
           unit_amount: args.amountCents,
           product_data: {
             name: args.productName,
+            ...(args.description ? { description: args.description } : {}),
             ...(args.imageUrl ? { images: [args.imageUrl] } : {}),
           },
         },

@@ -7829,14 +7829,21 @@ export async function registerRoutes(
       const hasPublisher = !!(resolved?.affiliateId && resolved.affiliateId !== video.creatorId);
 
       const cfg = resolveFeeConfig(await storage.getPlatformSettings());
+      // Charged in US dollars at the day's rate (server/fx.ts); the brand's own
+      // price and currency are kept on the order and shown alongside.
+      const { usdRate, toChargeAmount, chargeLabel, money } = await import("./fx");
+      const pricedIn = (overlay.currency ?? getPlatformCurrency()).toLowerCase();
+      const charge = overlay.priceCents != null && Number.isInteger(overlay.priceCents) && overlay.priceCents > 0
+        ? toChargeAmount(overlay.priceCents, pricedIn, await usdRate(pricedIn))
+        : null;
       const quote = quoteCheckout(
         {
           overlayId: overlay.id,
           videoId,
           name: overlay.name,
           imageUrl: overlay.imageUrl,
-          priceCents: overlay.priceCents ?? null,
-          currency: overlay.currency ?? getPlatformCurrency(),
+          priceCents: charge ? charge.amountCents : (overlay.priceCents ?? null),
+          currency: charge ? charge.currency : pricedIn,
         },
         {
           brandUserId: brandUser.id,
@@ -7864,9 +7871,17 @@ export async function registerRoutes(
         amountCents: quote.amountCents,
         applicationFeeCents: quote.applicationFeeCents,
         currency: quote.currency,
+        description: charge?.original
+          ? `Priced at ${money(charge.original.amountCents, charge.original.currency)}, charged in US dollars at today's rate.`
+          : undefined,
         returnUrl: `${baseUrl}/embed/${videoId}/order-complete?session_id={CHECKOUT_SESSION_ID}`,
         metadata: {
           kind: "in_video_order",
+          ...(charge?.original ? {
+            pricedAmountCents: String(charge.original.amountCents),
+            pricedCurrency: charge.original.currency,
+            fxRate: String(charge.original.rate),
+          } : {}),
           videoId,
           overlayId: String(overlay.id),
           brandUserId: brandUser.id,
@@ -7893,7 +7908,11 @@ export async function registerRoutes(
         applicationFeeCents: quote.applicationFeeCents,
       } as any);
 
-      res.json({ clientSecret: session.client_secret, sessionId: session.id });
+      res.json({
+        clientSecret: session.client_secret, sessionId: session.id,
+        priceLabel: charge ? chargeLabel({ ...charge, amountCents: quote.amountCents }) : null,
+        converted: !!charge?.original,
+      });
     } catch (error) {
       console.error("In-video checkout error:", error);
       res.status(500).json({ error: "Could not start checkout" });
@@ -8147,6 +8166,7 @@ export async function registerRoutes(
     #pay-close{position:absolute;top:8px;right:10px;z-index:21;border:0;background:rgba(255,255,255,.9);border-radius:999px;width:26px;height:26px;font-size:15px;line-height:1;cursor:pointer}
     #pay-inner{background:#fff;border-radius:10px;max-width:460px;margin:26px auto;overflow:hidden}
     #pay-err{color:#fff;text-align:center;font-size:12px;padding:18px;font-family:-apple-system,sans-serif}
+    #pay-note{display:none;color:#fff;text-align:center;font-size:12px;margin:22px auto -14px;max-width:460px;font-family:-apple-system,sans-serif;opacity:.85}
     /* ── This video's carousel styling, generated from the brand kit and any
           per-video override. Everything below has been through
           sanitiseSettings; see server/embedCarousel.ts. ─────────────────── */
@@ -8166,6 +8186,7 @@ ${embedCarouselCss(carousel)}
     <div id="carousel"></div>
     <div id="pay">
       <button id="pay-close" onclick="closePay()" aria-label="Close">&times;</button>
+      <div id="pay-note"></div>
       <div id="pay-inner"><div id="checkout"></div></div>
       <div id="pay-err" style="display:none"></div>
     </div>
@@ -8314,6 +8335,7 @@ ${embedCarouselCss(carousel)}
     function closePay(){
       document.getElementById("pay").classList.remove("open");
       document.getElementById("pay-err").style.display="none";
+      document.getElementById("pay-note").style.display="none";
       if(_checkout){try{_checkout.destroy()}catch(e){}_checkout=null;}
       vid.play().catch(function(){});
     }
@@ -8341,6 +8363,11 @@ ${embedCarouselCss(carousel)}
           // approved by Stripe to accept payments. Say so rather than failing
           // silently with a spinner.
           throw new Error(res.body.error||"Checkout is unavailable for this product.");
+        }
+        // Charged in dollars: show both, e.g. "$54.85 (€49.00) · in US dollars".
+        if(res.body.converted&&res.body.priceLabel){
+          var n=document.getElementById("pay-note");
+          n.textContent=res.body.priceLabel+" · charged in US dollars at today's rate";n.style.display="block";
         }
         return loadStripeJs().then(function(){
           return Stripe(PK).initEmbeddedCheckout({clientSecret:res.body.clientSecret});
