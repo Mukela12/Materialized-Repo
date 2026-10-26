@@ -18,6 +18,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -173,6 +174,8 @@ interface AdminUser {
   emailVerified: boolean;
   createdAt: string | null;
   commissionRateOverride?: string | null;
+  /** Morning after the last day of that rate; null = no end. */
+  commissionOverrideUntil?: string | null;
   stripeConnectAccountId?: string | null;
   stripeConnectOnboarded?: boolean | null;
 }
@@ -210,6 +213,15 @@ function AdminOverview() {
   );
 }
 
+/** A person's own commission %, if they have one that hasn't ended. */
+function commissionOf(u: AdminUser): number | null {
+  if (u.commissionRateOverride == null) return null;
+  if (u.commissionOverrideUntil && new Date(u.commissionOverrideUntil).getTime() <= Date.now()) return null;
+  return Number(u.commissionRateOverride);
+}
+/** Stored as midnight UTC after the last day; noon of that last day reads right in any timezone. */
+const lastDayOf = (iso: string) => new Date(new Date(iso).getTime() - 43_200_000);
+
 function AdminUsers() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -228,13 +240,38 @@ function AdminUsers() {
     onError: () => toast({ title: "Failed to update", variant: "destructive" }),
   });
 
-  const { query, setQuery, sortKey, sortDir, toggleSort, rows } = useTableControls(users, {
+  // Bulk commission (client, 26 Oct 2026): e.g. +5% for creators who tag
+  // MTRLZD in their posts, one person or many at once.
+  const [roleFilter, setRoleFilter] = useState<string>("all");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [bulkPct, setBulkPct] = useState("5");
+  const [bulkUntil, setBulkUntil] = useState("");
+  const shownUsers = roleFilter === "all" ? users : users.filter((u) => u.role === roleFilter);
+  const commissionMutation = useMutation({
+    mutationFn: async (pct: string | null) =>
+      (await apiRequest("POST", "/api/admin/users/commission", { userIds: Array.from(selected), pct, until: pct ? bulkUntil || null : null })).json(),
+    onSuccess: (r: { updated: number }, pct) => {
+      toast({ title: pct ? `${pct}% commission set for ${r.updated} ${r.updated === 1 ? "person" : "people"}` : `${r.updated} back to the default rate` });
+      setSelected(new Set());
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
+    },
+    onError: (err) => toast({ title: "Couldn't change the commission", description: serverMessage(err) || "Please try again.", variant: "destructive" }),
+  });
+
+  const { query, setQuery, sortKey, sortDir, toggleSort, rows } = useTableControls(shownUsers, {
     searchFields: (u) => [u.displayName, u.username, u.email, u.role],
     sortAccessors: {
       name: (u) => u.displayName,
       email: (u) => u.email,
       role: (u) => u.role,
+      commission: (u) => commissionOf(u) ?? -1,
     },
+  });
+  const allShownSelected = rows.length > 0 && rows.every((u) => selected.has(u.id));
+  const toggle = (id: string) => setSelected((prev) => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
   });
 
   const handleExport = () =>
@@ -247,11 +284,21 @@ function AdminUsers() {
       { header: "Free Access", value: (u) => (u.freeAccess ? "yes" : "no") },
       { header: "Free Until", value: (u) => (u.freeAccessUntil ? format(new Date(u.freeAccessUntil), "yyyy-MM-dd") : "") },
       { header: "Email Verified", value: (u) => (u.emailVerified ? "yes" : "no") },
+      { header: "Commission %", value: (u) => commissionOf(u) ?? "" },
     ]);
 
   return (
     <div className="space-y-3">
-      <div className="flex justify-end">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <Select value={roleFilter} onValueChange={(v) => { setRoleFilter(v); setSelected(new Set()); }}>
+          <SelectTrigger className="h-9 w-40" data-testid="select-users-role"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Everyone</SelectItem>
+            <SelectItem value="creator">Creators</SelectItem>
+            <SelectItem value="brand">Brands</SelectItem>
+            <SelectItem value="affiliate">Publishers</SelectItem>
+          </SelectContent>
+        </Select>
         <TableToolbar
           query={query}
           onQueryChange={setQuery}
@@ -261,13 +308,43 @@ function AdminUsers() {
           data-testid="admin-users-toolbar"
         />
       </div>
+
+      {selected.size > 0 && (
+        <div className="flex flex-wrap items-end gap-2 rounded-lg border bg-muted/40 p-3" data-testid="users-bulk-commission">
+          <p className="w-full text-sm font-medium sm:w-auto sm:self-center sm:mr-2">{selected.size} selected</p>
+          <div className="space-y-1">
+            <Label htmlFor="bulk-pct" className="text-xs text-muted-foreground">Commission % on their sales</Label>
+            <Input id="bulk-pct" type="number" min={0} max={8} step={0.5} value={bulkPct} onChange={(e) => setBulkPct(e.target.value)} className="h-9 w-28" data-testid="input-bulk-commission" />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="bulk-until" className="text-xs text-muted-foreground">Last day (optional)</Label>
+            <Input id="bulk-until" type="date" value={bulkUntil} onChange={(e) => setBulkUntil(e.target.value)} className="h-9 w-40" data-testid="input-bulk-commission-until" />
+          </div>
+          <Button size="sm" className="h-9" disabled={commissionMutation.isPending || bulkPct === ""} onClick={() => commissionMutation.mutate(bulkPct)} data-testid="button-bulk-commission">
+            Set commission
+          </Button>
+          <Button size="sm" variant="outline" className="h-9" disabled={commissionMutation.isPending} onClick={() => commissionMutation.mutate(null)} data-testid="button-bulk-commission-clear">
+            Back to default
+          </Button>
+          <Button size="sm" variant="ghost" className="h-9" onClick={() => setSelected(new Set())}>Cancel</Button>
+        </div>
+      )}
       <div className="overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b text-left">
+            <th className="p-3 w-8">
+              <Checkbox
+                aria-label="Select everyone shown"
+                checked={allShownSelected}
+                onCheckedChange={(on) => setSelected(on ? new Set(rows.map((u) => u.id)) : new Set())}
+                data-testid="checkbox-users-all"
+              />
+            </th>
             <SortTh label="Name" sortKey="name" activeKey={sortKey} dir={sortDir} onSort={toggleSort} />
             <SortTh label="Email" sortKey="email" activeKey={sortKey} dir={sortDir} onSort={toggleSort} />
             <SortTh label="Role" sortKey="role" activeKey={sortKey} dir={sortDir} onSort={toggleSort} />
+            <SortTh label="Commission" sortKey="commission" activeKey={sortKey} dir={sortDir} onSort={toggleSort} />
             <th className="p-3 font-medium">Status</th>
             <th className="p-3 font-medium">Actions</th>
           </tr>
@@ -276,6 +353,9 @@ function AdminUsers() {
           {rows.map(u => (
             <tr key={u.id} className="border-b hover:bg-muted/50">
               <td className="p-3">
+                <Checkbox aria-label={`Select ${u.displayName}`} checked={selected.has(u.id)} onCheckedChange={() => toggle(u.id)} data-testid={`checkbox-user-${u.id}`} />
+              </td>
+              <td className="p-3">
                 <div className="font-medium">{u.displayName}</div>
                 <div className="text-xs text-muted-foreground">@{u.username}</div>
               </td>
@@ -283,6 +363,18 @@ function AdminUsers() {
               <td className="p-3">
                 <Badge variant="outline" className="capitalize">{u.role}</Badge>
                 {u.isAdmin && <Badge className="ml-1 bg-red-500/20 text-red-600 border-0">Admin</Badge>}
+              </td>
+              <td className="p-3 whitespace-nowrap" data-testid={`text-commission-${u.id}`}>
+                {commissionOf(u) != null ? (
+                  <>
+                    <span className="font-medium tabular-nums">{commissionOf(u)}%</span>
+                    {u.commissionOverrideUntil && (
+                      <div className="text-xs text-muted-foreground">until {format(lastDayOf(u.commissionOverrideUntil), "d MMM yyyy")}</div>
+                    )}
+                  </>
+                ) : (
+                  <span className="text-muted-foreground">{u.commissionRateOverride != null ? "Ended" : "Default"}</span>
+                )}
               </td>
               <td className="p-3">
                 {u.emailVerified ? (

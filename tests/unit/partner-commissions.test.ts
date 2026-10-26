@@ -229,3 +229,23 @@ describe("publisher invites", () => {
     expect(inviteVoucherFromTemplate(args("brand"))).toMatchObject({ creatorBonusPct: null, creatorPasses: 5 });
   });
 });
+
+describe("bulk commission (Admin > Users)", () => {
+  it("sets a % for many people, until a last day", async () => {
+    const { checkCommissionEdit } = await import("../../server/partners");
+    const r = checkCommissionEdit({ userIds: ["a", "b", "a"], pct: "5", until: "2027-10-31" });
+    expect(r).toEqual({ userIds: ["a", "b"], pct: "5.00", until: new Date("2027-11-01T00:00:00Z") });
+  });
+
+  it("clears with a blank %", async () => {
+    const { checkCommissionEdit } = await import("../../server/partners");
+    expect(checkCommissionEdit({ userIds: ["a"], pct: "" })).toEqual({ userIds: ["a"], pct: null, until: null });
+  });
+
+  it("refuses nobody, more than 8%, or a bad date", async () => {
+    const { checkCommissionEdit } = await import("../../server/partners");
+    expect(checkCommissionEdit({ userIds: [], pct: "5" })).toHaveProperty("error");
+    expect(checkCommissionEdit({ userIds: ["a"], pct: "9" })).toHaveProperty("error");
+    expect(checkCommissionEdit({ userIds: ["a"], pct: "5", until: "31/10/2027" })).toHaveProperty("error");
+  });
+});

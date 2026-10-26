@@ -5821,6 +5821,7 @@ export async function registerRoutes(
         emailVerified: users.emailVerified,
         createdAt: users.createdAt,
         commissionRateOverride: users.commissionRateOverride,
+        commissionOverrideUntil: users.commissionOverrideUntil,
         stripeConnectAccountId: users.stripeConnectAccountId,
         stripeConnectOnboarded: users.stripeConnectOnboarded,
       }).from(users).orderBy(desc(users.createdAt));
@@ -6967,6 +6968,27 @@ export async function registerRoutes(
     }
   });
 
+  /**
+   * Admin: one commission % for many people at once (client, 26 Oct 2026):
+   * "Creators who tag MTRLZD in their social posts/stories will score 5%
+   * additional affiliate commission ... user by user or bulk action".
+   * The % is what they earn on their own sales, until the last day given (or
+   * for good). Blank clears it, back to the default.
+   */
+  app.post("/api/admin/users/commission", requireAdmin, async (req, res) => {
+    const { checkCommissionEdit } = await import("./partners");
+    const check = checkCommissionEdit(req.body ?? {});
+    if ("error" in check) return res.status(400).json({ error: check.error });
+    const { db } = await import("./db");
+    const { users } = await import("@shared/schema");
+    const { inArray } = await import("drizzle-orm");
+    const updated = await db.update(users)
+      .set({ commissionRateOverride: check.pct, commissionOverrideUntil: check.until })
+      .where(inArray(users.id, check.userIds))
+      .returning({ id: users.id });
+    res.json({ updated: updated.length });
+  });
+
   // Admin update user
   app.patch("/api/admin/users/:id", requireAdmin, async (req, res) => {
     try {
@@ -6983,6 +7005,9 @@ export async function registerRoutes(
           }
           patch.commissionRateOverride = n.toFixed(2);
         }
+        // A rate set here has no end date; an old end date would otherwise
+        // switch a new rate straight off.
+        patch.commissionOverrideUntil = null;
       }
       const updated = await storage.updateUser(id, patch as any);
       if (!updated) return res.status(404).json({ error: "User not found" });

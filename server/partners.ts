@@ -106,3 +106,31 @@ export async function saleRates(args: {
     }),
   };
 }
+
+/** The most anyone can earn on a sale: the 15% fee less the 7% reserve. */
+export const MAX_PERSON_PCT = 8;
+
+/**
+ * An admin's bulk commission change, checked: who, what % (null clears it)
+ * and until when (the last day, so it ends the morning after; null = no end).
+ */
+export function checkCommissionEdit(b: Record<string, unknown>): { error: string } | { userIds: string[]; pct: string | null; until: Date | null } {
+  const userIds = Array.isArray(b.userIds) ? Array.from(new Set(b.userIds.filter((x): x is string => typeof x === "string" && x.length > 0))) : [];
+  if (userIds.length === 0) return { error: "Choose at least one person" };
+  if (userIds.length > 1000) return { error: "Up to 1,000 people at a time" };
+  const raw = b.pct == null ? "" : String(b.pct).trim();
+  if (raw === "") return { userIds, pct: null, until: null };
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0 || n > MAX_PERSON_PCT) {
+    return { error: `Commission is 0 to ${MAX_PERSON_PCT}%. 7% of the 15% always stays for Stripe and MTRLZD` };
+  }
+  const day = b.until == null ? "" : String(b.until).trim();
+  let until: Date | null = null;
+  if (day) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return { error: "That end date doesn't look right" };
+    until = new Date(`${day}T00:00:00Z`);
+    if (Number.isNaN(until.getTime())) return { error: "That end date doesn't look right" };
+    until.setUTCDate(until.getUTCDate() + 1);
+  }
+  return { userIds, pct: n.toFixed(2), until };
+}
