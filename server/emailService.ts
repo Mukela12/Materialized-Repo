@@ -553,6 +553,45 @@ export async function sendProgramInvites(emails: ProgramInviteEmail[]): Promise<
   return { failed, error };
 }
 
+// ── Campaign passes (server/parisCampaign.ts) ───────────────────────────────
+
+export interface CampaignPassesEmail {
+  to: string; firstName: string; campaignName: string;
+  creatorCode: string; friendCode: string; friendHandle: string;
+  expiresAt: Date; freeDays: number; creatorUrl: string; friendUrl: string;
+}
+
+/** The two Creator Passes someone claimed on a campaign page. Exported for tests. */
+export function campaignPassesEmail(e: CampaignPassesEmail): { subject: string; html: string; text: string } {
+  const first = escapeHtml(e.firstName.trim().split(/\s+/)[0] || "there");
+  const by = e.expiresAt.toLocaleDateString("en-GB", { day: "numeric", month: "long", timeZone: "UTC" });
+  const pass = (label: string, code: string, url: string, button: string) => `
+    <div class="video-box" style="text-align:center;margin:18px 0;">
+      <p style="margin:0 0 6px;color:#444;font-size:12px;letter-spacing:.12em;text-transform:uppercase;">${label}</p>
+      <p style="margin:0 0 14px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:18px;font-weight:700;letter-spacing:.06em;color:#111;">${escapeHtml(code)}</p>
+      <a href="${escapeHtml(url)}" class="cta" style="padding:11px 26px;font-size:14px;">${button}</a>
+    </div>`;
+  const body = `
+    <h1>Your ${escapeHtml(e.campaignName)} Creator Passes</h1>
+    <p>Hi ${first},</p>
+    <p>Here are your two MTRLZD Creator Passes: one for you, and one for <strong>@${escapeHtml(e.friendHandle)}</strong>.
+      Each gives ${e.freeDays} days of MTRLZD free, to turn videos into shoppable experiences.</p>
+    ${pass("Your pass", e.creatorCode, e.creatorUrl, "Activate My Pass")}
+    ${pass("Your friend's pass", e.friendCode, e.friendUrl, "Friend's Sign-Up Link")}
+    <p>Send your friend their code or link. Both passes need to be activated by <strong>${by}</strong>.</p>
+  `;
+  const text = `Hi ${e.firstName.trim().split(/\s+/)[0] || "there"},\n\nYour ${e.campaignName} Creator Passes (${e.freeDays} days of MTRLZD free each):\n\n`
+    + `Your pass: ${e.creatorCode}\n${e.creatorUrl}\n\nYour friend's pass (@${e.friendHandle}): ${e.friendCode}\n${e.friendUrl}\n\n`
+    + `Activate both by ${by}.`;
+  return { subject: `Your ${e.campaignName} Creator Passes`, html: baseTemplate(body), text };
+}
+
+export async function sendCampaignPassesEmail(e: CampaignPassesEmail): Promise<void> {
+  const { subject, html, text } = campaignPassesEmail(e);
+  const res: any = await client().emails.send({ from: `MTRLZD <${FROM_ADDRESS}>`, to: e.to, subject, html, text });
+  if (res?.error) throw new Error(res.error.message || String(res.error));
+}
+
 // ── A brand's answer to a creator's "make it shoppable" request ─────────────
 
 export interface OutreachAnswerEmail {

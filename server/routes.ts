@@ -2585,6 +2585,9 @@ export async function registerRoutes(
     res.json(await listSent(userId));
   });
 
+  // Paris Creator Week: claim two Creator Passes (server/parisCampaign.ts).
+  (await import("./parisCampaign")).registerParisCampaignRoutes(app);
+
   // A page view from the app's own tracker (see server/activity.ts). Always 204:
   // the browser does nothing with the answer, and a bad beacon is not an error
   // worth showing anyone.

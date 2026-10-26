@@ -59,6 +59,7 @@ import WishlistPage from "@/pages/wishlist";
 import Login from "@/pages/login";
 import Register from "@/pages/register";
 import Unsubscribe from "@/pages/unsubscribe";
+import ParisCreatorWeek from "@/pages/paris-creator-week";
 import VerifyEmail from "@/pages/verify-email";
 import ForgotPassword from "@/pages/forgot-password";
 import ResetPassword from "@/pages/reset-password";
@@ -601,7 +602,8 @@ function App() {
     location === "/forgot-password" ||
     location.startsWith("/verify-email") ||
     location.startsWith("/reset-password") ||
-    location.startsWith("/unsubscribe/");
+    location.startsWith("/unsubscribe/") ||
+    location === "/paris-creator-week";
   // Public legal pages — kept out of the authenticated shell entirely.
   const isPolicyRoute = location === "/privacy" || location === "/cookies";
 
@@ -618,6 +620,7 @@ function App() {
               <Route path="/forgot-password" component={ForgotPassword} />
               <Route path="/reset-password/:token" component={ResetPassword} />
               <Route path="/unsubscribe/:token" component={Unsubscribe} />
+              <Route path="/paris-creator-week" component={ParisCreatorWeek} />
               <Route path="/privacy" component={Privacy} />
               <Route path="/cookies" component={Cookies} />
             </Switch>

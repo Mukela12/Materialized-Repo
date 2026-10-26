@@ -1333,6 +1333,15 @@ export default function Landing() {
   // lighter page background shows through the corners as a band.
   return (
     <div className="min-h-screen bg-[#020410]">
+      {/* Paris Creator Week tab, fixed to the right edge (client's design, 22 Oct 2026). */}
+      <Link
+        href="/paris-creator-week"
+        aria-label="Paris Creator Week: Creator Passes"
+        data-testid="link-paris-creator-week-tab"
+        className="fixed right-0 top-1/2 -translate-y-1/2 z-40 flex items-center justify-center w-[70px] sm:w-[116px] h-[76px] sm:h-[92px] rounded-l-2xl border border-r-0 border-white/25 bg-[#020410]/85 backdrop-blur-md shadow-xl transition-colors hover:bg-[#10152d] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-4px] focus-visible:outline-violet-400"
+      >
+        <img src="/paris-creator-week-logo.png" alt="Paris Creator Week" width={339} height={156} className="w-[54px] sm:w-[94px] h-auto" />
+      </Link>
       <section className="relative min-h-screen overflow-hidden">
         <video
           autoPlay
