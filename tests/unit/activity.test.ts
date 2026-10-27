@@ -101,7 +101,8 @@ describe("wiring", () => {
   it("admins are left out of the figures", () => {
     const a = read("server/activity.ts");
     expect(a).toMatch(/a\.is_admin/);
-    expect(a).toMatch(/where not u\.is_admin/);
+    // Counts leave them out; the People list shows them, marked (journey-membership.test.ts).
+    expect(a).toMatch(/and not u\.is_admin\)::int as signups/);
   });
 
   it("the tracker honours Global Privacy Control and Do Not Track", () => {

@@ -2649,6 +2649,25 @@ export async function registerRoutes(
     res.json({ ok: true });
   });
 
+  // Put a segmented list (CSV of emails) into a journey; accounts only.
+  app.post("/api/admin/journeys/:segment/import", requireAdmin, async (req, res) => {
+    const emails = Array.isArray(req.body?.emails) ? req.body.emails.filter((e: unknown) => typeof e === "string").slice(0, 5000) : [];
+    const { importJourneyList } = await import("./journeyStore");
+    const r = await importJourneyList(req.params.segment, emails);
+    if ("error" in r) return res.status(400).json({ error: r.error });
+    res.json(r);
+  });
+
+  // One person into a journey by hand, or out of all of them (segment null).
+  app.put("/api/admin/users/:id/journey", requireAdmin, async (req, res) => {
+    const segment = typeof req.body?.segment === "string" && req.body.segment ? req.body.segment : null;
+    const { setPersonJourney } = await import("./journeyStore");
+    const r = await setPersonJourney(req.params.id, segment);
+    if (r === "no_user") return res.status(404).json({ error: "No such person." });
+    if (r === "no_journey") return res.status(400).json({ error: "No such journey." });
+    res.json({ ok: true });
+  });
+
   // Who a journey's emails come from, by name, and where replies go.
   app.put("/api/admin/journeys/:segment/sender", requireAdmin, async (req, res) => {
     const { checkSender } = await import("./journeys");

@@ -35,6 +35,8 @@ interface Report {
     id: string; email: string; display_name: string; role: string; created_at: string | null;
     last_login_at: string | null; last_seen_at: string | null; login_count: number;
     last_page: string | null; via_code: string | null; source: string; subscribed_at: string | null;
+    /** The MTRLZD team's own accounts: listed, never counted in the totals. */
+    is_admin: boolean; videos: number;
   }[];
 }
 
@@ -312,7 +314,7 @@ export function AdminActivity() {
             <div>
               <CardTitle className="flex items-center gap-2 text-lg"><Users className="h-4 w-4" /> People</CardTitle>
               <CardDescription>
-                Every account, most recently seen first. Tap anyone for their own page. Sign-ins are counted from {since ? format(since, "d MMM") : "now"}.
+                Every account, most recently seen first. Tap anyone for their own page. Sign-ins are counted from {since ? format(since, "d MMM") : "now"}. Team accounts are listed but never counted in the numbers above.
               </CardDescription>
             </div>
             <div className="flex flex-wrap items-center gap-2">
@@ -347,6 +349,7 @@ export function AdminActivity() {
                       <th className="py-2 px-3 font-medium">Source</th>
                       <th className="py-2 px-3 font-medium">Joined</th>
                       <th className="py-2 px-3 font-medium">Subscribed</th>
+                      <th className="py-2 px-3 font-medium text-right">Videos</th>
                       <th className="py-2 px-3 font-medium text-right">Sign-ins</th>
                       <th className="py-2 pl-3 font-medium">Last seen</th>
                     </tr>
@@ -360,12 +363,16 @@ export function AdminActivity() {
                         data-testid={`person-row-${p.id}`}
                       >
                         <td className="py-2 pr-3">
-                          <p className="font-medium">{p.display_name}</p>
+                          <p className="font-medium">
+                            {p.display_name}
+                            {p.is_admin && <Badge variant="secondary" className="ml-1.5 align-middle text-[10px] font-normal" data-testid="badge-team">Team</Badge>}
+                          </p>
                           <p className="text-xs text-muted-foreground">{p.email} · {ROLE[p.role] ?? p.role}</p>
                         </td>
                         <td className="py-2 px-3"><Badge variant="outline" className="font-normal">{p.source}</Badge></td>
                         <td className="py-2 px-3 text-muted-foreground whitespace-nowrap">{p.created_at ? format(new Date(p.created_at), "d MMM yyyy") : ""}</td>
-                        <td className="py-2 px-3 text-muted-foreground whitespace-nowrap">{p.subscribed_at ? format(new Date(p.subscribed_at), "d MMM yyyy") : "Not yet"}</td>
+                        <td className="py-2 px-3 text-muted-foreground whitespace-nowrap">{p.subscribed_at ? format(new Date(p.subscribed_at), "d MMM yyyy") : p.is_admin ? "Team account" : "Not yet"}</td>
+                        <td className="py-2 px-3 text-right tabular-nums">{p.videos}</td>
                         <td className="py-2 px-3 text-right tabular-nums">{p.login_count}</td>
                         <td className="py-2 pl-3 text-muted-foreground">
                           <span className="whitespace-nowrap">{ago(p.last_seen_at)}</span>
@@ -382,20 +389,24 @@ export function AdminActivity() {
                     <button onClick={() => setOpenPerson(p.id)} className="w-full text-left p-3" data-testid={`person-card-${p.id}`}>
                       <div className="flex items-baseline justify-between gap-2">
                         <p className="font-medium text-sm truncate">{p.display_name}</p>
-                        <p className="text-[11px] text-muted-foreground shrink-0">{ROLE[p.role] ?? p.role}</p>
+                        <p className="text-[11px] text-muted-foreground shrink-0">{p.is_admin ? "Team · " : ""}{ROLE[p.role] ?? p.role}</p>
                       </div>
                       <p className="text-xs text-muted-foreground truncate">{p.email}</p>
-                      <div className="grid grid-cols-3 gap-1 mt-2 text-center">
+                      <div className="grid grid-cols-4 gap-1 mt-2 text-center">
                         <div className="rounded-md bg-muted/50 py-1.5">
                           <p className="text-sm font-semibold tabular-nums">{p.login_count}</p>
                           <p className="text-[10px] text-muted-foreground">Sign-ins</p>
+                        </div>
+                        <div className="rounded-md bg-muted/50 py-1.5">
+                          <p className="text-sm font-semibold tabular-nums">{p.videos}</p>
+                          <p className="text-[10px] text-muted-foreground">Videos</p>
                         </div>
                         <div className="rounded-md bg-muted/50 py-1.5 px-1">
                           <p className="text-xs font-medium truncate">{p.created_at ? format(new Date(p.created_at), "d MMM") : ""}</p>
                           <p className="text-[10px] text-muted-foreground">Joined</p>
                         </div>
                         <div className="rounded-md bg-muted/50 py-1.5 px-1">
-                          <p className="text-xs font-medium truncate">{p.subscribed_at ? format(new Date(p.subscribed_at), "d MMM") : "Not yet"}</p>
+                          <p className="text-xs font-medium truncate">{p.subscribed_at ? format(new Date(p.subscribed_at), "d MMM") : p.is_admin ? "Team" : "Not yet"}</p>
                           <p className="text-[10px] text-muted-foreground">Subscribed</p>
                         </div>
                       </div>

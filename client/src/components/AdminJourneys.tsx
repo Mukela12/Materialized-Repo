@@ -4,10 +4,12 @@
  * off until someone has read them. Each email can be edited, previewed exactly
  * as it will arrive, and sent to yourself before its journey goes live.
  */
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { isCsvFile, parseContactCsv } from "@/lib/csvImport";
+import { CsvFormatHint } from "@/components/CsvFormatHint";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { AlertTriangle, ArrowLeft, Mail, PauseCircle, RefreshCw, Send } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Mail, PauseCircle, RefreshCw, Send, Upload } from "lucide-react";
 import { apiRequest, serverMessage } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -189,6 +191,8 @@ function JourneyDetail({ journey, data, onBack }: { journey: Journey; data: Over
 
       <SenderSettings journey={journey} />
 
+      <ImportList journey={journey} />
+
       {notes > 0 && (
         <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-sm flex gap-2.5">
           <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
@@ -251,6 +255,82 @@ function JourneyDetail({ journey, data, onBack }: { journey: Journey; data: Over
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+    </div>
+  );
+}
+
+/**
+ * A segmented list into this journey (client, 27 Oct 2026: seven CSVs of
+ * fashion weeks, film festivals, brands, agencies...). Everyone on it with an
+ * MTRLZD account joins the journey; people without one are counted and listed,
+ * since journeys only email accounts.
+ */
+function ImportList({ journey }: { journey: Journey }) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [result, setResult] = useState<{ file: string; total: number; joined: number; alreadyIn: number; team: number; noAccount: number; noAccountSample: string[] } | null>(null);
+  const send = useMutation({
+    mutationFn: async ({ emails }: { emails: string[]; file: string }) =>
+      (await apiRequest("POST", `/api/admin/journeys/${journey.segment}/import`, { emails })).json(),
+    onSuccess: (r, v) => {
+      setResult({ ...r, file: v.file, total: v.emails.length });
+      qc.invalidateQueries({ queryKey: KEY });
+    },
+    onError: (err) => toast({ title: "Couldn't import that list", description: serverMessage(err) || "Please try again.", variant: "destructive" }),
+  });
+  const onFile = (file: File) => {
+    if (!isCsvFile(file)) {
+      toast({ title: "That isn't a CSV file", description: "In Google Sheets: File, Download, Comma-separated values (.csv).", variant: "destructive" });
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const { rows, problem } = parseContactCsv(String(e.target?.result ?? ""), { maxRows: 5000 });
+      if (problem) { toast({ title: "Couldn't read that file", description: problem, variant: "destructive" }); return; }
+      send.mutate({ emails: rows.map((r) => r.email), file: file.name });
+    };
+    reader.readAsText(file);
+  };
+  return (
+    <div className="rounded-xl border p-4 space-y-3" data-testid="journey-import">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-sm font-medium">Add people from a list</p>
+          <p className="text-xs text-muted-foreground">
+            Upload a CSV with an Email column. Everyone on it with an MTRLZD account joins this journey and starts at the first email
+            {journey.enabled_at ? "." : " once it's switched on."}
+          </p>
+        </div>
+        <div className="flex items-center gap-1">
+          <input ref={fileRef} type="file" accept=".csv,text/csv" className="hidden" data-testid="input-journey-csv"
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) onFile(f); e.target.value = ""; }} />
+          <Button size="sm" variant="outline" className="gap-1.5 rounded-full" disabled={send.isPending} onClick={() => fileRef.current?.click()} data-testid="button-journey-import">
+            <Upload className="h-3.5 w-3.5" /> {send.isPending ? "Importing…" : "Import CSV"}
+          </Button>
+          <CsvFormatHint
+            required={["Email"]}
+            optional={["Name", "any other columns are ignored"]}
+            example={["Name,Email", "Fashion Week Brooklyn,media@fashionweekbrooklyn.com"]}
+            note="Up to 5,000 rows per file."
+            testId="button-journey-csv-hint"
+          />
+        </div>
+      </div>
+      {result && (
+        <div className="rounded-lg bg-muted/50 p-3 text-sm space-y-1" data-testid="journey-import-result">
+          <p className="font-medium">{result.file}: {result.total} {result.total === 1 ? "email" : "emails"}</p>
+          <p><span className="font-medium tabular-nums">{result.joined}</span> joined {journey.name}{result.alreadyIn ? `, ${result.alreadyIn} already in it` : ""}{result.team ? `, ${result.team} team ${result.team === 1 ? "account" : "accounts"} left out` : ""}.</p>
+          {result.noAccount > 0 && (
+            <>
+              <p className="text-muted-foreground">
+                {result.noAccount} {result.noAccount === 1 ? "has" : "have"} no MTRLZD account yet, so {result.noAccount === 1 ? "isn't" : "aren't"} emailed by the journey:
+              </p>
+              <p className="text-xs text-muted-foreground break-words">{result.noAccountSample.join(", ")}{result.noAccount > result.noAccountSample.length ? ` and ${result.noAccount - result.noAccountSample.length} more` : ""}</p>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }

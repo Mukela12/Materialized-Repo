@@ -133,7 +133,7 @@ async function emailTokenFor(userId: string): Promise<string> {
 interface Candidate {
   user_id: string; email: string; display_name: string | null; role: string; created_at: string;
   free_access_until: string | null; company: string | null; last_sent: string | null;
-  from_name: string | null; reply_to: string | null; plan_started_at: string | null;
+  from_name: string | null; reply_to: string | null; plan_started_at: string | null; journey_started_at: string | null;
 }
 
 /**
@@ -153,6 +153,7 @@ export async function runJourneys(opts: {
       (select b.name from brands b where b.owner_id = u.id order by b.name limit 1) as company,
       (select max(s.at) from email_journey_sends s where s.user_id = u.id and s.status = 'sent') as last_sent,
       e.segment, j.from_name, j.reply_to,
+      greatest(u.created_at, e.enrolled_at, j.enabled_at) as journey_started_at,
       (select s.subscribed_at from brand_subscriptions s where s.user_id = u.id and s.status in ('active', 'trialing') limit 1) as plan_started_at
     from email_journey_enrollments e
     join users u on u.id = e.user_id
@@ -175,6 +176,7 @@ export async function runJourneys(opts: {
       createdAt: new Date(p.created_at),
       freeAccessUntil: p.free_access_until ? new Date(p.free_access_until) : null,
       lastSeenAt: f.lastSeenAt,
+      journeyStartedAt: p.journey_started_at ? new Date(p.journey_started_at) : null,
       planTrialEndsAt: p.plan_started_at ? new Date(new Date(p.plan_started_at).getTime() + PLAN_TRIAL_DAYS * 86_400_000) : null,
     };
     const recent = p.last_sent && now.getTime() - new Date(p.last_sent).getTime() < MIN_GAP_HOURS * 3_600_000;
@@ -351,3 +353,54 @@ export async function setOptOut(token: string, out: boolean): Promise<boolean> {
   return (r.rowCount ?? 0) > 0;
 }
 
+
+/** The value that keeps someone out of every journey, chosen by an admin. */
+export const NO_JOURNEY = "none";
+
+/**
+ * Put one person in a journey by hand, or take them out of all of them
+ * (client, 27 Oct 2026: Fashion Week Brooklyn "should be in the fashion week
+ * list"). Sticks: automatic enrolment never overrides an admin's choice.
+ */
+export async function setPersonJourney(userId: string, segment: string | null): Promise<"ok" | "no_user" | "no_journey"> {
+  if (segment && !(await db.execute(sql`select 1 from email_journeys where segment = ${segment}`)).rows.length) return "no_journey";
+  const u = await db.execute(sql`update users set journey_segment = ${segment ?? NO_JOURNEY} where id = ${userId} returning id`);
+  if (!u.rows.length) return "no_user";
+  if (segment) {
+    await db.execute(sql`
+      insert into email_journey_enrollments (user_id, segment) values (${userId}, ${segment})
+      on conflict (user_id) do update set segment = excluded.segment,
+        enrolled_at = case when email_journey_enrollments.segment = excluded.segment then email_journey_enrollments.enrolled_at else now() end`);
+  } else {
+    await db.execute(sql`delete from email_journey_enrollments where user_id = ${userId}`);
+  }
+  return "ok";
+}
+
+/**
+ * A segmented list (the client's CSVs: fashion weeks, film festivals, brands,
+ * agencies...) into one journey. Everyone on it with an MTRLZD account joins
+ * the journey; the rest are counted, since journeys only email accounts.
+ */
+export async function importJourneyList(segment: string, emails: string[]): Promise<
+  { error: string } | { joined: number; alreadyIn: number; team: number; noAccount: number; noAccountSample: string[] }
+> {
+  if (!(await db.execute(sql`select 1 from email_journeys where segment = ${segment}`)).rows.length) return { error: "No such journey." };
+  const want = Array.from(new Set(emails.map((e) => e.trim().toLowerCase()).filter((e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e))));
+  if (want.length === 0) return { error: "No email addresses in that file." };
+  const found = rows<{ id: string; email: string; segment: string | null; is_admin: boolean }>(await db.execute(sql`
+    select u.id, lower(u.email) as email, e.segment, coalesce(u.is_admin, false) as is_admin from users u
+    left join email_journey_enrollments e on e.user_id = u.id
+    where lower(u.email) in (${sql.join(want.map((e) => sql`${e}`), sql`, `)})`));
+  let joined = 0, alreadyIn = 0, team = 0;
+  for (const f of found) {
+    // The team's own accounts are never put in a journey.
+    if (f.is_admin) { team++; continue; }
+    if (f.segment === segment) { alreadyIn++; continue; }
+    await setPersonJourney(f.id, segment);
+    joined++;
+  }
+  const have = new Set(found.map((f) => f.email));
+  const missing = want.filter((e) => !have.has(e));
+  return { joined, alreadyIn, team, noAccount: missing.length, noAccountSample: missing.slice(0, 50) };
+}

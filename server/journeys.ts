@@ -83,6 +83,12 @@ export interface Step {
 
 export interface PersonClock {
   createdAt: Date; freeAccessUntil: Date | null; lastSeenAt?: Date | null;
+  /**
+   * When their journey started: they joined it, and it was on. An account put
+   * into a journey by hand weeks after signing up starts from day 0 then,
+   * rather than finding every early email already too late.
+   */
+  journeyStartedAt?: Date | null;
   /** When the trial on their paid plan ends, if they have started one (the 30-day Stripe trial). */
   planTrialEndsAt?: Date | null;
 }
@@ -97,7 +103,7 @@ export const REPEAT_GAP_DAYS = 7;
 export function dueAt(step: Pick<Step, "anchor" | "day">, p: PersonClock): Date {
   const base = step.anchor === "trial_end"
     ? (p.planTrialEndsAt ?? p.freeAccessUntil ?? new Date(p.createdAt.getTime() + 30 * DAY))
-    : p.createdAt;
+    : (p.journeyStartedAt ?? p.createdAt);
   return new Date(base.getTime() + step.day * DAY);
 }
 

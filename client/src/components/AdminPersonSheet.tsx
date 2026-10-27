@@ -5,7 +5,10 @@
  * then the detail: videos, recent pages, the onboarding emails they've had.
  * Fed by server/activity.ts personReport.
  */
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { apiRequest, serverMessage } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { format, formatDistanceToNow } from "date-fns";
 import { Area, AreaChart, Bar, BarChart, ResponsiveContainer, Tooltip, XAxis } from "recharts";
 import { Mail, RefreshCw } from "lucide-react";
@@ -18,6 +21,8 @@ interface PersonReport {
     last_login_at: string | null; last_seen_at: string | null; login_count: number; free_access_until: string | null;
     email_opt_out_at: string | null; source: string; subscribed_at: string | null; plan: string | null;
     brand_name: string | null; journey: string | null;
+    /** An admin's choice: a journey, or "none" for none at all. Null: automatic. */
+    journey_segment: string | null; is_admin: boolean;
   };
   totals: {
     videos: number; views: number; clicks: number; revenue: number; brands_tagged: number; page_views: number;
@@ -94,6 +99,20 @@ export function PersonSheet({ userId, onClose }: { userId: string; onClose: () =
   });
   const p = data?.person;
   const t = data?.totals;
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const { data: journeys } = useQuery<{ journeys: { segment: string; name: string; enabled_at: string | null }[] }>({ queryKey: ["/api/admin/journeys"] });
+  const setJourney = useMutation({
+    mutationFn: async (segment: string | null) => (await apiRequest("PUT", `/api/admin/users/${userId}/journey`, { segment })).json(),
+    onSuccess: (_r, segment) => {
+      qc.invalidateQueries({ queryKey: ["/api/admin/activity/people", userId] });
+      qc.invalidateQueries({ queryKey: ["/api/admin/journeys"] });
+      const j = journeys?.journeys.find((x) => x.segment === segment);
+      toast({ title: segment ? `Added to ${j?.name ?? segment}` : "Taken out of the journeys" });
+    },
+    onError: (err) => toast({ title: "Couldn't change the journey", description: serverMessage(err) || "Please try again.", variant: "destructive" }),
+  });
+  const current = journeys?.journeys.find((j) => j.segment === p?.journey);
   const sum = (k: "views" | "clicks" | "visits") => (data?.daily ?? []).reduce((n, d) => n + d[k], 0);
 
   return (
@@ -184,8 +203,29 @@ export function PersonSheet({ userId, onClose }: { userId: string; onClose: () =
               <section>
                 <h3 className="text-sm font-semibold mb-2 flex items-center gap-1.5"><Mail className="h-3.5 w-3.5" /> Onboarding emails</h3>
                 {p.email_opt_out_at && <p className="text-xs text-amber-600 mb-1.5">Unsubscribed from these emails.</p>}
+                {!p.is_admin && (
+                  <div className="mb-2 flex flex-wrap items-center gap-2" data-testid="person-journey">
+                    <Select
+                      value={p.journey ?? "none"}
+                      onValueChange={(v) => setJourney.mutate(v === "none" ? null : v)}
+                      disabled={setJourney.isPending || !journeys}
+                    >
+                      <SelectTrigger className="h-8 w-56 text-xs" data-testid="select-person-journey"><SelectValue placeholder="Journey" /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Not in a journey</SelectItem>
+                        {(journeys?.journeys ?? []).map((j) => (
+                          <SelectItem key={j.segment} value={j.segment}>{j.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {current && !current.enabled_at && (
+                      <span className="text-[11px] text-muted-foreground">Starts when {current.name} is switched on</span>
+                    )}
+                  </div>
+                )}
                 {data!.emails.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">{p.journey ? "None sent yet." : "Not in a journey."}</p>
+                  p.journey ? <p className="text-sm text-muted-foreground">None sent yet.</p>
+                    : p.is_admin ? <p className="text-sm text-muted-foreground">Team accounts don't get these.</p> : null
                 ) : (
                   <ul className="space-y-1">
                     {data!.emails.map((e, i) => (

@@ -148,12 +148,16 @@ export async function activityReport(days: number) {
 
   const people = (await db.execute(sql`
     select u.id, u.email, u.display_name, u.role, u.created_at, u.last_login_at, u.last_seen_at, u.login_count,
+      coalesce(u.is_admin, false) as is_admin,
+      (select count(*) from videos v where v.creator_id = u.id)::int as videos,
       (select e.path from activity_events e where e.user_id = u.id and e.type = 'page_view' order by e.at desc limit 1) as last_page,
       (select coalesce(nullif(v.partner, ''), v.label) from voucher_redemptions r join vouchers v on v.id = r.voucher_id where r.user_id = u.id limit 1) as via_code,
       ${sourceOf} as source,
       ${subscribedAtOf} as subscribed_at
+    -- The team's own accounts are listed too, marked, so they can find their
+    -- own videos and visits (client, 27 Oct 2026); every total above still
+    -- leaves them out.
     from users u
-    where not u.is_admin
     order by coalesce(u.last_seen_at, u.created_at) desc nulls last
     limit 200`)).rows;
 
@@ -171,8 +175,9 @@ export async function personReport(userId: string) {
       u.free_access_until, u.email_opt_out_at, ${sourceOf} as source, ${subscribedAtOf} as subscribed_at,
       (select s.plan from brand_subscriptions s where s.user_id = u.id and s.status in ('active', 'trialing') limit 1) as plan,
       (select b.name from brands b where b.owner_id = u.id order by b.name limit 1) as brand_name,
-      (select e.segment from email_journey_enrollments e where e.user_id = u.id) as journey
-    from users u where u.id = ${userId} and not coalesce(u.is_admin, false)`)).rows[0];
+      (select e.segment from email_journey_enrollments e where e.user_id = u.id) as journey,
+      u.journey_segment, coalesce(u.is_admin, false) as is_admin
+    from users u where u.id = ${userId}`)).rows[0];
   if (!person) return null;
 
   const totals = (await db.execute(sql`
