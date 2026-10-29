@@ -13,6 +13,7 @@
 export const COMPANY = {
   legalName: "ONE30M LLC",
   registeredAddress: "101 Greenpoint Avenue, Brooklyn, NY 11222, United States",
-  contactEmail: "contact@one30m.co",
+  // The company's own mailbox from 29 Oct 2026 (client); was contact@one30m.co.
+  contactEmail: "contact@mtrlzd.com",
   governingLaw: "the State of New York, United States",
 } as const;
