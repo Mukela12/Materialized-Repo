@@ -22,7 +22,7 @@ import {
 import { useLogout } from "@/hooks/useCurrentUser";
 import { useMailboxUnreadCount } from "@/hooks/useMailbox";
 import { useProgram } from "@/hooks/useProgram";
-import { Send as SendIcon } from "lucide-react";
+import { Send as SendIcon, Receipt as ReceiptIcon } from "lucide-react";
 import { useTokenBalance, tokenLabel } from "@/hooks/useWallet";
 import {
   Sidebar,
@@ -105,7 +105,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
   // Program invites: shown only to accounts an admin switched on.
   const { data: program } = useProgram();
   const contentNav = program?.enabled
-    ? [...contentItems, { path: "/creator/invites", label: "Invite your network", icon: SendIcon }]
+    ? [...contentItems, { path: "/creator/invites", label: "Invite your network", icon: SendIcon }, ...(program.partner ? [{ path: "/creator/partner-sales", label: "Partner sales", icon: ReceiptIcon }] : [])]
     : contentItems;
   const { balance: tokenBalance } = useTokenBalance();
 

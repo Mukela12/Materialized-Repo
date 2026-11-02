@@ -18,7 +18,9 @@ import {
   KeyRound,
   LogOut,
   ChevronRight,
+  Send,
 } from "lucide-react";
+import { useProgram, programInvitesPath, partnerSalesPath } from "@/hooks/useProgram";
 
 // ─── Role-based menu sections ─────────────────────────────────────────────────
 function buildSections(role: string) {
@@ -108,6 +110,14 @@ export default function More() {
   const displayName = user?.displayName || (role === "creator" ? "Demo Creator" : "Demo Brand");
   const username    = user?.username    || `${role}-account`;
   const initials    = getInitials(displayName);
+  // Partners: phones have no sidebar, so their invite and sales pages live here.
+  const { data: program } = useProgram();
+  const partnerSection = program?.enabled
+    ? [
+        { label: "Invite your network", icon: Send, path: programInvitesPath(role) },
+        ...(program.partner ? [{ label: "Partner sales", icon: Receipt, path: partnerSalesPath(role) }] : []),
+      ]
+    : [];
 
   return (
     <div className="space-y-6 pb-24 md:pb-6 max-w-2xl">
@@ -177,6 +187,28 @@ export default function More() {
           ))}
         </CardContent>
       </Card>
+
+      {partnerSection.length > 0 && (
+        <Card>
+          <CardHeader className="px-4 pt-4 pb-1">
+            <CardTitle className="text-xs uppercase tracking-widest text-muted-foreground font-semibold">
+              Partner
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-0 pb-1">
+            {partnerSection.map((item, i) => (
+              <MenuRow
+                key={item.path}
+                label={item.label}
+                icon={item.icon}
+                path={item.path}
+                testId={`link-partner-${item.label.toLowerCase().replace(/\s+/g, "-")}`}
+                last={i === partnerSection.length - 1}
+              />
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
       {/* ── Billing & Subscription section ── */}
       <Card>

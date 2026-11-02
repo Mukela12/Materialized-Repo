@@ -31,7 +31,7 @@ import { Badge } from "@/components/ui/badge";
 import { useLogout } from "@/hooks/useCurrentUser";
 import { useMailboxUnreadCount } from "@/hooks/useMailbox";
 import { useProgram } from "@/hooks/useProgram";
-import { Send as SendIcon } from "lucide-react";
+import { Send as SendIcon, Receipt as ReceiptIcon } from "lucide-react";
 
 type User = {
   id?: string;
@@ -109,7 +109,7 @@ export function AffiliateAppSidebar({ user }: AffiliateAppSidebarProps) {
   // publishers means event producers inviting their designers and influencers.
   const { data: program } = useProgram();
   const menuItems = program?.enabled
-    ? [...affiliateMenuItems.slice(0, 1), { title: "Invite your network", url: "/affiliate/invites", icon: SendIcon }, ...affiliateMenuItems.slice(1)]
+    ? [...affiliateMenuItems.slice(0, 1), { title: "Invite your network", url: "/affiliate/invites", icon: SendIcon }, ...(program.partner ? [{ title: "Partner sales", url: "/affiliate/partner-sales", icon: ReceiptIcon }] : []), ...affiliateMenuItems.slice(1)]
     : affiliateMenuItems;
 
   return (

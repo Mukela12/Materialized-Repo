@@ -20,7 +20,7 @@ import {
 import { useLogout } from "@/hooks/useCurrentUser";
 import { useMailboxUnreadCount } from "@/hooks/useMailbox";
 import { useProgram } from "@/hooks/useProgram";
-import { Send as SendIcon } from "lucide-react";
+import { Send as SendIcon, Receipt as ReceiptIcon } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -88,7 +88,7 @@ export function BrandAppSidebar({ user }: BrandAppSidebarProps) {
   // Program invites: shown only to accounts an admin switched on.
   const { data: program } = useProgram();
   const creatorsNav = program?.enabled
-    ? [...creatorsItems, { path: "/brand/invites", label: "Invite your network", icon: SendIcon }]
+    ? [...creatorsItems, { path: "/brand/invites", label: "Invite your network", icon: SendIcon }, ...(program.partner ? [{ path: "/brand/partner-sales", label: "Partner sales", icon: ReceiptIcon }] : [])]
     : creatorsItems;
 
   const [menuQuery, setMenuQuery] = useState("");

@@ -2476,6 +2476,8 @@ export async function registerRoutes(
     };
     res.json({
       enabled: true, programName: ctx.sender.programName, senderName: ctx.senderName,
+      // Has a partner commission deal, so the Partner sales page applies.
+      partner: ctx.sender.commissionPct != null,
       seats: { brand: seat("brand"), creator: seat("creator"), publisher: seat("publisher") },
       defaultSubject: DEFAULT_SUBJECT, defaultMessage: DEFAULT_MESSAGE, maxRecipients: MAX_RECIPIENTS,
       emailReady: isEmailConfigured(),
@@ -2587,6 +2589,23 @@ export async function registerRoutes(
     } catch (err) {
       console.error("[ProgramInvites] send failed:", err);
       res.status(500).json({ error: "Couldn't send the invites" });
+    }
+  });
+
+  /** A partner's sales and referrals (server/partnerSales.ts). Their own rows only. */
+  app.get("/api/program/sales", async (req, res) => {
+    const userId = (req.session as any)?.userId;
+    if (!userId) return res.status(401).json({ error: "Authentication required" });
+    try {
+      const { getSender } = await import("./programSenders");
+      if (!(await getSender(userId))) return res.status(403).json({ error: "This page is for MTRLZD partners" });
+      const { partnerSalesReport } = await import("./partnerSales");
+      const { resolveFeeConfig } = await import("./feeConfig");
+      const fee = resolveFeeConfig(await storage.getPlatformSettings()).marketplaceFeePct;
+      res.json(await partnerSalesReport(userId, fee));
+    } catch (err) {
+      console.error("[PartnerSales] load failed:", err);
+      res.status(500).json({ error: "Couldn't load your sales" });
     }
   });
 
