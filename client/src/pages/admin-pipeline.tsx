@@ -695,7 +695,12 @@ interface AdminCommission {
   commissionAmount: string;
   status: string;
   createdAt: string | null;
+  /** Which share of the sale (migration 0048): creator, publisher or partner. Null on older rows. */
+  kind?: string | null;
 }
+
+/** "Creator", "Publisher", "Partner"; older rows don't say. */
+const KIND_LABEL: Record<string, string> = { creator: "Creator", publisher: "Publisher", partner: "Partner" };
 
 interface AdminPayout {
   id: string;
@@ -1065,6 +1070,7 @@ function MoneyCommissions() {
       { header: "Sale Amount", value: (c) => c.saleAmount },
       { header: "Commission Rate", value: (c) => c.commissionRate },
       { header: "Commission Amount", value: (c) => c.commissionAmount },
+      { header: "Share", value: (c) => (c.kind ? KIND_LABEL[c.kind] ?? c.kind : "") },
       { header: "Status", value: (c) => c.status },
       { header: "Created At", value: (c) => c.createdAt },
     ]);
@@ -1107,6 +1113,7 @@ function MoneyCommissions() {
             <thead>
               <tr className="border-b text-left">
                 <SortTh label="Affiliate" sortKey="affiliate" activeKey={sortKey} dir={sortDir} onSort={toggleSort} />
+                <th className="p-3 font-medium">Share</th>
                 <SortTh label="Sale" sortKey="saleAmount" activeKey={sortKey} dir={sortDir} onSort={toggleSort} />
                 <SortTh label="Rate" sortKey="commissionRate" activeKey={sortKey} dir={sortDir} onSort={toggleSort} />
                 <SortTh label="Commission" sortKey="commissionAmount" activeKey={sortKey} dir={sortDir} onSort={toggleSort} />
@@ -1120,6 +1127,9 @@ function MoneyCommissions() {
                   <td className="p-3">
                     <div className="font-medium">{c.affiliateName}</div>
                     <div className="text-xs text-muted-foreground">{c.affiliateEmail}</div>
+                  </td>
+                  <td className="p-3">
+                    {c.kind ? <Badge variant="outline" className="font-normal" data-testid={`commission-kind-${c.id}`}>{KIND_LABEL[c.kind] ?? c.kind}</Badge> : <span className="text-muted-foreground">-</span>}
                   </td>
                   <td className="p-3">{money(c.saleAmount)}</td>
                   <td className="p-3 text-muted-foreground">{Number(c.commissionRate).toFixed(2)}%</td>
