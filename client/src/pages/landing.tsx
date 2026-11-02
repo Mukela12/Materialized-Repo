@@ -1399,12 +1399,33 @@ export default function Landing() {
           transition={{ duration: 0.9 }}
           className="relative z-10 flex flex-col justify-end min-h-screen px-6 sm:px-10 pb-20 pt-24"
         >
-          <p className="text-[#6b8fd6] text-xs font-semibold tracking-[0.25em] uppercase mb-4">
+          {/* A soft shade behind the text, so it reads over any frame of the video. */}
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-x-0 bottom-0 -z-10 h-[75%]"
+            style={{ background: "radial-gradient(120% 90% at 0% 100%, rgba(0,0,0,0.68) 0%, rgba(0,0,0,0.4) 45%, rgba(0,0,0,0) 78%)" }}
+          />
+          <p
+            className="mb-4 text-[11px] sm:text-xs font-semibold uppercase tracking-[0.2em] sm:tracking-[0.25em] text-[#a9c1f2]"
+            style={{ textShadow: "0 1px 10px rgba(0,0,0,0.55)" }}
+            data-testid="text-hero-kicker"
+          >
             Shoppable Creator Content
           </p>
-          <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-7xl font-bold text-white leading-tight mb-6 max-w-2xl">
-            Turn Video<br />Into Revenue
+          <h1
+            className="mb-4 max-w-3xl text-[2.75rem] sm:text-6xl lg:text-7xl xl:text-[5.25rem] font-bold leading-[0.98] tracking-[-0.025em] text-white"
+            style={{ textShadow: "0 2px 24px rgba(0,0,0,0.35)" }}
+          >
+            Turn Video<br />
+            <span className="bg-gradient-to-r from-white via-white to-[#b9cdf5] bg-clip-text text-transparent" style={{ textShadow: "none" }}>Into Revenue</span>
           </h1>
+          <p
+            className="mb-7 max-w-[34ch] text-base sm:text-lg leading-relaxed text-white/80 [@media(max-height:700px)]:hidden"
+            style={{ textShadow: "0 1px 12px rgba(0,0,0,0.45)" }}
+            data-testid="text-hero-subline"
+          >
+            Tag the products in your videos so viewers can shop them while they watch.
+          </p>
           <motion.div
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.97 }}

@@ -178,7 +178,7 @@ export function AppSidebar({ user }: AppSidebarProps) {
         <div className="flex items-center gap-3 p-3 rounded-xl bg-sidebar-accent/50 group-data-[collapsible=icon]:p-0 group-data-[collapsible=icon]:bg-transparent group-data-[collapsible=icon]:justify-center">
           <Avatar className="h-10 w-10 group-data-[collapsible=icon]:h-8 group-data-[collapsible=icon]:w-8">
             <AvatarImage src={user?.avatarUrl} />
-            <AvatarFallback className="bg-primary/20 text-primary">
+            <AvatarFallback className="bg-primary/20 text-primary dark:text-[hsl(215_80%_72%)]">
               {user?.displayName?.charAt(0) || "C"}
             </AvatarFallback>
           </Avatar>

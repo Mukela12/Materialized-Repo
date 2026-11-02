@@ -141,7 +141,7 @@ export function BrandAppSidebar({ user }: BrandAppSidebarProps) {
         <div className="flex items-center gap-3 p-3 rounded-xl bg-sidebar-accent/50 group-data-[collapsible=icon]:p-0 group-data-[collapsible=icon]:bg-transparent group-data-[collapsible=icon]:justify-center">
           <Avatar className="h-9 w-9 shrink-0 group-data-[collapsible=icon]:h-8 group-data-[collapsible=icon]:w-8">
             <AvatarImage src={user?.avatarUrl} />
-            <AvatarFallback className="bg-primary/20 text-primary text-sm">
+            <AvatarFallback className="bg-primary/20 text-primary dark:text-[hsl(215_80%_72%)] text-sm">
               {user?.displayName?.charAt(0) || "B"}
             </AvatarFallback>
           </Avatar>
@@ -153,7 +153,7 @@ export function BrandAppSidebar({ user }: BrandAppSidebarProps) {
               {user?.email || user?.username || ""}
             </p>
           </div>
-          <Badge className="shrink-0 bg-chart-2 hover:bg-chart-2/90 text-[10px] px-2 py-0.5 group-data-[collapsible=icon]:hidden">
+          <Badge className="shrink-0 px-2 py-0 text-[10.5px] font-semibold group-data-[collapsible=icon]:hidden" data-testid="badge-sidebar-role">
             Brand
           </Badge>
         </div>

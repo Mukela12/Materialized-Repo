@@ -252,7 +252,7 @@ export default function BrandCreators() {
       case "sent":
         return <Badge variant="outline" className="gap-1 border-blue-500 text-blue-600 dark:text-blue-400"><Send className="h-3 w-3" /> Sent</Badge>;
       case "accepted":
-        return <Badge className="gap-1 bg-green-500 dark:bg-green-600"><CheckCircle className="h-3 w-3" /> Accepted</Badge>;
+        return <Badge className="gap-1 border-green-600/25 bg-green-500/10 text-green-700 dark:border-green-400/30 dark:text-green-400"><CheckCircle className="h-3 w-3" /> Accepted</Badge>;
       case "declined":
         return <Badge variant="destructive" className="gap-1"><XCircle className="h-3 w-3" /> Declined</Badge>;
       default:
