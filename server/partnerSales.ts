@@ -11,6 +11,7 @@
 import { sql } from "drizzle-orm";
 import { db } from "./db";
 import { activeDealPct, partnerReferralDays } from "./partners";
+import { commissionHoldDays, payableFrom } from "./commissionHold";
 
 const DAY = 86_400_000;
 
@@ -32,6 +33,8 @@ export interface PartnerSale {
   youPct: number;
   mtrlzdCents: number;
   status: string;
+  /** While pending: when the 30-day hold ends and it can be paid. */
+  payableAt: string | null;
 }
 
 export interface PartnerReferral {
@@ -48,8 +51,9 @@ export interface PartnerReferral {
 }
 
 export interface PartnerSalesReport {
-  deal: { pct: number | null; until: string | null; accountActive: boolean; referralDays: number };
-  totals: { sales: number; saleCents: number; youCents: number; pendingCents: number; paidCents: number };
+  deal: { pct: number | null; until: string | null; accountActive: boolean; referralDays: number; holdDays: number };
+  /** pendingCents: upcoming payouts, held or approved and not yet paid. */
+  totals: { sales: number; saleCents: number; youCents: number; pendingCents: number; paidCents: number; nextPayableAt: string | null };
   sales: PartnerSale[];
   referrals: PartnerReferral[];
 }
@@ -91,6 +95,7 @@ export function shapeSale(r: {
     youPct: Number(r.commission_rate ?? 0),
     mtrlzdCents: feeCents - creatorCents - publisherCents - otherPartnersCents - youCents,
     status: r.status ?? "pending",
+    payableAt: (r.status ?? "pending") === "pending" ? payableFrom(r.created_at as string).toISOString() : null,
   };
 }
 
@@ -122,14 +127,16 @@ export function totalsOf(sales: PartnerSale[]): PartnerSalesReport["totals"] {
     youCents: live.reduce((n, s) => n + s.youCents, 0),
     pendingCents: live.filter((s) => s.status === "pending" || s.status === "approved").reduce((n, s) => n + s.youCents, 0),
     paidCents: live.filter((s) => s.status === "paid").reduce((n, s) => n + s.youCents, 0),
+    nextPayableAt: live.map((s) => s.payableAt).filter((d): d is string => !!d).sort()[0] ?? null,
   };
 }
 
 /**
  * Everyone credited to this partner, the same way server/partners.ts credits
  * a sale: the first code each account joined with, named to the partner or
- * from one of its program invites, plus creators who joined on the invite of
- * a brand the partner brought in (counted from that brand).
+ * from one of its program invites or its own brand's invites, plus creators
+ * who joined on the invite of a brand the partner brought in (counted from
+ * that brand).
  */
 async function referralRows(partnerId: string) {
   const r = await db.execute(sql`
@@ -143,6 +150,7 @@ async function referralRows(partnerId: string) {
       where f.user_id <> ${partnerId} and (
         f.referrer_user_id = ${partnerId}
         or (f.referrer_user_id is null and (f.batch_id = ${"program:" + partnerId} or f.batch_id like ${"program:" + partnerId + ":%"}))
+        or (f.referrer_user_id is null and f.batch_id in (select 'invite:' || b.id from brands b where b.owner_id = ${partnerId}))
       )
     ),
     via as (
@@ -224,6 +232,7 @@ export async function partnerSalesReport(partnerId: string, feePct: number, now 
       until: dealRow?.commission_until ? iso(dealRow.commission_until) : null,
       accountActive: !!dealRow?.active,
       referralDays: partnerReferralDays(),
+      holdDays: commissionHoldDays(),
     },
     totals: totalsOf(sales),
     sales,

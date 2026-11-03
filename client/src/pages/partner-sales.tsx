@@ -12,20 +12,21 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { exportToCsv } from "@/lib/exportCsv";
 import { cn } from "@/lib/utils";
+import { MIN_PAYOUT_DISPLAY } from "@shared/pricing";
 
 interface Sale {
   id: string; at: string; video: string; product: string | null; brand: string | null; creator: string | null;
   through: "brand" | "creator" | "both" | null;
   saleCents: number; brandCents: number; creatorCents: number; publisherCents: number; otherPartnersCents: number;
-  youCents: number; youPct: number; mtrlzdCents: number; status: string;
+  youCents: number; youPct: number; mtrlzdCents: number; status: string; payableAt: string | null;
 }
 interface Referral {
   userId: string; name: string; role: "brand" | "creator" | "publisher";
   joinedAt: string; countsFrom: string; earnsUntil: string; viaBrand: string | null; earning: boolean;
 }
 interface Report {
-  deal: { pct: number | null; until: string | null; accountActive: boolean; referralDays: number };
-  totals: { sales: number; saleCents: number; youCents: number; pendingCents: number; paidCents: number };
+  deal: { pct: number | null; until: string | null; accountActive: boolean; referralDays: number; holdDays: number };
+  totals: { sales: number; saleCents: number; youCents: number; pendingCents: number; paidCents: number; nextPayableAt: string | null };
   sales: Sale[];
   referrals: Referral[];
 }
@@ -35,7 +36,11 @@ const day = (s: string) => new Date(s).toLocaleDateString(undefined, { day: "num
 const dayTime = (s: string) => new Date(s).toLocaleString(undefined, { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 const ROLE: Record<Referral["role"], string> = { brand: "Brand", creator: "Creator", publisher: "Publisher" };
 const THROUGH: Record<NonNullable<Sale["through"]>, string> = { brand: "Your brand", creator: "Your creator", both: "Your brand and creator" };
-const STATUS: Record<string, string> = { pending: "Pending", approved: "Approved", paid: "Paid", reversed: "Refunded", rejected: "Rejected" };
+const STATUS: Record<string, string> = { pending: "Held", approved: "Next payout", paid: "Paid", reversed: "Refunded", rejected: "Rejected" };
+const shortDay = (s: string) => new Date(s).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+/** Held sales show the day they become payable. */
+const statusLabel = (s: Pick<Sale, "status" | "payableAt">) =>
+  s.status === "pending" && s.payableAt ? `Payable ${shortDay(s.payableAt)}` : STATUS[s.status] ?? s.status;
 const counted = (s: Sale) => s.status !== "reversed" && s.status !== "rejected";
 
 export default function PartnerSales() {
@@ -76,6 +81,7 @@ export default function PartnerSales() {
       { header: "Your share", value: (s) => (s.youCents / 100).toFixed(2) },
       { header: "MTRLZD share", value: (s) => (s.mtrlzdCents / 100).toFixed(2) },
       { header: "Status", value: (s) => STATUS[s.status] ?? s.status },
+      { header: "Payable from (UTC)", value: (s) => s.payableAt ?? "" },
     ]);
 
   return (
@@ -98,9 +104,15 @@ export default function PartnerSales() {
       )}
 
       {/* Display-only numbers: side by side at every width, compact on a phone. */}
-      <div className="grid grid-cols-3 gap-2 sm:gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
         <Tile label="Sales" value={String(totals.sales)} sub={money(totals.saleCents)} testid="tile-sales" />
         <Tile label="Earned" value={money(totals.youCents)} sub={`${money(totals.paidCents)} paid`} testid="tile-earned" />
+        <Tile
+          label="Upcoming payouts"
+          value={money(totals.pendingCents)}
+          sub={totals.nextPayableAt ? `Next payable ${shortDay(totals.nextPayableAt)}` : `Held ${deal.holdDays} days, then paid`}
+          testid="tile-upcoming"
+        />
         <Tile label="Referrals" value={String(referrals.length)} sub={`${earningNow} earning now`} testid="tile-referrals" />
       </div>
 
@@ -132,7 +144,7 @@ export default function PartnerSales() {
                         <p className="text-xs text-muted-foreground truncate">{[s.brand, s.creator].filter(Boolean).join(" · ")}</p>
                         <p className="text-xs text-muted-foreground">{dayTime(s.at)}</p>
                       </div>
-                      <StatusBadge status={s.status} />
+                      <StatusBadge sale={s} />
                     </div>
                     <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1 text-sm tabular-nums">
                       <dt className="text-muted-foreground">Sale</dt><dd className="text-right font-medium">{money(s.saleCents)}</dd>
@@ -181,7 +193,7 @@ export default function PartnerSales() {
                         {anyOtherPartners && <td className="px-4 py-3 text-right">{money(s.otherPartnersCents)}</td>}
                         <td className="px-4 py-3 text-right font-semibold whitespace-nowrap">{money(s.youCents)} <span className="text-xs font-normal text-muted-foreground">{s.youPct}%</span></td>
                         <td className="px-4 py-3 text-right">{money(s.mtrlzdCents)}</td>
-                        <td className="px-4 py-3"><StatusBadge status={s.status} /></td>
+                        <td className="px-4 py-3"><StatusBadge sale={s} /></td>
                       </tr>
                     ))}
                   </tbody>
@@ -189,6 +201,7 @@ export default function PartnerSales() {
               </div>
               <p className="mt-3 text-xs text-muted-foreground">
                 The brand always keeps 85%. Creator, publisher and your share come out of MTRLZD's 15%, and Stripe's card fee is paid from MTRLZD's part. Refunded sales are shown faded and not counted.
+                Your share of each sale is held for {deal.holdDays} days, so a refund in that time isn't paid out, then paid by Stripe on the next Monday. The minimum transfer is {MIN_PAYOUT_DISPLAY}; a smaller balance carries over.
               </p>
             </>
           )}
@@ -231,8 +244,8 @@ function Tile({ label, value, sub, testid }: { label: string; value: string; sub
   );
 }
 
-function StatusBadge({ status }: { status: string }) {
-  return <Badge variant={status === "paid" ? "default" : "outline"} className="font-normal shrink-0">{STATUS[status] ?? status}</Badge>;
+function StatusBadge({ sale }: { sale: Pick<Sale, "status" | "payableAt"> }) {
+  return <Badge variant={sale.status === "paid" ? "default" : "outline"} className="font-normal shrink-0 whitespace-nowrap">{statusLabel(sale)}</Badge>;
 }
 
 function Empty({ icon: Icon, text }: { icon: typeof Receipt; text: string }) {

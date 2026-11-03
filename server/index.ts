@@ -13,7 +13,7 @@ import { getUncachableStripeClient } from "./stripeClient";
 import { dispatchStripeEvent } from "./webhookHandlers";
 import Stripe from 'stripe';
 import { Scheduler } from "./scheduler";
-import { makePayoutJob, makeFeeInvoiceJob, makeOverageJob, makeRetentionJob, makeCertWatchJob, makeTrialFollowupJob, probeCertificate, schedulerEnabled } from "./scheduledJobs";
+import { makeCommissionHoldJob, makePayoutJob, makeFeeInvoiceJob, makeOverageJob, makeRetentionJob, makeCertWatchJob, makeTrialFollowupJob, probeCertificate, schedulerEnabled } from "./scheduledJobs";
 
 import { mediaHost } from "./retentionHost";
 import { stripeService } from "./stripeService";
@@ -509,6 +509,7 @@ function startScheduler() {
   }
   try {
     const scheduler = new Scheduler(storage, [
+      makeCommissionHoldJob(async (now) => (await import("./commissionHold")).approveHeldCommissions(now)),
       makePayoutJob({ runPayouts }),
       makeFeeInvoiceJob(storage as any, feeInvoiceStripeAdapter),
       // Records always; bills only plans whose billing_enabled says so. With no

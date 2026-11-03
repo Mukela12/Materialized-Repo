@@ -7,7 +7,10 @@
  *   - a creator's partner is whoever is credited on the code they joined with
  *     (an Advisor's own named code, or a partner's program invite);
  *   - a creator who joined on a BRAND's invite is credited to whoever brought
- *     that brand in ("the 10 creators per brand"), one level deep;
+ *     that brand in ("the 10 creators per brand"), one level deep; when the
+ *     brand's owner is a partner themselves (an agency on a Brand account
+ *     sending its own Creator Passes, client 3 Nov 2026), it is credited to
+ *     that partner, from the creator's own join date;
  *   - a brand's partner is whoever is credited on the code the brand joined with.
  *
  * The deal itself (%, 1-3, default 2; until when) lives on program_senders.
@@ -73,11 +76,16 @@ async function creditedPartner(userId: string, depth = 0): Promise<{ partnerId: 
     const id = batch.split(":")[1];
     return id ? { partnerId: id, since } : null;
   }
-  // Invited by a brand: credit whoever brought the brand in (one level only).
+  // Invited by a brand: credit the brand's owner if they're a partner,
+  // otherwise whoever brought the brand in (one level only).
   if (batch.startsWith("invite:") && depth === 0) {
-    const b = await db.execute(sql`select owner_id from brands where id = ${batch.slice("invite:".length)}`);
-    const owner = (b.rows[0] as { owner_id: string | null } | undefined)?.owner_id;
-    return owner ? creditedPartner(owner, 1) : null;
+    const b = await db.execute(sql`
+      select b.owner_id, exists (select 1 from program_senders ps where ps.user_id = b.owner_id and ps.commission_pct is not null) as owner_is_partner
+      from brands b where b.id = ${batch.slice("invite:".length)}`);
+    const row = b.rows[0] as { owner_id: string | null; owner_is_partner: boolean } | undefined;
+    if (!row?.owner_id) return null;
+    if (row.owner_is_partner) return { partnerId: row.owner_id, since };
+    return creditedPartner(row.owner_id, 1);
   }
   return null;
 }

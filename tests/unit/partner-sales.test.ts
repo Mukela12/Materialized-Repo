@@ -30,6 +30,12 @@ describe("shapeSale", () => {
     expect(s).toMatchObject({ brandCents: 8500, otherPartnersCents: 200, youCents: 200, mtrlzdCents: 1100, through: "brand" });
   });
 
+  it("a held share is payable 30 days after the sale; others carry no date", () => {
+    expect(shapeSale(row(), 15).payableAt).toBe("2026-12-12T14:05:00.000Z");
+    expect(shapeSale(row({ status: "approved" }), 15).payableAt).toBeNull();
+    expect(shapeSale(row({ status: "paid" }), 15).payableAt).toBeNull();
+  });
+
   it("every share adds back up to the sale", () => {
     const s = shapeSale(row({ sale_amount: "49.99", commission_amount: "1.00", creator_amount: "2.50", publisher_amount: "1.00" }), 15);
     expect(s.brandCents + s.creatorCents + s.publisherCents + s.otherPartnersCents + s.youCents + s.mtrlzdCents).toBe(s.saleCents);
@@ -65,11 +71,16 @@ describe("totalsOf", () => {
   const s = (status: string, you: number): PartnerSale => ({
     id: status, at: "", video: "", product: null, brand: null, creator: null, through: null,
     saleCents: 10000, brandCents: 8500, creatorCents: 0, publisherCents: 0, otherPartnersCents: 0,
-    youCents: you, youPct: 2, mtrlzdCents: 0, status,
+    youCents: you, youPct: 2, mtrlzdCents: 0, status, payableAt: null,
   });
 
   it("leaves refunded and rejected sales out", () => {
     expect(totalsOf([s("pending", 200), s("approved", 200), s("paid", 200), s("reversed", 200), s("rejected", 200)]))
-      .toEqual({ sales: 3, saleCents: 30000, youCents: 600, pendingCents: 400, paidCents: 200 });
+      .toEqual({ sales: 3, saleCents: 30000, youCents: 600, pendingCents: 400, paidCents: 200, nextPayableAt: null });
+  });
+
+  it("gives the earliest day a held share becomes payable", () => {
+    const held = (at: string | null) => ({ ...s("pending", 200), payableAt: at });
+    expect(totalsOf([held("2026-12-20T10:00:00.000Z"), held("2026-12-12T14:05:00.000Z"), s("approved", 200)]).nextPayableAt).toBe("2026-12-12T14:05:00.000Z");
   });
 });

@@ -5,6 +5,7 @@
  * with no knowledge of payouts or invoices, and these stay readable as policy.
  *
  * ── Schedules (UTC, overridable by env) ──────────────────────────────────────
+ *   commission-hold     daily 08:00     COMMISSION_HOLD_CRON
  *   publisher-payouts   Mondays 09:00   PAYOUT_CRON
  *   fee-invoices        1st of the month 09:00   FEE_INVOICE_CRON
  *
@@ -77,6 +78,24 @@ export function summarisePayoutRun(s: PayoutRunSummary): JobResult {
     status: s.failed.length ? "failed" : "success",
     items: s.paid.length,
     detail: parts.join(", "),
+  };
+}
+
+export const COMMISSION_HOLD_JOB = "commission-hold";
+export const DEFAULT_COMMISSION_HOLD_CRON = "0 8 * * *"; // daily 08:00 UTC, before Monday's payout run
+
+/** Approves commissions once their hold has passed (server/commissionHold.ts). */
+export function makeCommissionHoldJob(
+  approve: (now: Date) => Promise<number>,
+  cron = process.env.COMMISSION_HOLD_CRON || DEFAULT_COMMISSION_HOLD_CRON,
+): ScheduledJob {
+  return {
+    name: COMMISSION_HOLD_JOB,
+    schedule: cron,
+    run: async () => {
+      const n = await approve(new Date());
+      return { status: "success", items: n, detail: `${n} commission${n === 1 ? "" : "s"} approved after the hold` };
+    },
   };
 }
 
