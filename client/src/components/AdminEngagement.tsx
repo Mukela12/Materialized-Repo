@@ -3,8 +3,9 @@
  * creator's videos with sales, views and product clicks over a period, each
  * with the source its creator came from (Paris Creator Week, Partner A, Google
  * Ads...), so sources can be compared and a winner picked. The competition is
- * won on sales through the video (client, 3 Nov 2026), so that is the default
- * ranking. Fed by engagementReport.
+ * won on the number of sales through the video, not their value, with every
+ * repost by its creator, brands and publishers counted together (client,
+ * 3 Nov 2026), so that is the default ranking. Fed by engagementReport.
  */
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -19,8 +20,6 @@ interface Row {
   id: string; title: string; status: string; creator_id: string; creator: string; email: string;
   source: string; views: number; clicks: number; ctr: number; sales: number; sales_usd_cents: number;
 }
-
-const usd = (cents: number) => `$${(cents / 100).toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
 
 /** Click rate only means something once a video has been seen a few times. */
 const MIN_VIEWS_FOR_RATE = 20;
@@ -52,7 +51,7 @@ export function EngagementBySource() {
   const ranked = useMemo(() => {
     const rows = data.filter((r) => source === "all" || r.source === source);
     const key = (r: Row) => sort === "ctr" ? (r.views >= MIN_VIEWS_FOR_RATE ? r.ctr : -1) : r[sort];
-    return [...rows].sort((a, b) => key(b) - key(a) || b.sales_usd_cents - a.sales_usd_cents || b.clicks - a.clicks || b.views - a.views);
+    return [...rows].sort((a, b) => key(b) - key(a) || b.clicks - a.clicks || b.views - a.views);
   }, [data, source, sort]);
 
   const exportRows = () => exportToCsv("most-engaged-videos", ranked, [
@@ -73,8 +72,9 @@ export function EngagementBySource() {
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 text-lg"><Trophy className="h-4 w-4" /> Most engaged videos</CardTitle>
         <CardDescription>
-          For the Most Engaged Video competition: every creator's videos ranked by sales made through the video, from wherever it
-          was published (creator, tagged brands, publishers), with where each creator came from. Refunded sales don't count. The
+          For the Most Engaged Video competition: every creator's videos ranked by the number of sales made through the video (not
+          their value), with every repost by its creator, tagged brands and publishers counted together, and where each creator
+          came from. Refunded sales don't count. The
           Competition period counts 19 Nov to 18 Dec (New York time) and only videos posted on MTRLZD by 19 Nov. Click rate counts
           once a video has {MIN_VIEWS_FOR_RATE}+ views.
         </CardDescription>
@@ -144,7 +144,7 @@ export function EngagementBySource() {
                     {[["Sales", r.sales], ["Clicks", r.clicks], ["Views", r.views], ["Rate", r.views >= MIN_VIEWS_FOR_RATE ? `${r.ctr}%` : "–"]].map(([l, v]) => (
                       <div key={l as string} className={`min-w-0 rounded-md py-1 ${sort === (l === "Rate" ? "ctr" : String(l).toLowerCase()) ? "bg-primary/10" : "bg-muted/50"}`}>
                         <p className="truncate px-1 text-xs font-semibold tabular-nums">{v}</p>
-                        <p className="truncate px-1 text-[9px] text-muted-foreground">{l === "Sales" && r.sales_usd_cents > 0 ? `Sales · ${usd(r.sales_usd_cents)}` : l}</p>
+                        <p className="truncate px-1 text-[9px] text-muted-foreground">{l}</p>
                       </div>
                     ))}
                   </div>
