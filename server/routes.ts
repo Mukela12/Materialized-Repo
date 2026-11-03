@@ -2655,8 +2655,8 @@ export async function registerRoutes(
   // Admin: videos ranked by engagement, each with its creator's source.
   app.get("/api/admin/activity/engagement", requireAdmin, async (req, res) => {
     const { engagementReport } = await import("./activity");
-    const d = Number(req.query.days);
-    res.json(await engagementReport(d === 7 || d === 30 || d === 90 ? d : null));
+    const d = req.query.days === "competition" ? "competition" : Number(req.query.days);
+    res.json(await engagementReport(d === "competition" || d === 7 || d === 30 || d === 90 ? d : null));
   });
 
   // Admin: who comes in, where they land and leave, and what the codes did.

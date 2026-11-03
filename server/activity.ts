@@ -12,7 +12,7 @@
  */
 import { sql } from "drizzle-orm";
 import { db } from "./db";
-import type { Attribution, cleanPageView } from "./activityRules";
+import { COMPETITION, type Attribution, type cleanPageView } from "./activityRules";
 
 async function voucherIdForCode(code: string | null): Promise<string | null> {
   if (!code) return null;
@@ -226,21 +226,38 @@ export async function personReport(userId: string) {
 
 /**
  * The Most Engaged Video competition (client, 24 Oct 2026): every creator's
- * videos with views and product clicks over a period, each with its creator's
- * source, so the admin can compare Paris Creator Week against Partner A and
- * so on. Counted from the analytics events, so a period means that period.
+ * videos with views, product clicks and sales over a period, each with its
+ * creator's source, so the admin can compare Paris Creator Week against
+ * Partner A and so on. A sale is an attributed order through the video, from
+ * any place it is published (creator, tagged brand or publisher); refunds
+ * don't count. `competition` uses the competition's dates and leaves out
+ * videos posted after 19 Nov.
  */
-export async function engagementReport(days: number | null) {
-  const since = days ? sql`now() - make_interval(days => ${days})` : sql`'-infinity'::timestamp`;
+export async function engagementReport(period: number | "competition" | null) {
+  const comp = period === "competition";
+  // Timestamps are stored as UTC without a zone; pass the dates as UTC text so
+  // the server's own time zone can't shift the window.
+  const utc = (d: Date) => sql`${d.toISOString()}::timestamp`;
+  const since = comp ? utc(COMPETITION.from) : period ? sql`now() - make_interval(days => ${period})` : sql`'-infinity'::timestamp`;
+  const until = comp ? utc(COMPETITION.to) : sql`'infinity'::timestamp`;
   const rows = (await db.execute(sql`
     select v.id, v.title, v.status, u.id as creator_id, u.display_name as creator, u.email, ${sourceOf} as source,
-      count(a.id) filter (where a.event_type = 'view')::int as views,
-      count(a.id) filter (where a.event_type = 'click')::int as clicks
+      coalesce(e.views, 0)::int as views, coalesce(e.clicks, 0)::int as clicks,
+      coalesce(s.sales, 0)::int as sales, coalesce(s.sales_usd_cents, 0)::bigint as sales_usd_cents
     from videos v
     join users u on u.id = v.creator_id and not coalesce(u.is_admin, false)
-    left join analytics_events a on a.video_id = v.id and a.created_at >= ${since}
-    group by v.id, u.id
-    order by clicks desc, views desc
+    left join lateral (
+      select count(*) filter (where a.event_type = 'view') as views, count(*) filter (where a.event_type = 'click') as clicks
+      from analytics_events a where a.video_id = v.id and a.created_at >= ${since} and a.created_at < ${until}
+    ) e on true
+    left join lateral (
+      select count(*) as sales, sum(f.sale_cents) filter (where lower(f.currency) = 'usd') as sales_usd_cents
+      from platform_fee_accruals f
+      where f.video_id = v.id and f.attribution_state = 'attributed' and f.status <> 'void'
+        and f.occurred_at >= ${since} and f.occurred_at < ${until}
+    ) s on true
+    where ${comp ? sql`v.created_at < ${utc(COMPETITION.submitBy)}` : sql`true`}
+    order by sales desc, clicks desc, views desc
     limit 300`)).rows as any[];
-  return rows.map((r) => ({ ...r, ctr: r.views > 0 ? Math.round((r.clicks / r.views) * 1000) / 10 : 0 }));
+  return rows.map((r) => ({ ...r, sales_usd_cents: Number(r.sales_usd_cents), ctr: r.views > 0 ? Math.round((r.clicks / r.views) * 1000) / 10 : 0 }));
 }

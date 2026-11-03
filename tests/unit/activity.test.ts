@@ -6,7 +6,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { cleanPageView, pageOf, referrerHostOf, windowDays } from "../../server/activityRules";
+import { COMPETITION, cleanPageView, pageOf, referrerHostOf, windowDays } from "../../server/activityRules";
 
 const read = (p: string) => readFileSync(join(__dirname, "../..", p), "utf8");
 
@@ -152,5 +152,23 @@ describe("signup source (25 Oct 2026)", () => {
     expect(src.indexOf("voucher_redemptions")).toBeLessThan(src.indexOf("'Google Ads'"));
     expect(src.indexOf("'Google Ads'")).toBeLessThan(src.indexOf("u.signup_referrer"));
     expect(src).toMatch(/'Direct'\)/);
+  });
+});
+
+describe("Most Engaged Video competition", () => {
+  it("runs 19 Nov to 19 Dec New York time, entries posted by the end of 19 Nov", () => {
+    expect(COMPETITION.from.toISOString()).toBe("2026-11-19T05:00:00.000Z");
+    expect(COMPETITION.to.toISOString()).toBe("2026-12-19T05:00:00.000Z");
+    expect(COMPETITION.submitBy.toISOString()).toBe("2026-11-20T05:00:00.000Z");
+  });
+
+  it("ranks on attributed, unrefunded sales within the window, admin only", () => {
+    const src = read("server/activity.ts");
+    const body = src.slice(src.indexOf("export async function engagementReport"));
+    expect(body).toMatch(/f\.attribution_state = 'attributed' and f\.status <> 'void'/);
+    expect(body).toMatch(/f\.occurred_at >= \$\{since\} and f\.occurred_at < \$\{until\}/);
+    expect(body).toMatch(/v\.created_at < \$\{utc\(COMPETITION\.submitBy\)\}/);
+    expect(body).toMatch(/d\.toISOString\(\)\}::timestamp/);
+    expect(read("server/routes.ts")).toMatch(/app\.get\("\/api\/admin\/activity\/engagement", requireAdmin/);
   });
 });

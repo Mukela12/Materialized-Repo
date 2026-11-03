@@ -1,8 +1,10 @@
 /**
  * Admin: the Most Engaged Video competition (client, 24 Oct 2026). Every
- * creator's videos with views and product clicks over a period, each with the
- * source its creator came from (Paris Creator Week, Partner A, Google Ads...),
- * so sources can be compared and a winner picked. Fed by engagementReport.
+ * creator's videos with sales, views and product clicks over a period, each
+ * with the source its creator came from (Paris Creator Week, Partner A, Google
+ * Ads...), so sources can be compared and a winner picked. The competition is
+ * won on sales through the video (client, 3 Nov 2026), so that is the default
+ * ranking. Fed by engagementReport.
  */
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
@@ -15,8 +17,10 @@ import { exportToCsv } from "@/lib/exportCsv";
 
 interface Row {
   id: string; title: string; status: string; creator_id: string; creator: string; email: string;
-  source: string; views: number; clicks: number; ctr: number;
+  source: string; views: number; clicks: number; ctr: number; sales: number; sales_usd_cents: number;
 }
+
+const usd = (cents: number) => `$${(cents / 100).toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
 
 /** Click rate only means something once a video has been seen a few times. */
 const MIN_VIEWS_FOR_RATE = 20;
@@ -24,7 +28,7 @@ const MIN_VIEWS_FOR_RATE = 20;
 export function EngagementBySource() {
   const [days, setDays] = useState("30");
   const [source, setSource] = useState("all");
-  const [sort, setSort] = useState<"clicks" | "views" | "ctr">("clicks");
+  const [sort, setSort] = useState<"sales" | "clicks" | "views" | "ctr">("sales");
   const { data = [], isLoading } = useQuery<Row[]>({
     queryKey: ["/api/admin/activity/engagement", days],
     queryFn: async () => {
@@ -36,19 +40,19 @@ export function EngagementBySource() {
 
   const sources = useMemo(() => Array.from(new Set(data.map((r) => r.source))).sort(), [data]);
   const bySource = useMemo(() => {
-    const m = new Map<string, { videos: number; views: number; clicks: number }>();
+    const m = new Map<string, { videos: number; views: number; clicks: number; sales: number }>();
     for (const r of data) {
-      const s = m.get(r.source) ?? { videos: 0, views: 0, clicks: 0 };
-      s.videos++; s.views += r.views; s.clicks += r.clicks;
+      const s = m.get(r.source) ?? { videos: 0, views: 0, clicks: 0, sales: 0 };
+      s.videos++; s.views += r.views; s.clicks += r.clicks; s.sales += r.sales;
       m.set(r.source, s);
     }
     return Array.from(m, ([name, s]) => ({ name, ...s, ctr: s.views ? Math.round((s.clicks / s.views) * 1000) / 10 : 0 }))
-      .sort((a, b) => b.clicks - a.clicks || b.views - a.views);
+      .sort((a, b) => b.sales - a.sales || b.clicks - a.clicks || b.views - a.views);
   }, [data]);
   const ranked = useMemo(() => {
     const rows = data.filter((r) => source === "all" || r.source === source);
     const key = (r: Row) => sort === "ctr" ? (r.views >= MIN_VIEWS_FOR_RATE ? r.ctr : -1) : r[sort];
-    return [...rows].sort((a, b) => key(b) - key(a) || b.views - a.views);
+    return [...rows].sort((a, b) => key(b) - key(a) || b.sales_usd_cents - a.sales_usd_cents || b.clicks - a.clicks || b.views - a.views);
   }, [data, source, sort]);
 
   const exportRows = () => exportToCsv("most-engaged-videos", ranked, [
@@ -57,6 +61,8 @@ export function EngagementBySource() {
     { header: "Creator", value: (r) => r.creator },
     { header: "Email", value: (r) => r.email },
     { header: "Source", value: (r) => r.source },
+    { header: "Sales", value: (r) => String(r.sales) },
+    { header: "Sales value (USD)", value: (r) => (r.sales_usd_cents / 100).toFixed(2) },
     { header: "Views", value: (r) => String(r.views) },
     { header: "Product clicks", value: (r) => String(r.clicks) },
     { header: "Click rate %", value: (r) => String(r.ctr) },
@@ -67,13 +73,16 @@ export function EngagementBySource() {
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 text-lg"><Trophy className="h-4 w-4" /> Most engaged videos</CardTitle>
         <CardDescription>
-          For the Most Engaged Video competition: every creator's videos ranked by product clicks (or views, or click rate), with
-          where each creator came from. Click rate counts once a video has {MIN_VIEWS_FOR_RATE}+ views.
+          For the Most Engaged Video competition: every creator's videos ranked by sales made through the video, from wherever it
+          was published (creator, tagged brands, publishers), with where each creator came from. Refunded sales don't count. The
+          Competition period counts 19 Nov to 18 Dec (New York time) and only videos posted on MTRLZD by 19 Nov. Click rate counts
+          once a video has {MIN_VIEWS_FOR_RATE}+ views.
         </CardDescription>
         <div className="flex flex-wrap gap-2 pt-2">
           <Select value={days} onValueChange={setDays}>
-            <SelectTrigger className="h-9 w-32" data-testid="engagement-period"><SelectValue /></SelectTrigger>
+            <SelectTrigger className="h-9 w-48" data-testid="engagement-period"><SelectValue /></SelectTrigger>
             <SelectContent>
+              <SelectItem value="competition">Competition, 19 Nov to 18 Dec</SelectItem>
               <SelectItem value="7">Last 7 days</SelectItem>
               <SelectItem value="30">Last 30 days</SelectItem>
               <SelectItem value="90">Last 90 days</SelectItem>
@@ -90,6 +99,7 @@ export function EngagementBySource() {
           <Select value={sort} onValueChange={(v) => setSort(v as typeof sort)}>
             <SelectTrigger className="h-9 w-40" data-testid="engagement-sort"><SelectValue /></SelectTrigger>
             <SelectContent>
+              <SelectItem value="sales">Most sales</SelectItem>
               <SelectItem value="clicks">Most product clicks</SelectItem>
               <SelectItem value="views">Most views</SelectItem>
               <SelectItem value="ctr">Highest click rate</SelectItem>
@@ -116,7 +126,7 @@ export function EngagementBySource() {
                   >
                     <p className="text-xs font-medium truncate" title={s.name}>{s.name}</p>
                     <p className="text-[11px] text-muted-foreground tabular-nums mt-0.5">
-                      {s.videos} video{s.videos === 1 ? "" : "s"} · {s.views} views · {s.clicks} clicks{s.views ? ` · ${s.ctr}%` : ""}
+                      {s.videos} video{s.videos === 1 ? "" : "s"} · {s.sales} sale{s.sales === 1 ? "" : "s"} · {s.views} views · {s.clicks} clicks{s.views ? ` · ${s.ctr}%` : ""}
                     </p>
                   </button>
                 ))}
@@ -124,17 +134,17 @@ export function EngagementBySource() {
             </div>
             <ol className="divide-y rounded-lg border" data-testid="engagement-ranking">
               {ranked.slice(0, 50).map((r, i) => (
-                <li key={r.id} className="flex items-center gap-3 p-3">
+                <li key={r.id} className="flex flex-wrap items-center gap-x-3 gap-y-2 p-3">
                   <span className={`w-6 shrink-0 text-center text-sm font-semibold tabular-nums ${i < 3 ? "text-primary" : "text-muted-foreground"}`}>{i + 1}</span>
                   <div className="min-w-0 flex-1">
                     <p className="text-sm font-medium leading-snug line-clamp-2">{r.title}</p>
                     <p className="text-[11px] text-muted-foreground truncate">{r.creator} · <Badge variant="outline" className="px-1.5 py-0 text-[10px] font-normal">{r.source}</Badge></p>
                   </div>
-                  <div className="grid grid-cols-3 gap-1 shrink-0 text-center w-[9.5rem] sm:w-48">
-                    {[["Clicks", r.clicks], ["Views", r.views], ["Rate", r.views >= MIN_VIEWS_FOR_RATE ? `${r.ctr}%` : "–"]].map(([l, v]) => (
-                      <div key={l as string} className={`rounded-md py-1 ${sort === (l === "Rate" ? "ctr" : String(l).toLowerCase()) ? "bg-primary/10" : "bg-muted/50"}`}>
-                        <p className="text-xs font-semibold tabular-nums">{v}</p>
-                        <p className="text-[9px] text-muted-foreground">{l}</p>
+                  <div className="grid grid-cols-[1.6fr_1fr_1fr_1fr] gap-1 text-center w-full pl-9 sm:pl-0 sm:w-80 sm:shrink-0">
+                    {[["Sales", r.sales], ["Clicks", r.clicks], ["Views", r.views], ["Rate", r.views >= MIN_VIEWS_FOR_RATE ? `${r.ctr}%` : "–"]].map(([l, v]) => (
+                      <div key={l as string} className={`min-w-0 rounded-md py-1 ${sort === (l === "Rate" ? "ctr" : String(l).toLowerCase()) ? "bg-primary/10" : "bg-muted/50"}`}>
+                        <p className="truncate px-1 text-xs font-semibold tabular-nums">{v}</p>
+                        <p className="truncate px-1 text-[9px] text-muted-foreground">{l === "Sales" && r.sales_usd_cents > 0 ? `Sales · ${usd(r.sales_usd_cents)}` : l}</p>
                       </div>
                     ))}
                   </div>

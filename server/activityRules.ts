@@ -78,3 +78,14 @@ export function cleanAttribution(raw: unknown): Attribution {
     referrer: referrerHostOf(a.referrer),
   };
 }
+
+/**
+ * The Most Engaged Video competition (client, 3 Nov 2026): videos posted on
+ * MTRLZD by 19 Nov, ranked on the sales made through them from 19 Nov until
+ * the winner is announced on 19 Dec. Times are New York (EST, UTC-5).
+ */
+export const COMPETITION = {
+  submitBy: new Date("2026-11-20T05:00:00Z"),
+  from: new Date("2026-11-19T05:00:00Z"),
+  to: new Date("2026-12-19T05:00:00Z"),
+};
