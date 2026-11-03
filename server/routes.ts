@@ -2768,6 +2768,123 @@ export async function registerRoutes(
     res.json({ ok: true });
   });
 
+  // Invite campaigns (server/inviteCampaigns.ts): a list of people with no
+  // account, invited a set number a day, each with their own free pass.
+  app.get("/api/admin/invite-campaigns", requireAdmin, async (_req, res) => {
+    const { listCampaigns } = await import("./inviteCampaignStore");
+    const { SEND_WINDOW_UTC, MAX_DAILY_LIMIT } = await import("./inviteCampaigns");
+    const { inviteSenderAddress } = await import("./emailService");
+    const { isJourneyOn } = await import("./journeyStore");
+    res.json({
+      campaigns: await listCampaigns(),
+      fromAddress: inviteSenderAddress(),
+      emailConfigured: isEmailConfigured(),
+      window: SEND_WINDOW_UTC, maxDailyLimit: MAX_DAILY_LIMIT,
+      journeysOn: { creators: await isJourneyOn("creators"), brands: await isJourneyOn("brands") },
+    });
+  });
+
+  app.post("/api/admin/invite-campaigns", requireAdmin, async (req, res) => {
+    const { createCampaign } = await import("./inviteCampaignStore");
+    res.json(await createCampaign((req.session as any).userId));
+  });
+
+  app.put("/api/admin/invite-campaigns/:id", requireAdmin, async (req, res) => {
+    const { checkSettings } = await import("./inviteCampaigns");
+    const { saveCampaign } = await import("./inviteCampaignStore");
+    const v = checkSettings(req.body ?? {});
+    if ("error" in v) return res.status(400).json({ error: v.error });
+    const r = await saveCampaign(req.params.id, v);
+    if (r === "missing") return res.status(404).json({ error: "No such campaign." });
+    if (r === "name_locked") return res.status(409).json({ error: "The name is on the passes already sent, so it can't change now." });
+    res.json({ ok: true });
+  });
+
+  app.delete("/api/admin/invite-campaigns/:id", requireAdmin, async (req, res) => {
+    const { deleteCampaign } = await import("./inviteCampaignStore");
+    const r = await deleteCampaign(req.params.id);
+    if (r === "missing") return res.status(404).json({ error: "No such campaign." });
+    if (r === "has_sent") return res.status(409).json({ error: "Invites have gone out, so this campaign stays. Pause it instead." });
+    res.json({ ok: true });
+  });
+
+  app.put("/api/admin/invite-campaigns/:id/state", requireAdmin, async (req, res) => {
+    const action = req.body?.action;
+    if (action !== "start" && action !== "pause" && action !== "resume") return res.status(400).json({ error: "Start, pause or resume?" });
+    const { getCampaign, listCampaigns, setCampaignState } = await import("./inviteCampaignStore");
+    const { startProblem } = await import("./inviteCampaigns");
+    const c = await getCampaign(req.params.id);
+    if (!c) return res.status(404).json({ error: "No such campaign." });
+    if (action !== "pause") {
+      if (!isEmailConfigured()) return res.status(503).json({ error: "Email isn't set up on this server." });
+      const summary = (await listCampaigns()).find((x) => x.id === c.id);
+      const problem = startProblem(c, summary?.totals.waiting ?? 0);
+      if (problem) return res.status(400).json({ error: problem });
+    }
+    await setCampaignState(c.id, action);
+    res.json({ ok: true });
+  });
+
+  app.post("/api/admin/invite-campaigns/:id/contacts", requireAdmin, async (req, res) => {
+    const { addContacts } = await import("./inviteCampaignStore");
+    const { contactTypeOf } = await import("./inviteCampaigns");
+    const list = Array.isArray(req.body?.contacts) ? req.body.contacts : [];
+    const r = await addContacts(req.params.id, list, contactTypeOf(req.body?.defaultType));
+    if ("error" in r) return res.status(400).json({ error: r.error });
+    res.json(r);
+  });
+
+  app.get("/api/admin/invite-campaigns/:id/contacts", requireAdmin, async (req, res) => {
+    const { listContacts } = await import("./inviteCampaignStore");
+    res.json(await listContacts(req.params.id));
+  });
+
+  app.delete("/api/admin/invite-campaigns/:id/contacts/:contactId", requireAdmin, async (req, res) => {
+    const { removeContact } = await import("./inviteCampaignStore");
+    const r = await removeContact(req.params.id, Number(req.params.contactId));
+    if (r === "missing") return res.status(404).json({ error: "That person isn't on this list." });
+    if (r === "sent") return res.status(409).json({ error: "Their invite has already gone." });
+    res.json({ ok: true });
+  });
+
+  /**
+   * An invite as it would arrive, from the settings being edited, for the
+   * first person of that type on the list (or a sample). With send=true it
+   * is also mailed to the admin, with a sample code.
+   */
+  app.post("/api/admin/invite-campaigns/:id/preview", requireAdmin, async (req, res) => {
+    const { checkSettings, renderInvite, contactTypeOf } = await import("./inviteCampaigns");
+    const { getCampaign, sampleContact } = await import("./inviteCampaignStore");
+    const { sendCampaignInvites } = await import("./emailService");
+    const c = await getCampaign(req.params.id);
+    if (!c) return res.status(404).json({ error: "No such campaign." });
+    const v = checkSettings({ ...c, ...(req.body?.settings ?? {}) });
+    if ("error" in v) return res.status(400).json({ error: v.error });
+    const type = contactTypeOf(req.body?.type) ?? "creator";
+    const sample = await sampleContact(c.id, type);
+    const contact = sample ?? (type === "brand"
+      ? { email: "hello@example.com", name: "Acme Studio", company: null, type }
+      : { email: "ana@example.com", name: "Ana Rivera", company: null, type });
+    const origin = publicOrigin(req);
+    const r = renderInvite({
+      settings: v, contact, code: "MTZ-SAMP-LE00-CODE", useBy: new Date(Date.now() + v.useWithinDays * 86_400_000),
+      origin, unsubscribeUrl: `${origin}/unsubscribe/preview`,
+    });
+    let sentTo: string | undefined;
+    if (req.body?.send === true) {
+      const me = await storage.getUser((req.session as any).userId);
+      if (!me?.email) return res.status(400).json({ error: "Your account has no email address." });
+      if (!isEmailConfigured()) return res.status(503).json({ error: "Email isn't set up on this server." });
+      const out = await sendCampaignInvites([{
+        to: me.email, subject: `[Test] ${r.subject}`, html: r.html, text: r.text, fromName: v.fromName, replyTo: v.replyTo,
+        unsubscribePostUrl: `${origin}/api/email/unsubscribe/preview`,
+      }]);
+      if (out.failed.size) return res.status(502).json({ error: out.error || "The email service refused it." });
+      sentTo = me.email;
+    }
+    res.json({ subject: r.subject, html: r.html, to: sample ? { name: contact.name, email: contact.email } : null, sentTo });
+  });
+
   // Unsubscribe. The page asks before acting (link scanners open every link);
   // mail clients' one-click button POSTs here directly (RFC 8058).
   app.get("/api/email/preferences/:token", async (req, res) => {

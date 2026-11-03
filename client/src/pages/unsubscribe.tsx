@@ -17,7 +17,8 @@ export default function Unsubscribe() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
-  const { data, isLoading, isError } = useQuery<{ email: string; optedOut: boolean }>({
+  // account: false is an invite to someone with no account (server/inviteCampaigns.ts).
+  const { data, isLoading, isError } = useQuery<{ email: string; optedOut: boolean; account?: boolean }>({
     queryKey: ["/api/email/preferences", token],
     queryFn: async () => {
       const r = await fetch(`/api/email/preferences/${encodeURIComponent(token)}`);
@@ -63,8 +64,9 @@ export default function Unsubscribe() {
             <>
               <h1 className="text-xl font-semibold text-foreground mb-2">You're unsubscribed</h1>
               <p className="text-sm text-muted-foreground mb-6">
-                {data.email} won't get any more tips or reminders from us. Emails about your account, like password
-                resets and payments, still arrive.
+                {data.account === false
+                  ? `${data.email} won't get any more emails from MTRLZD.`
+                  : `${data.email} won't get any more tips or reminders from us. Emails about your account, like password resets and payments, still arrive.`}
               </p>
               <Button variant="outline" className="w-full" disabled={busy} onClick={() => change(false)} data-testid="button-resubscribe">
                 Subscribe again
@@ -74,8 +76,9 @@ export default function Unsubscribe() {
             <>
               <h1 className="text-xl font-semibold text-foreground mb-2">Unsubscribe?</h1>
               <p className="text-sm text-muted-foreground mb-6">
-                Stop tips and reminders from MTRLZD to {data.email}. Emails about your account, like password resets and
-                payments, will still arrive.
+                {data.account === false
+                  ? `Stop emails from MTRLZD to ${data.email}.`
+                  : `Stop tips and reminders from MTRLZD to ${data.email}. Emails about your account, like password resets and payments, will still arrive.`}
               </p>
               <Button className="w-full" disabled={busy} onClick={() => change(true)} data-testid="button-unsubscribe">
                 Unsubscribe

@@ -712,6 +712,46 @@ export async function sendJourneyEmails(emails: JourneyEmail[]): Promise<{ faile
   return { failed, error };
 }
 
+// ── Invite campaigns (server/inviteCampaigns.ts) ────────────────────────────
+
+/** The address invites come from: contact@ on the domain the email service sends for. */
+export function inviteSenderAddress(): string {
+  const domain = FROM_ADDRESS.split("@")[1] ?? "";
+  return domain && domain !== "resend.dev" ? `contact@${domain}` : FROM_ADDRESS;
+}
+
+/**
+ * Invites to people with no account, through the batch endpoint, each with
+ * one-click List-Unsubscribe headers as Gmail and Yahoo require of bulk mail.
+ */
+export async function sendCampaignInvites(emails: import("./inviteCampaignStore").OutgoingInvite[]): Promise<{ failed: Set<number>; error?: string }> {
+  const failed = new Set<number>();
+  let error: string | undefined;
+  const from = inviteSenderAddress();
+  for (let i = 0; i < emails.length; i += 100) {
+    const chunk = emails.slice(i, i + 100);
+    try {
+      const res: any = await client().batch.send(chunk.map((e) => ({
+        from: `${e.fromName || "MTRLZD"} <${from}>`,
+        to: e.to,
+        subject: e.subject,
+        html: e.html,
+        text: e.text,
+        ...(e.replyTo ? { replyTo: e.replyTo } : {}),
+        headers: {
+          "List-Unsubscribe": `<${e.unsubscribePostUrl}>`,
+          "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+        },
+      })));
+      if (res?.error) throw new Error(res.error.message || String(res.error));
+    } catch (err) {
+      error = err instanceof Error ? err.message : String(err);
+      for (let j = 0; j < chunk.length; j++) failed.add(i + j);
+    }
+  }
+  return { failed, error };
+}
+
 // ── Affiliate / Publisher Invitation ─────────────────────────────────────────
 
 export async function sendAffiliateInvitationEmail(opts: {

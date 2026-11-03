@@ -34,8 +34,12 @@ const resolvedSegment = sql`coalesce(
    where r.user_id = u.id limit 1),
   case u.role when 'brand' then 'brands' when 'affiliate' then 'publishers' else 'creators' end)`;
 
-/** Who may get journey email at all. */
-const reachable = sql`not coalesce(u.is_admin, false) and u.email_verified and u.email_opt_out_at is null`;
+/**
+ * Who may get journey email at all. Someone who unsubscribed from an invite
+ * (server/inviteCampaigns.ts) and then made an account still said no.
+ */
+const reachable = sql`not coalesce(u.is_admin, false) and u.email_verified and u.email_opt_out_at is null
+  and not exists (select 1 from invite_contacts ic where ic.email = lower(u.email) and ic.opted_out_at is not null)`;
 
 /** Put new accounts into the journey they belong in, if it is switched on. */
 export async function enrolNew(): Promise<number> {
@@ -336,21 +340,38 @@ export async function isJourneyOn(segment: string): Promise<boolean> {
 
 const TOKEN = /^[A-Za-z0-9_-]{20,64}$/;
 
-export async function preferencesFor(token: string): Promise<{ email: string; optedOut: boolean } | null> {
+/** Enough to recognise your own address, not enough to harvest it from a link. */
+function masked(email: string): string {
+  const [name, domain] = email.split("@");
+  return `${name.slice(0, 2)}${"•".repeat(Math.min(6, Math.max(1, name.length - 2)))}@${domain}`;
+}
+
+/**
+ * A token is an account's (journeys) or an invite's (server/inviteCampaigns.ts,
+ * someone with no account). `account` tells the page which it is talking to.
+ */
+export async function preferencesFor(token: string): Promise<{ email: string; optedOut: boolean; account: boolean } | null> {
   if (!TOKEN.test(token)) return null;
   const r = await db.execute(sql`select email, email_opt_out_at from users where email_token = ${token}`);
   const u = r.rows[0] as any;
-  if (!u) return null;
-  // Enough to recognise your own address, not enough to harvest it from a link.
-  const [name, domain] = String(u.email).split("@");
-  return { email: `${name.slice(0, 2)}${"•".repeat(Math.min(6, Math.max(1, name.length - 2)))}@${domain}`, optedOut: !!u.email_opt_out_at };
+  if (u) return { email: masked(String(u.email)), optedOut: !!u.email_opt_out_at, account: true };
+  const { contactPreferences } = await import("./inviteCampaignStore");
+  const c = await contactPreferences(token);
+  return c ? { email: masked(c.email), optedOut: c.optedOut, account: false } : null;
 }
 
 export async function setOptOut(token: string, out: boolean): Promise<boolean> {
   if (!TOKEN.test(token)) return false;
   const r = await db.execute(sql`
-    update users set email_opt_out_at = ${out ? sql`coalesce(email_opt_out_at, now())` : null} where email_token = ${token}`);
-  return (r.rowCount ?? 0) > 0;
+    update users set email_opt_out_at = ${out ? sql`coalesce(email_opt_out_at, now())` : null} where email_token = ${token}
+    returning email`);
+  const { clearContactOptOut, setContactOptOut } = await import("./inviteCampaignStore");
+  if (r.rows.length) {
+    // Subscribing again from your account undoes an earlier invite's opt-out too.
+    if (!out) await clearContactOptOut(String((r.rows[0] as any).email));
+    return true;
+  }
+  return setContactOptOut(token, out);
 }
 
 

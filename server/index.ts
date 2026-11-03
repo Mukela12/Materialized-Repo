@@ -547,6 +547,17 @@ function startScheduler() {
           return runJourneys({ now: new Date(), origin: process.env.APP_URL || "https://www.mtrlzd.com", send: sendJourneyEmails });
         },
       },
+      // Invite campaigns (server/inviteCampaigns.ts): hourly, and each run in
+      // the sending hours sends its share of a campaign's daily number.
+      {
+        name: "invite-campaigns",
+        schedule: process.env.INVITE_CAMPAIGN_CRON || "0 * * * *",
+        run: async () => {
+          const { runInviteCampaigns } = await import("./inviteCampaignStore");
+          const { sendCampaignInvites } = await import("./emailService");
+          return runInviteCampaigns({ now: new Date(), origin: process.env.APP_URL || "https://www.mtrlzd.com", send: sendCampaignInvites });
+        },
+      },
       makeCertWatchJob(probeCertificate, {
         sendAlert: async (subject, lines) => {
           const { sendOpsAlertEmail } = await import("./emailService");

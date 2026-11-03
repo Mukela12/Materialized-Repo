@@ -7,6 +7,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { isCsvFile, parseContactCsv } from "@/lib/csvImport";
 import { CsvFormatHint } from "@/components/CsvFormatHint";
+import { AdminInviteCampaigns } from "@/components/AdminInviteCampaigns";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { AlertTriangle, ArrowLeft, Mail, PauseCircle, RefreshCw, Send, Upload } from "lucide-react";
@@ -94,6 +95,8 @@ export function AdminJourneys() {
         accounts made after that are enrolled, so nobody gets a backlog. Each person gets at most one of these a day, and
         every email has an unsubscribe link.
       </p>
+
+      <AdminInviteCampaigns />
 
       <div className="grid gap-3 md:grid-cols-2">
         {data.journeys.map((j) => {
