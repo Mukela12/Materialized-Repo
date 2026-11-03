@@ -295,19 +295,25 @@ export default function ParisCreatorWeek() {
 
       <section className="pcw-interactive" id="summit" aria-labelledby="interactive-title">
         <div className="pcw-starfield" aria-hidden="true" />
-        <div className="pcw-competition" aria-label="Most Engaged Interactive Video cash prize competition">
+        <div className="pcw-competition" aria-label="Most Engaged Video cash prize competition">
           <div className="pcw-competition-title">
             <p className="pcw-eyebrow">EXCLUSIVE COMPETITION</p>
-            <h2 id="interactive-title">MOST ENGAGED<br /><span>INTERACTIVE VIDEO</span></h2>
+            <h2 id="interactive-title">MOST ENGAGED<br /><span>VIDEO</span></h2>
           </div>
           <div className="pcw-prize" onPointerMove={tiltCard} onPointerLeave={resetTilt}>
             <span className="pcw-prize-label">CASH PRIZE</span>
             <CashPrizeAmount paused={ambientPaused} />
           </div>
           <div className="pcw-competition-instructions">
-            <p>Sign up. Publish your shoppable videos by <time dateTime="2026-11-19">November 19</time>.</p>
+            <p>Sign up. Publish your shoppable videos on MTRLZD by <time dateTime="2026-11-19">November 19</time>.</p>
             <p>Most engaged video receives €2000 cash prize.</p>
             <p>Announced <time dateTime="2026-12-19">December 19</time>.</p>
+            <p className="pcw-fineprint" data-testid="text-competition-fineprint">
+              Most Engaged Video is based on transactional volume from the call to action within any MTRLZD campaign, which can be
+              published multiple times by its creator, tagged brands and publishers. Campaigns can be promoted on social media, though
+              the final engagement metrics are calculated from the MTRLZD video campaign itself. Submit by November 19. Calculated
+              from November 19 to December 19, 2026. Winner announced December 19, 2026.
+            </p>
           </div>
           <a className="pcw-competition-cta" href="#claim">ENTER NOW <ArrowRight size={16} /></a>
           <div className="pcw-sponsor"><span>Sponsored by</span><a href="/" aria-label="MTRLZD sponsor"><img src="/mtrlzd-wordmark.png" alt="MTRLZD" width={130} height={32} loading="lazy" /></a></div>

@@ -666,6 +666,12 @@
   font-size: 13px;
   line-height: 1.7;
 }
+.pcw-competition-instructions .pcw-fineprint {
+  margin-top: 12px;
+  color: rgba(247,243,255,.6);
+  font-size: 11px;
+  line-height: 1.6;
+}
 .pcw-sponsor {
   display: flex;
   align-items: center;
