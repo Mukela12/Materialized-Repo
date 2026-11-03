@@ -1,0 +1,441 @@
+@import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap");
+
+.marketplace-demo {
+  --md-ink: #f4f1ff;
+  --md-muted: #aaa8c8;
+  --md-accent: #bba1ff;
+  --md-accent-rgb: 187, 161, 255;
+  --md-surface: #11122d;
+  position: relative;
+  isolation: isolate;
+  width: 100%;
+  margin: 0 auto;
+  overflow: hidden;
+  border: 1px solid rgba(181, 164, 255, .28);
+  border-radius: clamp(28px, 4.4vw, 50px);
+  color: var(--md-ink);
+  background:
+    radial-gradient(ellipse at 12% 0%, rgba(113, 89, 198, .18), transparent 38%),
+    var(--md-surface);
+  box-shadow: 0 24px 90px rgba(19, 15, 49, .22), inset 0 1px rgba(255, 255, 255, .08);
+  font-family: "DM Sans", sans-serif;
+}
+
+.marketplace-demo *,
+.marketplace-demo *::before,
+.marketplace-demo *::after {
+  box-sizing: border-box;
+}
+
+.marketplace-demo--brand {
+  --md-ink: #e4ece2;
+  --md-muted: #a6b7a5;
+  --md-accent: #57754d;
+  --md-accent-rgb: 87, 117, 77;
+  --md-surface: #17221b;
+  border-color: rgba(166, 195, 161, .4);
+  background:
+    radial-gradient(ellipse at 90% 0%, rgba(76, 118, 76, .2), transparent 40%),
+    var(--md-surface);
+  box-shadow: 0 24px 90px rgba(13, 31, 17, .2), inset 0 1px rgba(232, 244, 229, .09);
+}
+
+.marketplace-demo__tabbar {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 26px;
+  min-height: 102px;
+  padding: 20px clamp(22px, 5vw, 64px);
+  border-bottom: 1px solid rgba(224, 215, 255, .14);
+  background: linear-gradient(100deg, rgba(25, 24, 57, .96), rgba(18, 19, 43, .9));
+}
+
+.marketplace-demo--brand .marketplace-demo__tabbar {
+  border-bottom-color: rgba(178, 205, 174, .16);
+  background: linear-gradient(100deg, rgba(27, 44, 31, .97), rgba(20, 34, 24, .94));
+}
+
+.marketplace-demo__intro {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.marketplace-demo__eyebrow {
+  color: var(--md-accent);
+  font: 700 10px/1.2 "Space Grotesk", sans-serif;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+}
+
+.marketplace-demo__prompt {
+  color: var(--md-muted);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.marketplace-demo__tabs {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  padding: 5px;
+  border: 1px solid rgba(232, 225, 255, .15);
+  border-radius: 999px;
+  background: rgba(8, 9, 28, .42);
+}
+
+.marketplace-demo--brand .marketplace-demo__tabs {
+  border-color: rgba(178, 205, 174, .18);
+  background: rgba(17, 32, 22, .43);
+}
+
+.marketplace-demo__tab {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 0 clamp(16px, 2.1vw, 25px);
+  overflow: hidden;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  color: #c5c2dd;
+  background: transparent;
+  font: 600 14px/1 "Space Grotesk", sans-serif;
+  letter-spacing: -.01em;
+  cursor: pointer;
+  transition: color .2s ease, background-color .2s ease, border-color .2s ease, transform .2s ease;
+}
+
+.marketplace-demo--brand .marketplace-demo__tab {
+  color: #a6b7a5;
+}
+
+.marketplace-demo__tab::before {
+  position: absolute;
+  inset: 0;
+  border: 1px solid rgba(var(--md-accent-rgb), .64);
+  border-radius: inherit;
+  content: "";
+  opacity: .26;
+  pointer-events: none;
+  animation: marketplace-tab-sheen 6.2s ease-in-out infinite;
+}
+
+.marketplace-demo__tab:hover {
+  color: var(--md-ink);
+  transform: translateY(-1px);
+}
+
+.marketplace-demo__tab:focus-visible {
+  z-index: 1;
+  outline: 3px solid rgba(var(--md-accent-rgb), .62);
+  outline-offset: 3px;
+  color: var(--md-ink);
+}
+
+.marketplace-demo__tab.is-selected {
+  border-color: rgba(var(--md-accent-rgb), .68);
+  color: var(--md-ink);
+  background: linear-gradient(120deg, rgba(var(--md-accent-rgb), .26), rgba(var(--md-accent-rgb), .1));
+  box-shadow: inset 0 1px rgba(255, 255, 255, .13), 0 5px 20px rgba(var(--md-accent-rgb), .1);
+}
+
+.marketplace-demo__tab.is-selected::before {
+  animation-duration: 4.8s;
+}
+
+.marketplace-demo__tab-indicator {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: .38;
+  transition: opacity .2s ease, transform .2s ease;
+}
+
+.marketplace-demo__tab.is-selected .marketplace-demo__tab-indicator {
+  opacity: 1;
+  transform: scale(1.12);
+}
+
+.marketplace-demo__tab-label-compact {
+  display: none;
+}
+
+.marketplace-demo__panel {
+  min-width: 0;
+  animation: marketplace-panel-enter .32s ease both;
+}
+
+.marketplace-demo__panel:focus {
+  outline: none;
+}
+
+.marketplace-demo__panel:focus-visible {
+  outline: 2px solid rgba(var(--md-accent-rgb), .75);
+  outline-offset: -5px;
+}
+
+/* The demos stay visually intact; only their top corners become part of this shared shell. */
+.marketplace-demo__panel > .ce-section,
+.marketplace-demo__panel > .be-section {
+  border-radius: 0 !important;
+}
+
+@keyframes marketplace-tab-sheen {
+  0%, 100% { opacity: .25; }
+  50% { opacity: .82; }
+}
+
+@keyframes marketplace-panel-enter {
+  from { opacity: .72; transform: translateY(7px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (max-width: 640px) {
+  .marketplace-demo {
+    width: 100%;
+    margin-block: 0;
+    border-radius: 30px;
+  }
+
+  .marketplace-demo__tabbar {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 15px;
+    min-height: 0;
+    padding: 20px 16px 16px;
+  }
+
+  .marketplace-demo__eyebrow {
+    font-size: 9px;
+  }
+
+  .marketplace-demo__prompt {
+    font-size: 12px;
+  }
+
+  .marketplace-demo__tabs {
+    width: 100%;
+    gap: 6px;
+  }
+
+  .marketplace-demo__tab {
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 44px;
+    padding: 0 10px;
+    font-size: 13px;
+  }
+
+  .marketplace-demo__tab-indicator {
+    width: 6px;
+    height: 6px;
+  }
+}
+
+@media (max-width: 360px) {
+  .marketplace-demo__tab-label {
+    display: none;
+  }
+
+  .marketplace-demo__tab-label-compact {
+    display: inline;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .marketplace-demo__tab,
+  .marketplace-demo__tab-indicator {
+    transition: none;
+  }
+
+  .marketplace-demo__tab::before,
+  .marketplace-demo__panel {
+    animation: none;
+  }
+}
+
+/* Full-bleed landing section and simple, color-coded tabs. */
+.marketplace-demo {
+  --md-accent: #85baff;
+  --md-accent-rgb: 133, 186, 255;
+  background: #080a20;
+  width: 100%;
+  margin: 0;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.marketplace-demo--brand {
+  --md-accent: #57754d;
+  --md-accent-rgb: 87, 117, 77;
+  background: #17221b;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.marketplace-demo__tabbar {
+  width: min(1180px, 100%);
+  min-height: 0;
+  margin: 0 auto;
+  padding: 22px clamp(16px, 4.5vw, 56px) 0;
+  border: 0;
+  background: transparent;
+}
+
+.marketplace-demo--brand .marketplace-demo__tabbar {
+  border: 0;
+  background: transparent;
+}
+
+.marketplace-demo__tabs,
+.marketplace-demo--brand .marketplace-demo__tabs {
+  gap: clamp(26px, 5vw, 60px);
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.marketplace-demo__tab,
+.marketplace-demo--brand .marketplace-demo__tab {
+  min-height: 48px;
+  padding: 0 2px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  color: #a8aec3;
+  background: transparent;
+  font-size: 15px;
+}
+
+.marketplace-demo__tab::before,
+.marketplace-demo__tab-indicator {
+  display: none;
+  content: none;
+  animation: none;
+}
+
+.marketplace-demo__tab:hover {
+  transform: none;
+  color: #eaf2ff;
+}
+
+.marketplace-demo--brand .marketplace-demo__tab:hover {
+  color: #d3e2d0;
+}
+
+.marketplace-demo__tab.is-selected {
+  border-bottom-color: var(--md-accent);
+  color: var(--md-accent);
+  background: transparent;
+  box-shadow: none;
+}
+
+.marketplace-demo__tab:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--md-accent) 72%, transparent);
+  outline-offset: 5px;
+  color: var(--md-accent);
+}
+
+#marketplace-demo-tab-creator {
+  color: #85baff;
+}
+
+#marketplace-demo-tab-brand {
+  color: #57754d;
+}
+
+.marketplace-demo__tab.is-selected {
+  border-bottom-color: currentColor;
+}
+
+.marketplace-demo__tab {
+  animation: marketplace-tab-invite 5s ease-in-out infinite;
+}
+
+@keyframes marketplace-tab-invite {
+  0%, 100% { filter: brightness(1); }
+  50% { filter: brightness(1.18); }
+}
+
+.marketplace-demo__panel > .ce-section,
+.marketplace-demo__panel > .be-section {
+  border-radius: 0 !important;
+}
+
+@media (max-width: 640px) {
+  .marketplace-demo__tabbar {
+    padding: 18px 16px 0;
+  }
+
+  .marketplace-demo__tabs,
+  .marketplace-demo--brand .marketplace-demo__tabs {
+    justify-content: center;
+    gap: clamp(28px, 10vw, 52px);
+  }
+
+  .marketplace-demo__tab,
+  .marketplace-demo--brand .marketplace-demo__tab {
+    min-height: 46px;
+    padding-inline: 2px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .marketplace-demo__tab,
+  .marketplace-demo__tab-indicator,
+  .marketplace-demo__panel {
+    animation: none;
+    transition: none;
+  }
+}
+
+/*
+ * MTRLZD port (3 Nov 2026). The tabs sit over the top of the demo, so each
+ * demo's own background runs behind them: on its own the bar showed as a navy
+ * strip above the green Brand demo. Both labels stay readable on either one.
+ */
+.marketplace-demo__tabbar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 3;
+  width: 100%;
+  padding: 18px clamp(16px, 4.6vw, 72px) 0;
+}
+
+.marketplace-demo__tabs,
+.marketplace-demo--brand .marketplace-demo__tabs {
+  display: flex;
+  width: min(1180px, 100%);
+  margin: 0 auto;
+}
+
+.marketplace-demo__panel > .ce-section,
+.marketplace-demo__panel > .be-section {
+  padding-top: calc(clamp(42px, 6.5vw, 86px) + 48px);
+}
+
+.marketplace-demo #marketplace-demo-tab-creator,
+.marketplace-demo #marketplace-demo-tab-brand {
+  color: rgba(236, 240, 255, .6);
+}
+
+.marketplace-demo--creator #marketplace-demo-tab-creator { color: #a6baff; }
+.marketplace-demo--brand #marketplace-demo-tab-brand { color: #b9d6b2; }
+.marketplace-demo--brand #marketplace-demo-tab-creator { color: rgba(228, 236, 226, .6); }

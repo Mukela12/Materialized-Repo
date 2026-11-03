@@ -26,6 +26,7 @@ import chromeTabletFrame from "@/assets/chrome_tablet_frame_no_bg.png";
 import { COUNTRIES } from "@shared/schema";
 import { Play, ChevronDown, Users, DollarSign, TrendingUp, ShoppingBag, ArrowRight, Star, Smartphone, Monitor, Video, Volume2, VolumeX, CircleUserRound, Check } from "lucide-react";
 import { DemoPopup } from "@/components/DemoPopup";
+import { MarketplaceDemoSection } from "@/components/MarketplaceDemoSection";
 import { SiInstagram, SiLinkedin } from "react-icons/si";
 // Landing page videos hosted on Cloudinary
 const heroVideo = videoDeliveryUrl("https://vz-97d498f7-34a.b-cdn.net/9fb237db-48fe-42c2-91f5-8ef4190e8794/play_480p.mp4", "player");
@@ -1520,6 +1521,11 @@ export default function Landing() {
             Sign In
           </button>
         </Link>
+      </div>
+
+      {/* How MTRLZD works: the client's Creator and Brand demos (her Replit staging, 3 Nov 2026). */}
+      <div className="bg-[#020410] pt-20 sm:pt-28 lg:pt-36" data-testid="homepage-demo-spacing">
+        <MarketplaceDemoSection onUnlockTrial={scrollToSignup} />
       </div>
 
       {/* Section cards — float on #020410 background with 50px radius */}
