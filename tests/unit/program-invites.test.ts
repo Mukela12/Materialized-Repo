@@ -83,6 +83,13 @@ describe("the code each invite carries", () => {
     expect(offerLine(tpl({ grantType: "waive_setup_fee" }), "brand")).toBe("Your setup fee is waived.");
     expect(offerLine(tpl({ expiresAt: null, freeDays: 30 }), "creator")).toBe("30 days of free access.");
   });
+
+  it("tells an influencer about the creator bonus, never a designer", () => {
+    const bonus = tpl({ expiresAt: null, freeDays: 30, roleRestriction: "creator", creatorBonusPct: "5.00", creatorBonusMonths: 1 });
+    expect(offerLine(bonus, "creator")).toBe("30 days of free access. Plus a 5% bonus commission on your sales for your first month.");
+    expect(offerLine({ ...bonus, creatorBonusMonths: 3 }, "creator")).toBe("30 days of free access. Plus a 5% bonus commission on your sales for your first 3 months.");
+    expect(offerLine(bonus, "brand")).toBe("30 days of free access.");
+  });
 });
 
 describe("the routes", () => {

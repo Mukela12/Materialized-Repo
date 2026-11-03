@@ -140,16 +140,30 @@ export function inviteVoucherFromTemplate(args: {
 export const programBatchId = (userId: string, type: SeatType) => `program:${userId}:${type}`;
 
 /** "Free until 31 October" style wording for the email and the page. */
-export function offerLine(t: Pick<TemplateVoucher, "grantType" | "expiresAt" | "freeDays">, type: SeatType): string {
+export function offerLine(t: Pick<TemplateVoucher, "grantType" | "expiresAt" | "freeDays" | "creatorBonusPct" | "creatorBonusMonths">, type: SeatType): string {
   // A code's end is stored as the morning after its last day (see
   // shared/voucherDates.ts), so read it back as that last day.
   const until = t.expiresAt
     ? new Date(`${voucherInstantToDay(t.expiresAt, "end")}T12:00:00Z`).toLocaleDateString("en-US", { month: "long", day: "numeric", timeZone: "UTC" })
     : null;
-  if (t.grantType === "waive_setup_fee") return "Your setup fee is waived.";
-  if (until) return `Free access until ${until}.`;
-  if (t.freeDays) return `${t.freeDays} days of free access.`;
-  return type === "brand" ? "Free access to MTRLZD." : "Free access to MTRLZD.";
+  let line = "Free access to MTRLZD.";
+  if (t.grantType === "waive_setup_fee") line = "Your setup fee is waived.";
+  else if (until) line = `Free access until ${until}.`;
+  else if (t.freeDays) line = `${t.freeDays} days of free access.`;
+  return line + bonusLine(t, type);
+}
+
+/**
+ * An influencer seat's creator bonus, said in the invite (client, 3 Nov 2026:
+ * Kreatrs' creators "can earn this bonus for the next 30 days along with the
+ * free trial"). Same default term as sign-up applies: 3 months when unset.
+ */
+function bonusLine(t: Pick<TemplateVoucher, "creatorBonusPct" | "creatorBonusMonths">, type: SeatType): string {
+  const pct = Number(t.creatorBonusPct);
+  if (type !== "creator" || !(pct > 0)) return "";
+  const months = Math.max(1, Number(t.creatorBonusMonths) || 3);
+  const term = months === 1 ? "your first month" : `your first ${months} months`;
+  return ` Plus a ${Number.isInteger(pct) ? pct : pct.toFixed(1)}% bonus commission on your sales for ${term}.`;
 }
 
 export const DEFAULT_SUBJECT = "{sender} invited you to MTRLZD";
