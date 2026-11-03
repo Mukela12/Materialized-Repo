@@ -161,3 +161,68 @@ export function registerParisCampaignRoutes(app: Express) {
     }
   });
 }
+
+/**
+ * Admin: everyone who claimed passes on the campaign page (client, 3 Nov
+ * 2026: "where are those names going... is there a spreadsheet"). A claim is
+ * not a sign-up, so each pass shows whether it has been used, is still open,
+ * or ran out before anyone signed up with it.
+ */
+export type PassState = "joined" | "open" | "expired";
+
+export function passState(redeemedAt: unknown, expiresAt: unknown, now: Date): PassState {
+  if (redeemedAt) return "joined";
+  return expiresAt && new Date(expiresAt as string).getTime() <= now.getTime() ? "expired" : "open";
+}
+
+export interface ParisPass {
+  code: string; state: PassState; joinedAt: string | null; userId: string | null; name: string | null; videos: number;
+}
+export interface ParisClaimRow {
+  id: string; claimedAt: string; firstName: string; email: string; platform: string;
+  creatorHandle: string; friendHandle: string; activateBy: string; creator: ParisPass; friend: ParisPass;
+}
+
+const isoOrNull = (v: unknown) => (v ? new Date(v as string).toISOString() : null);
+
+export function shapeClaim(r: any, now: Date): ParisClaimRow {
+  const pass = (p: "c" | "f"): ParisPass => ({
+    code: r[`${p}_code`], state: passState(r[`${p}_joined_at`], r.activate_by, now), joinedAt: isoOrNull(r[`${p}_joined_at`]),
+    userId: r[`${p}_user_id`] ?? null, name: r[`${p}_name`] ?? null, videos: Number(r[`${p}_videos`] ?? 0),
+  });
+  return {
+    id: r.id, claimedAt: new Date(r.created_at).toISOString(), firstName: r.first_name, email: r.email, platform: r.platform,
+    creatorHandle: r.creator_handle, friendHandle: r.friend_handle, activateBy: new Date(r.activate_by).toISOString(),
+    creator: pass("c"), friend: pass("f"),
+  };
+}
+
+export async function parisClaimsReport(now = new Date()) {
+  const r = await db.execute(sql`
+    select c.id, c.created_at, c.first_name, c.email, c.platform, c.creator_handle, c.friend_handle, cv.expires_at as activate_by,
+      cv.code as c_code, cr.redeemed_at as c_joined_at, cr.user_id as c_user_id, coalesce(cu.display_name, cu.username) as c_name,
+      (select count(*) from videos v where v.creator_id = cr.user_id)::int as c_videos,
+      fv.code as f_code, fr.redeemed_at as f_joined_at, fr.user_id as f_user_id, coalesce(fu.display_name, fu.username) as f_name,
+      (select count(*) from videos v where v.creator_id = fr.user_id)::int as f_videos
+    from campaign_claims c
+    join vouchers cv on cv.id = c.creator_voucher_id
+    join vouchers fv on fv.id = c.friend_voucher_id
+    left join lateral (select user_id, redeemed_at from voucher_redemptions where voucher_id = cv.id order by redeemed_at limit 1) cr on true
+    left join lateral (select user_id, redeemed_at from voucher_redemptions where voucher_id = fv.id order by redeemed_at limit 1) fr on true
+    left join users cu on cu.id = cr.user_id
+    left join users fu on fu.id = fr.user_id
+    where c.campaign = ${PARIS.campaign}
+    order by c.created_at desc
+    limit 5000`);
+  const claims = (r.rows as any[]).map((row) => shapeClaim(row, now));
+  const passes = claims.flatMap((c) => [c.creator, c.friend]);
+  return {
+    totals: {
+      claims: claims.length,
+      creatorsJoined: claims.filter((c) => c.creator.state === "joined").length,
+      friendsJoined: claims.filter((c) => c.friend.state === "joined").length,
+      videos: passes.reduce((n, p) => n + p.videos, 0),
+    },
+    claims,
+  };
+}

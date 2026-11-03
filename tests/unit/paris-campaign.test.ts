@@ -56,3 +56,28 @@ describe("the email", () => {
     expect(e.html).not.toContain("<b>");
   });
 });
+
+describe("the admin list of claims", () => {
+  const now = new Date("2026-11-10T12:00:00Z");
+  it("shows a pass as joined once used, open until its activation date, then expired", async () => {
+    const { passState } = await import("../../server/parisCampaign");
+    expect(passState("2026-11-05T09:00:00Z", "2026-11-04T00:00:00Z", now)).toBe("joined");
+    expect(passState(null, "2026-11-12T00:00:00Z", now)).toBe("open");
+    expect(passState(null, "2026-11-10T12:00:00Z", now)).toBe("expired");
+  });
+  it("shapes a row with both passes, the friend's account and video counts", async () => {
+    const { shapeClaim } = await import("../../server/parisCampaign");
+    const row = shapeClaim({
+      id: "c1", created_at: "2026-11-01T10:00:00Z", first_name: "Ines", email: "ines@example.com", platform: "instagram",
+      creator_handle: "ines.paris", friend_handle: "camille_style", activate_by: "2026-11-15T10:00:00Z",
+      c_code: "PCW-AAAA", c_joined_at: "2026-11-02T08:00:00Z", c_user_id: "u1", c_name: "Ines", c_videos: 2,
+      f_code: "PCW-BBBB", f_joined_at: null, f_user_id: null, f_name: null, f_videos: 0,
+    }, now);
+    expect(row.creator).toMatchObject({ code: "PCW-AAAA", state: "joined", userId: "u1", videos: 2 });
+    expect(row.friend).toMatchObject({ code: "PCW-BBBB", state: "open", joinedAt: null, videos: 0 });
+    expect(row.activateBy).toBe("2026-11-15T10:00:00.000Z");
+  });
+  it("is admin only", () => {
+    expect(read("server/routes.ts")).toMatch(/app\.get\("\/api\/admin\/paris-creator-week", requireAdmin/);
+  });
+});

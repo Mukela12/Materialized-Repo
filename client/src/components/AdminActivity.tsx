@@ -19,6 +19,7 @@ import { exportToCsv } from "@/lib/exportCsv";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { PersonSheet } from "@/components/AdminPersonSheet";
 import { EngagementBySource } from "@/components/AdminEngagement";
+import { ParisClaims } from "@/components/AdminParisClaims";
 
 interface Report {
   days: number;
@@ -419,6 +420,8 @@ export function AdminActivity() {
           )}
         </CardContent>
       </Card>
+
+      <ParisClaims />
 
       <EngagementBySource />
 

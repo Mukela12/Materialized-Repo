@@ -2641,6 +2641,17 @@ export async function registerRoutes(
     res.json(r);
   });
 
+  // Admin: who claimed Paris Creator Week passes, and which passes were used.
+  app.get("/api/admin/paris-creator-week", requireAdmin, async (_req, res) => {
+    try {
+      const { parisClaimsReport } = await import("./parisCampaign");
+      res.json(await parisClaimsReport());
+    } catch (err) {
+      console.error("[Paris] claims list failed:", err);
+      res.status(500).json({ error: "Couldn't load the Paris Creator Week list" });
+    }
+  });
+
   // Admin: videos ranked by engagement, each with its creator's source.
   app.get("/api/admin/activity/engagement", requireAdmin, async (req, res) => {
     const { engagementReport } = await import("./activity");
