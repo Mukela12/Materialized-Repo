@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { FocusEvent } from "react";
 import { homepageExplainerMedia } from "./homepage-explainer-media";
 import "./brand-ecosystem/BrandEcosystemSection.css";
-import { ImportScene, LibraryScene, SocialScene, StorefrontScene } from "./brand-ecosystem/BrandDemoScenes";
+import { ImportScene, LibraryScene, SocialScene, StorefrontScene, preloadBrandDemoMedia } from "./brand-ecosystem/BrandDemoScenes";
 
 type BrandEcosystemSectionProps = { onUnlockTrial: () => void; embedded?: boolean };
 
@@ -157,6 +157,10 @@ export function BrandEcosystemSection({ onUnlockTrial, embedded = false }: Brand
     observer.observe(section);
     return () => observer.disconnect();
   }, []);
+
+  useEffect(() => {
+    if (inView) preloadBrandDemoMedia();
+  }, [inView]);
 
   useEffect(() => {
     const updateVisibility = () => setDocumentVisible(document.visibilityState === "visible");

@@ -56,6 +56,12 @@ function useCountUp(to: number, delay: number, duration: number, { active, reduc
   return value;
 }
 
+/** Warms the frames and photos so a device never appears before its frame. */
+export function preloadBrandDemoMedia() {
+  const urls = ["/media/demo-phone-frame.webp", "/media/demo-tablet-frame.webp", STORY_POSTER, ...Object.values(CREATOR_PHOTOS), ...Object.values(LIBRARY_PHOTOS)];
+  urls.forEach((url) => { new Image().src = url; });
+}
+
 const money = (n: number) => `$${n.toLocaleString("en-US")}`;
 
 function DemoVideo({ active, className }: { active: boolean; className?: string }) {
