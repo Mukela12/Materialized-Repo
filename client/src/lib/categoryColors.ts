@@ -27,6 +27,7 @@ export const CATEGORY_ON_THUMBNAIL: Record<string, string> = {
   health:      "bg-green-700 text-white",
   eco:         "bg-emerald-700 text-white",
   interiors:   "bg-stone-600 text-white",
+  auto:        "bg-slate-700 text-white",
 };
 
 /** Over a card surface, where the tint reads fine. */
@@ -38,6 +39,7 @@ export const CATEGORY_ON_SURFACE: Record<string, string> = {
   health:      "bg-green-500/15 text-green-600",
   eco:         "bg-emerald-500/15 text-emerald-600",
   interiors:   "bg-stone-500/15 text-stone-600",
+  auto:        "bg-slate-500/15 text-slate-600",
 };
 
 export const CATEGORY_FALLBACK_ON_THUMBNAIL = "bg-neutral-700 text-white";

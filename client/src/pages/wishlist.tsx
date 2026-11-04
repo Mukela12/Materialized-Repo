@@ -17,6 +17,7 @@ const CATEGORIES = [
   { value: "health",      label: "Health" },
   { value: "eco",         label: "Eco" },
   { value: "interiors",   label: "Interiors" },
+  { value: "auto",        label: "Auto" },
 ];
 
 const CATEGORY_COLORS: Record<string, string> = {
@@ -27,6 +28,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   health:      "bg-green-500/15 text-green-600",
   eco:         "bg-emerald-500/15 text-emerald-600",
   interiors:   "bg-stone-500/15 text-stone-600",
+  auto:        "bg-slate-500/15 text-slate-600",
 };
 
 type WishlistEntry = {

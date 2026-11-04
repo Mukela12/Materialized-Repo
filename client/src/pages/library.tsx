@@ -35,6 +35,7 @@ const CATEGORIES = [
   { value: "health",      label: "Health" },
   { value: "eco",         label: "Eco" },
   { value: "interiors",   label: "Interiors" },
+  { value: "auto",        label: "Auto" },
 ];
 
 

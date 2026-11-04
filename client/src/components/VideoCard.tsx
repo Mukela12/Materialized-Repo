@@ -28,6 +28,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   health:      "Health",
   eco:         "Eco",
   interiors:   "Interiors",
+  auto:        "Auto",
 };
 
 function parseCategories(raw: string | null | undefined): string[] {

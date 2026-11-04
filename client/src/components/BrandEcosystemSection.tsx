@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import type { FocusEvent } from "react";
+import { Check } from "lucide-react";
 import { homepageExplainerMedia } from "./homepage-explainer-media";
+import { FlowArrow } from "./ecosystem-flow-arrow";
 import "./brand-ecosystem/BrandEcosystemSection.css";
 import { ImportScene, LibraryScene, SocialScene, StorefrontScene, preloadBrandDemoMedia } from "./brand-ecosystem/BrandDemoScenes";
 
@@ -42,10 +44,10 @@ function RequestScene() {
           <span><b>Creator invitation</b><small>New shoppable video request</small></span>
         </div>
         <p className="be-request-copy">“Would you like to make my video shoppable for your brand?”</p>
-        <div className="be-action-row"><span>Accept invitation</span><b>Accepted ✓</b></div>
+        <div className="be-action-row"><span>Accept invitation</span><b>Accepted <Check strokeWidth={3} /></b></div>
         <div className="be-payment">Admin Setup Fee <strong>$29</strong></div>
       </div>
-      <span className="be-flow-arrow">→</span>
+      <span className="be-flow-arrow"><FlowArrow /></span>
       <div className="be-dashboard">
         <div className="be-dash-top"><span>My Campaigns</span><span>BRAND DASHBOARD</span></div>
         <div className="be-campaign-row">

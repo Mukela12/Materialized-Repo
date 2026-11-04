@@ -34,7 +34,7 @@ export const payoutStatusEnum = pgEnum("payout_status", [
 ]);
 
 export const videoCategoryEnum = pgEnum("video_category", [
-  "fashion", "travel", "skincare", "cuisine_bev", "health", "eco", "interiors"
+  "fashion", "travel", "skincare", "cuisine_bev", "health", "eco", "interiors", "auto"
 ]);
 
 export const rewardTypeEnum = pgEnum("reward_type", [
@@ -1211,6 +1211,7 @@ export const VIDEO_CATEGORY_OPTIONS = [
   { value: "health", label: "Health" },
   { value: "eco", label: "Eco" },
   { value: "interiors", label: "Interiors" },
+  { value: "auto", label: "Auto" },
 ] as const;
 
 // Brand outreach status

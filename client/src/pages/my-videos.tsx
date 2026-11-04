@@ -27,6 +27,7 @@ const CATEGORY_FILTERS = [
   { value: "health",      label: "Health" },
   { value: "eco",         label: "Eco" },
   { value: "interiors",   label: "Interiors" },
+  { value: "auto",        label: "Auto" },
 ];
 
 function parseCategories(raw: string | null | undefined): string[] {

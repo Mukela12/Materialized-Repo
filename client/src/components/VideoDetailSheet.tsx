@@ -32,6 +32,7 @@ const CATEGORIES = [
   { value: "health",      label: "Health",            color: "bg-green-500/15 text-green-600 border-green-500/20" },
   { value: "eco",         label: "Eco",               color: "bg-emerald-500/15 text-emerald-600 border-emerald-500/20" },
   { value: "interiors",   label: "Interiors",         color: "bg-stone-500/15 text-stone-600 border-stone-500/20" },
+  { value: "auto",        label: "Auto",              color: "bg-slate-500/15 text-slate-600 border-slate-500/20" },
 ];
 
 function parseCategories(raw: string | null | undefined): string[] {

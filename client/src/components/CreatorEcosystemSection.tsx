@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import type { FocusEvent } from "react";
+import { Check, Copy, Play, Upload } from "lucide-react";
 import { homepageExplainerMedia } from "./homepage-explainer-media";
+import { FlowArrow } from "./ecosystem-flow-arrow";
 import "./creator-ecosystem/CreatorEcosystemSection.css";
 
 type CreatorEcosystemSectionProps = { onUnlockTrial: () => void; embedded?: boolean };
@@ -36,10 +38,10 @@ function UploadScene() {
   return (
     <div className="ce-illustration ce-upload-wrap" aria-hidden="true">
       <div className="ce-upload-card">
-        <div className="ce-upload-heading"><span className="ce-upload-icon">↑</span><span><b>Upload to MTRLZD</b><small>Creator video · MP4</small></span></div>
+        <div className="ce-upload-heading"><span className="ce-upload-icon"><Upload strokeWidth={1.8} /></span><span><b>Upload to MTRLZD</b><small>Creator video · MP4</small></span></div>
         <div className="ce-upload-transfer">
           <div className="ce-video-file">
-            <div className="ce-file-thumb"><img src="/paris-commerce-demo-poster.webp" alt="" /><span>▶ 00:18</span></div>
+            <div className="ce-file-thumb"><img src="/paris-commerce-demo-poster.webp" alt="" /><span><Play fill="currentColor" strokeWidth={0} /> 00:18</span></div>
             <div className="ce-file-meta"><strong>studio-look-01.mp4</strong><small>18 sec · Video</small></div>
           </div>
           <div className="ce-upload-destination"><span className="ce-upload-destination-mark">M</span><span>MTRLZD<br /><small>Video library</small></span></div>
@@ -67,7 +69,7 @@ function MatchScene() {
           <span className="ce-bounds" />
           <span className="ce-scan-caption">AI OBJECT DETECTION</span>
         </div>
-        <span className="ce-scan-arrow">→</span>
+        <span className="ce-scan-arrow"><FlowArrow /></span>
         <div className="ce-inventory">
           <small>TAGGED BRAND · NOVA FORM</small>
           <div className="ce-product-match">
@@ -88,7 +90,7 @@ function ShareScene() {
         <div className="ce-story-top"><span className="ce-story-avatar">M</span><b>Your story</b><span>•••</span></div>
         <div className="ce-story-photo" data-testid="creator-story-viewport">
           <img src="/paris-commerce-demo-poster.webp" alt="" />
-          <span className="ce-story-play">▶</span>
+          <span className="ce-story-play"><Play fill="currentColor" strokeWidth={0} /></span>
           <div className="ce-story-product"><small>SHOP THE LOOK</small><b>Draped evening dress</b><span>Buy Now</span></div>
         </div>
         <div className="ce-story-footer"><span>Shoppable video preview</span><b>Instagram Stories</b></div>
@@ -97,7 +99,7 @@ function ShareScene() {
         <span className="ce-embed-kicker">ALSO SHARE ON YOUR SITE</span>
         <strong>Embed this video</strong>
         <div className="ce-code">&lt;iframe src="mtrlzd.video"&gt;</div>
-        <div className="ce-copy-action"><span className="ce-copy-before">Copy embed code <b>↗</b></span><span className="ce-copy-after"><i>✓</i> Copied</span></div>
+        <div className="ce-copy-action"><span className="ce-copy-before">Copy embed code <b><Copy strokeWidth={2} /></b></span><span className="ce-copy-after"><i><Check strokeWidth={3} /></i> Copied</span></div>
       </div>
     </div>
   );
@@ -131,14 +133,14 @@ function PublisherScene() {
         <strong>Global Content Library</strong>
         <div className="ce-filter-options"><span>All</span><span className="ce-filter-selected">Travel <i /></span><span>Style</span></div>
         <div className="ce-travel-clip">
-          <div className="ce-travel-art"><span className="ce-travel-sun" /><span className="ce-travel-mountain ce-mountain-back" /><span className="ce-travel-mountain ce-mountain-front" /><span className="ce-travel-play">▶</span></div>
+          <div className="ce-travel-art"><span className="ce-travel-sun" /><span className="ce-travel-mountain ce-mountain-back" /><span className="ce-travel-mountain ce-mountain-front" /><span className="ce-travel-play"><Play fill="currentColor" strokeWidth={0} /></span></div>
           <span><b>Coastal drive</b><small>Travel video · 00:24</small></span>
         </div>
         <span className="ce-selected-label">Selected for repost</span>
       </div>
-      <div className="ce-library-transfer"><span className="ce-transfer-track" /><i>↗</i><small>REPOST</small></div>
+      <div className="ce-library-transfer"><span className="ce-transfer-arrow"><FlowArrow /></span><small>REPOST</small></div>
       <div className="ce-magazine">
-        <div className="ce-magazine-travel"><span className="ce-travel-sun" /><span className="ce-travel-mountain ce-mountain-back" /><span className="ce-travel-mountain ce-mountain-front" /><span className="ce-magazine-play">▶</span></div>
+        <div className="ce-magazine-travel"><span className="ce-travel-sun" /><span className="ce-travel-mountain ce-mountain-back" /><span className="ce-travel-mountain ce-mountain-front" /><span className="ce-magazine-play"><Play fill="currentColor" strokeWidth={0} /></span></div>
         <div className="ce-mag-title">The Travel Edit</div>
         <div className="ce-mag-sub">Travel Magazine</div>
         <span className="ce-repost-badge">VIDEO REPOSTED</span>
@@ -172,7 +174,7 @@ function AttributionScene() {
         <circle className="ce-growth-point ce-growth-point-five" cx="456" cy="26" r="5" />
       </svg>
       <div className="ce-brand-publish-node"><b>Brand eCommerce</b><span>Publishes your video</span></div>
-      <span className="ce-brand-flow-arrow" aria-hidden="true">↓</span>
+      <span className="ce-brand-flow-arrow" aria-hidden="true"><FlowArrow /></span>
       <div className="ce-shopper-source"><b>Brand’s consumer audience shops your video</b></div>
       <svg className="ce-attribution-paths" viewBox="0 0 440 86" preserveAspectRatio="none">
         <defs><marker id="ce-attribution-arrow" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L0,6 L7,3 z" fill="#a6baff" /></marker></defs>

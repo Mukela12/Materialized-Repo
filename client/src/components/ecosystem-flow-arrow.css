@@ -1,0 +1,34 @@
+.flow-arrow {
+  display: block;
+  width: 2.6em;
+  height: auto;
+  overflow: visible;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.flow-arrow-track { opacity: .35; }
+.flow-arrow-run {
+  stroke-width: 2.4;
+  stroke-dasharray: 9 31;
+  animation: flow-arrow-run 1.6s cubic-bezier(.45, 0, .25, 1) infinite;
+}
+.flow-arrow-head { animation: flow-arrow-head 1.6s cubic-bezier(.45, 0, .25, 1) infinite; }
+
+@keyframes flow-arrow-run {
+  from { stroke-dashoffset: 9; opacity: 0; }
+  15% { opacity: 1; }
+  80% { opacity: 1; }
+  to { stroke-dashoffset: -31; opacity: 0; }
+}
+@keyframes flow-arrow-head {
+  0%, 62% { transform: translateX(0); }
+  78% { transform: translateX(2.5px); }
+  100% { transform: translateX(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flow-arrow-run, .flow-arrow-head { animation: none !important; }
+  .flow-arrow-run { stroke-dasharray: none; }
+}

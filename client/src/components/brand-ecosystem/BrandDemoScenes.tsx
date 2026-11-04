@@ -229,7 +229,7 @@ const CREATOR_PHOTOS = {
 const roster = [
   { name: "Mia Laurent", handle: "@miawanders", category: "Travel", photo: CREATOR_PHOTOS.travel, videos: 24, views: 182, sales: 6420 },
   { name: "Amara Okafor", handle: "@amarawears", category: "Fashion", photo: CREATOR_PHOTOS.fashion, videos: 41, views: 356, sales: 12880 },
-  { name: "Ella Novak", handle: "@ellaglow", category: "Beauty", photo: CREATOR_PHOTOS.beauty, videos: 33, views: 248, sales: 8150 },
+  { name: "Ella Novak", handle: "@ellaglow", category: "Skincare", photo: CREATOR_PHOTOS.beauty, videos: 33, views: 248, sales: 8150 },
   { name: "Marco Ruiz", handle: "@marcodrives", category: "Auto", photo: CREATOR_PHOTOS.auto, videos: 18, views: 129, sales: 4960 },
 ];
 
@@ -305,7 +305,7 @@ export function LibraryScene(scene: SceneProps) {
             <span className="bx-select-value"><span className="is-before">All categories</span><span className="is-after">Travel</span></span>
             <ChevronDown />
             <span className="bx-select-menu">
-              <i>Fashion</i><i>Beauty</i><i>Auto</i><i className="is-pick">Travel</i>
+              <i>Fashion</i><i>Skincare</i><i>Auto</i><i className="is-pick">Travel</i>
             </span>
           </span>
         </div>
