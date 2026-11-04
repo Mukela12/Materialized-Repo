@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { FocusEvent } from "react";
 import { homepageExplainerMedia } from "./homepage-explainer-media";
 import "./brand-ecosystem/BrandEcosystemSection.css";
+import { ImportScene, LibraryScene, SocialScene, StorefrontScene } from "./brand-ecosystem/BrandDemoScenes";
 
 type BrandEcosystemSectionProps = { onUnlockTrial: () => void; embedded?: boolean };
 
@@ -16,15 +17,15 @@ const slides = [
   },
   {
     title: "Let your audience know it’s shoppable.",
-    support: "Share a preview to Instagram and TikTok. Your audience can shop the videos on your eCommerce.",
+    support: "Your audience taps the product in your Story and shops the video on your eCommerce.",
   },
   {
     title: "Bring your influencer program with you.",
     support: "Import your existing program from CSV. Invited influencers get FREE access to Video Commerce tools.",
   },
   {
-    title: "One library. More reach.",
-    support: "The Global Content Library brings creator and publisher audiences to your brand. Creator attribution and publisher commission stay intact.",
+    title: "Global content library. Accelerate your sales.",
+    support: "Find creator videos by category and publish them to your eCommerce. Brands, creators and publishers each earn from the sales.",
   },
   {
     title: "See activity. Set creator commission.",
@@ -53,165 +54,6 @@ function RequestScene() {
         </div>
         <span className="be-published-chip">Added to My Campaigns</span>
       </div>
-    </div>
-  );
-}
-
-function StorefrontScene() {
-  return (
-    <div className="be-illustration be-storefronts" aria-hidden="true">
-      <div className="be-store">
-        <div className="be-store-nav"><span className="be-store-brand">FORM / STUDIO</span><span className="be-store-mini">SHOP &nbsp; NEW &nbsp; BAG</span></div>
-        <div className="be-store-content">
-          <span className="be-store-kicker">VERTICAL VIDEO EMBED</span>
-          <div className="be-shop-video"><span className="be-play">▶</span><span className="be-shop-overlay"><span>Creator styling edit</span><b>Buy Now</b></span></div>
-          <div className="be-store-product"><span>In the frame</span><b>Buy Now</b></div>
-        </div>
-      </div>
-      <div className="be-store">
-        <div className="be-store-nav"><span className="be-store-brand">FORM / NEW IN</span><span className="be-store-mini">FILTER &nbsp; BAG</span></div>
-        <div className="be-store-content">
-          <span className="be-store-kicker">SHOPPABLE PRODUCT THUMBNAIL</span>
-          <div className="be-thumb-shot"><span className="be-mini-model" /></div>
-          <div className="be-thumbnail-caption"><span>Shown in creator video</span><b>Buy Now</b></div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function SocialScene() {
-  return (
-    <div className="be-illustration be-share-stage" aria-hidden="true">
-      <div className="be-phone" data-testid="brand-story-device">
-        <div className="be-phone-screen">
-          <div className="be-phone-notch" />
-          <div className="be-story-bar">
-            <span className="be-story-avatar">M</span>
-            <span>@join.materialized</span>
-            <span className="be-story-live">Story</span>
-          </div>
-          <div className="be-story-scene" data-testid="brand-story-viewport">
-            <span className="be-story-note">OUR NEW VIDEO IS SHOPPABLE</span>
-            <div className="be-product-carousel">
-              <div className="be-product-tile">
-                <div className="be-product-art">
-                  <svg viewBox="0 0 48 40" focusable="false">
-                    <path d="M19 3h10l-2 10 9 24H12l9-24z" fill="#29272b" />
-                    <path d="M19 3l5 6 5-6" fill="none" stroke="#e3c397" strokeWidth="1.5" />
-                  </svg>
-                </div>
-                <span className="be-product-name">Evening dress</span>
-                <span className="be-preorder">Pre Order</span>
-              </div>
-              <div className="be-product-tile">
-                <div className="be-product-art">
-                  <svg viewBox="0 0 48 40" focusable="false">
-                    <rect x="9" y="14" width="30" height="22" rx="5" fill="#9b4933" />
-                    <path d="M17 16V11a7 7 0 0114 0v5" fill="none" stroke="#593524" strokeWidth="3" />
-                    <circle cx="24" cy="23" r="2" fill="#f4d48f" />
-                  </svg>
-                </div>
-                <span className="be-product-name">Leather bag</span>
-                <span className="be-preorder">Pre Order</span>
-              </div>
-              <div className="be-product-tile">
-                <div className="be-product-art">
-                  <svg viewBox="0 0 48 40" focusable="false">
-                    <ellipse cx="17" cy="21" rx="8" ry="13" fill="none" stroke="#91632c" strokeWidth="4" />
-                    <ellipse cx="31" cy="21" rx="8" ry="13" fill="none" stroke="#ffdda0" strokeWidth="4" />
-                  </svg>
-                </div>
-                <span className="be-product-name">Gold hoops</span>
-                <span className="be-preorder">Pre Order</span>
-              </div>
-            </div>
-            <svg className="be-hearts" viewBox="0 0 92 145" focusable="false" aria-hidden="true">
-              <path className="be-heart" d="M31 41 C19 30 4 45 31 65 C58 45 43 30 31 41Z" fill="#e43e4d" />
-              <path className="be-heart" d="M61 72 C52 63 41 74 61 89 C81 74 70 63 61 72Z" fill="#e43e4d" />
-              <path className="be-heart" d="M28 103 C21 96 12 105 28 117 C44 105 35 96 28 103Z" fill="#e43e4d" />
-            </svg>
-          </div>
-          <div className="be-story-caption">
-            <b>Watch the video, shop the pieces.</b>
-            <br />
-            Find it on our eCommerce.
-          </div>
-        </div>
-      </div>
-      <div className="be-social-stack">
-        <div className="be-social-destination">
-          <span className="be-social-mark">IG</span>
-          <span>Instagram Story<small>Preview + product carousel</small></span>
-        </div>
-        <div className="be-social-destination">
-          <span className="be-social-mark">TT</span>
-          <span>TikTok<small>Shoppable video preview</small></span>
-        </div>
-        <div className="be-comments">
-          <span className="be-comment">“Love the whole look. Shop link?”</span>
-          <span className="be-comment">“Tap the products in our video.”</span>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-const roster = [
-  { initials: "AM", name: "Ari Morgan", role: "Style creator" },
-  { initials: "JL", name: "Jules Lane", role: "Video creator" },
-  { initials: "SK", name: "Sage Kim", role: "Beauty creator" },
-];
-
-function ImportScene() {
-  return (
-    <div className="be-illustration be-import-scene" aria-hidden="true">
-      <div className="be-csv">
-        <div className="be-file-head"><span className="be-file-icon">CSV</span><span>influencer-program.csv</span></div>
-        <div className="be-csv-lines">
-          <div className="be-csv-row"><span>Creator</span><span>Program</span></div>
-          <div className="be-csv-row"><span>Ari Morgan</span><span>Style</span></div>
-          <div className="be-csv-row"><span>Jules Lane</span><span>Video</span></div>
-          <div className="be-csv-row"><span>Sage Kim</span><span>Beauty</span></div>
-        </div>
-      </div>
-      <div className="be-transfer-column"><span /><b>→</b><small>IMPORT</small></div>
-      <div className="be-roster">
-        <div className="be-roster-head">Influencer roster <span>Imported</span></div>
-        {roster.map((person) => (
-          <div className="be-roster-row" key={person.initials}>
-            <span className="be-initials">{person.initials}</span>
-            <span className="be-roster-person">{person.name}<small>{person.role}</small></span>
-            <span className="be-free">FREE ACCESS</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function EcosystemScene() {
-  return (
-    <div className="be-illustration be-ecosystem-map" aria-hidden="true">
-      <svg className="be-map-lines" viewBox="0 0 540 300" preserveAspectRatio="none" focusable="false">
-        <defs>
-          <marker id="be-arrowhead" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto">
-            <path d="M0,0 L0,6 L7,3 z" fill="#688b68" />
-          </marker>
-        </defs>
-        <path d="M270 78 C220 112 105 125 80 191" markerEnd="url(#be-arrowhead)" />
-        <path d="M270 78 C270 125 270 139 270 202" markerEnd="url(#be-arrowhead)" />
-        <path d="M270 78 C330 115 430 125 460 191" markerEnd="url(#be-arrowhead)" />
-      </svg>
-      <div className="be-library">
-        <div className="be-library-top"><span>Global Content Library</span><span className="be-filter-pill">FILTERED · TRAVEL</span></div>
-        <div className="be-library-clip"><span className="be-library-art" /><span><strong>Coastal escape</strong><small>Creator video · ready to share</small></span></div>
-      </div>
-      <div className="be-attribution-note">Reach paths keep attribution connected</div>
-      <div className="be-map-node brand"><span className="be-node-mark">B</span><strong>Brand eCommerce</strong><small>Shoppable video · sales potential</small></div>
-      <div className="be-map-node creator"><span className="be-node-mark">C</span><strong>Creator / Substack</strong><small>Creator affiliate attribution</small></div>
-      <div className="be-map-node publisher"><span className="be-node-mark">P</span><strong>Travel Magazine</strong><small>Publisher commission</small></div>
-      <div className="be-reach-note">Connected content · broader brand visibility</div>
     </div>
   );
 }
@@ -259,19 +101,23 @@ function DashboardScene({ value, onChange }: { value: number; onChange: (value: 
 
 function SlideScene({
   index,
+  active,
+  reducedMotion,
   commissionValue,
   onCommissionChange,
 }: {
   index: number;
+  active: boolean;
+  reducedMotion: boolean;
   commissionValue: number;
   onCommissionChange: (value: number) => void;
 }) {
   switch (index) {
     case 0: return <RequestScene />;
-    case 1: return <StorefrontScene />;
-    case 2: return <SocialScene />;
-    case 3: return <ImportScene />;
-    case 4: return <EcosystemScene />;
+    case 1: return <StorefrontScene active={active} reducedMotion={reducedMotion} />;
+    case 2: return <SocialScene active={active} reducedMotion={reducedMotion} />;
+    case 3: return <ImportScene active={active} reducedMotion={reducedMotion} />;
+    case 4: return <LibraryScene active={active} reducedMotion={reducedMotion} />;
     default: return <DashboardScene value={commissionValue} onChange={onCommissionChange} />;
   }
 }
@@ -423,6 +269,8 @@ export function BrandEcosystemSection({ onUnlockTrial, embedded = false }: Brand
             <div className="be-slide-enter">
               <SlideScene
                 index={slideIndex}
+                active={active}
+                reducedMotion={reducedMotion}
                 commissionValue={commissionValue}
                 onCommissionChange={(value) => {
                   setCommissionManual(true);
@@ -468,10 +316,10 @@ export function BrandEcosystemSection({ onUnlockTrial, embedded = false }: Brand
             <h3>The complete brand story</h3>
             <ol>
               <li>A creator emails a shoppable-video invitation. The brand accepts, pays the $29 Admin Setup Fee, and finds the accepted video in My Campaigns.</li>
-              <li>Preview the campaign, then paste the influencer’s video embed into eCommerce as a vertical player or a shoppable product thumbnail.</li>
-              <li>Share a preview to Instagram and TikTok; tell your audience videos on your eCommerce are shoppable. Instagram Story includes a product carousel.</li>
-              <li>Import an existing Influencer Program via CSV. Invited influencers get FREE access to Video Commerce tools.</li>
-              <li>One library, more reach: the Global Content Library brings creator and publisher audiences to your brand. Creator affiliate attribution and publisher commission are preserved.</li>
+              <li>Paste the influencer’s video embed into your eCommerce product page as a vertical player or a shoppable product thumbnail.</li>
+              <li>Share your interactive video previews to Instagram and TikTok. Your audience taps the product in your Story and shops the video on your eCommerce.</li>
+              <li>Import your existing influencer program from CSV and see each creator’s category, videos, views and sales. Invited influencers get FREE access to Video Commerce tools.</li>
+              <li>Filter the Global Content Library by category, such as Travel, and publish a creator’s video to your eCommerce. The brand earns from the sales, the creator earns affiliate commission and the publisher earns publisher commission.</li>
               <li>Brand dashboard shows affiliate engagement and transaction value. Adjust influencer commission in-app.</li>
             </ol>
           </div>
