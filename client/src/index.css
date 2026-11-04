@@ -713,3 +713,8 @@ main :where(p, h1, h2, h3, h4, li, dd, td) {
     column-gap: 1.25rem;
   }
 }
+
+/* Wishlist heart turning red (WishlistHeart.tsx). */
+@keyframes wishlist-heart-pop { 0% { transform: scale(.82); } 55% { transform: scale(1.14); } 100% { transform: scale(1); } }
+.wishlist-heart-pop { animation: wishlist-heart-pop .34s cubic-bezier(.2, .8, .3, 1); }
+@media (prefers-reduced-motion: reduce) { .wishlist-heart-pop { animation: none; } }

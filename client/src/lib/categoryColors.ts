@@ -51,9 +51,3 @@ export function categoryBadgeOnThumbnail(category: string | null | undefined): s
   return CATEGORY_ON_THUMBNAIL[key] ?? CATEGORY_FALLBACK_ON_THUMBNAIL;
 }
 
-/**
- * The selection checkbox, which has the same problem: a white outline icon on
- * an unknown frame. A dark opaque chip behind it makes it readable on anything.
- */
-export const SELECTION_CHIP =
-  "flex items-center justify-center h-6 w-6 rounded-md bg-black/70 backdrop-blur-sm ring-1 ring-white/20";

@@ -1,5 +1,9 @@
 import heartIcon from "@assets/WISHLIST_ICON_materialized_saas_1773416652092.png";
+// The same chrome heart tinted red, for a saved video (4 Nov 2026): the old
+// saved state only brightened the black heart, which barely read as "on".
+import heartIconSaved from "@/assets/wishlist-heart-red.png";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useRef, useState } from "react";
 import type { MouseEvent } from "react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -40,6 +44,14 @@ export function WishlistHeart({ listingId, wishlisted }: WishlistHeartProps) {
 
   const isPending = addMutation.isPending || removeMutation.isPending;
 
+  // Pop only when the heart turns red, not for every saved card on page load.
+  const wasSaved = useRef(wishlisted);
+  const [pop, setPop] = useState(false);
+  useEffect(() => {
+    if (wishlisted && !wasSaved.current) setPop(true);
+    wasSaved.current = wishlisted;
+  }, [wishlisted]);
+
   return (
     <button
       onClick={toggle}
@@ -47,14 +59,16 @@ export function WishlistHeart({ listingId, wishlisted }: WishlistHeartProps) {
       data-testid={`wishlist-heart-${listingId}`}
       className="absolute -top-6 -right-6 z-10 w-12 h-12 p-0 border-none bg-transparent cursor-pointer select-none focus:outline-none"
       aria-label={wishlisted ? "Remove from wishlist" : "Add to wishlist"}
+      aria-pressed={wishlisted}
     >
       <img
-        src={heartIcon}
-        alt="wishlist"
-        className="w-full h-full object-contain transition-all duration-300"
+        src={wishlisted ? heartIconSaved : heartIcon}
+        alt=""
+        className={`w-full h-full object-contain transition-[transform,filter] duration-200 ease-out ${pop && wishlisted ? "wishlist-heart-pop" : ""}`}
+        onAnimationEnd={() => setPop(false)}
         style={{
           filter: wishlisted
-            ? "drop-shadow(0 0 10px rgba(220,220,220,0.85)) brightness(1.15)"
+            ? "drop-shadow(0 3px 6px rgba(190,20,45,.35))"
             : "brightness(0.18) saturate(0)",
           transform: isPending ? "scale(0.85)" : "scale(1)",
         }}

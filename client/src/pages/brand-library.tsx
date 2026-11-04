@@ -1,5 +1,6 @@
 import { CURRENCY_SYMBOL } from "@/lib/currency";
-import { categoryBadgeOnThumbnail, SELECTION_CHIP } from "@/lib/categoryColors";
+import { categoryBadgeOnThumbnail } from "@/lib/categoryColors";
+import { SelectionTick } from "@/components/SelectionTick";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { EmptyState } from "@/components/EmptyState";
@@ -7,7 +8,7 @@ import { Card, CardDescription, CardFooter, CardHeader, CardTitle } from "@/comp
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
-import { ShoppingBag, Play, Search, CheckSquare, Square, ListVideo, X } from "lucide-react";
+import { ShoppingBag, Play, Search, ListVideo, X } from "lucide-react";
 import { AddToPlaylistModal } from "@/components/AddToPlaylistModal";
 import { WishlistHeart } from "@/components/WishlistHeart";
 
@@ -163,11 +164,7 @@ export default function BrandLibrary() {
                         <Play className="w-10 h-10 text-muted-foreground" />
                       </div>
                     )}
-                    <div className={`absolute top-2 left-2 ${SELECTION_CHIP}`}>
-                      {isSelected
-                        ? <CheckSquare className="h-4 w-4 text-primary" />
-                        : <Square className="h-4 w-4 text-white" />}
-                    </div>
+                    <SelectionTick selected={isSelected} />
                     {listing.category && (
                       <span className={`absolute top-2 right-2 px-2 py-0.5 rounded-full text-[10px] font-medium ${badgeClass}`}>
                         {CATEGORIES.find((c) => c.value === cat)?.label ?? listing.category}
