@@ -21,3 +21,17 @@ export function canAccessUserResource(
   if (actor.isAdmin) return true;
   return actor.id === targetUserId;
 }
+
+/**
+ * Who may browse the whole Global Video Library.
+ *
+ * The client, 5 Nov 2026: publishers are the profile the library is for.
+ * Creators only ever put their own videos in (the $49 import), so they see
+ * their own listings and nothing else, which is all the import sheet needs to
+ * show "Listed". Brands still browse it to build playlists.
+ */
+export function canBrowseLibrary(actor: { role?: string | null; isAdmin?: boolean | null } | null | undefined): boolean {
+  if (!actor) return false;
+  if (actor.isAdmin) return true;
+  return actor.role === "affiliate" || actor.role === "brand";
+}

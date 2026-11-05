@@ -4,8 +4,6 @@ import materializedLogo from "@assets/MTRLZD_Logo_white_transparent.png";
 import {
   LayoutDashboard,
   Video,
-  Library,
-  ListVideo,
   BarChart3,
   Users,
   HelpCircle,
@@ -16,7 +14,6 @@ import {
   Wallet,
   UserCircle,
   Bell,
-  Heart,
   LogOut,
 } from "lucide-react";
 import { useLogout } from "@/hooks/useCurrentUser";
@@ -44,11 +41,11 @@ const overviewItems = [
   { path: "/creator", label: "Dashboard", icon: LayoutDashboard },
 ];
 
+// Client, 5 Nov 2026: creators don't browse the Global Video Library, they
+// import into it from My Campaigns ($49 a video). Playlists and the wishlist
+// are built from the library, so they go with it.
 const contentItems = [
   { path: "/creator/my-videos", label: "My Campaigns", icon: Video },
-  { path: "/creator/library", label: "Global Video Library", icon: Library },
-  { path: "/creator/playlists", label: "My Playlists", icon: ListVideo },
-  { path: "/creator/wishlist", label: "Wishlist", icon: Heart },
 ];
 
 const analyticsItems = [

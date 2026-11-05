@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { canAccessUserResource } from '../../server/authz';
+import { canAccessUserResource, canBrowseLibrary } from '../../server/authz';
 
 describe('canAccessUserResource', () => {
   it('denies an unauthenticated caller', () => {
@@ -23,5 +23,26 @@ describe('canAccessUserResource', () => {
   it('treats null/false isAdmin as non-admin', () => {
     expect(canAccessUserResource({ id: 'u1', isAdmin: null }, 'u2')).toBe(false);
     expect(canAccessUserResource({ id: 'u1', isAdmin: false }, 'u2')).toBe(false);
+  });
+});
+
+describe('canBrowseLibrary', () => {
+  it('lets publishers and brands browse the whole library', () => {
+    expect(canBrowseLibrary({ role: 'affiliate' })).toBe(true);
+    expect(canBrowseLibrary({ role: 'brand' })).toBe(true);
+  });
+
+  it('keeps creators to their own listings', () => {
+    expect(canBrowseLibrary({ role: 'creator' })).toBe(false);
+    expect(canBrowseLibrary({ role: 'creator', isAdmin: false })).toBe(false);
+  });
+
+  it('lets an admin browse whatever their role', () => {
+    expect(canBrowseLibrary({ role: 'creator', isAdmin: true })).toBe(true);
+  });
+
+  it('denies an unauthenticated caller', () => {
+    expect(canBrowseLibrary(null)).toBe(false);
+    expect(canBrowseLibrary(undefined)).toBe(false);
   });
 });

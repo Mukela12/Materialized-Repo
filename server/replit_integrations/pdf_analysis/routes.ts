@@ -1,5 +1,8 @@
 import { Router, Request, Response } from "express";
 import { analyzeBrandGuideline, analyzeImageForColors } from "./client";
+// Production holds the key as GEMINI_API_KEY; checking only the Replit name
+// answered "AI analysis is not configured" to every Brand Kit scan.
+import { geminiConfigured } from "../detection/client";
 
 const router = Router();
 
@@ -23,7 +26,7 @@ router.post("/api/analyze-brand-guidelines", async (req: Request, res: Response)
       return res.status(401).json({ error: "Authentication required" });
     }
 
-    if (!process.env.AI_INTEGRATIONS_GEMINI_API_KEY) {
+    if (!geminiConfigured()) {
       return res.status(503).json({ error: "AI analysis is not configured" });
     }
 
@@ -84,7 +87,7 @@ router.post("/api/extract-colors-from-image", async (req: Request, res: Response
       return res.status(401).json({ error: "Authentication required" });
     }
 
-    if (!process.env.AI_INTEGRATIONS_GEMINI_API_KEY) {
+    if (!geminiConfigured()) {
       return res.status(503).json({ error: "AI analysis is not configured" });
     }
 

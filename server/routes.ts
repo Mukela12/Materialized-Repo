@@ -4,7 +4,7 @@ import { createServer, type Server } from "http";
 import { storage, type VoucherBulkAction } from "./storage";
 import { sanitizeUser, toPublicBrand } from "./serializers";
 import { viewerHash, isUniqueViolation } from "./viewerIdentity";
-import { canAccessUserResource } from "./authz";
+import { canAccessUserResource, canBrowseLibrary } from "./authz";
 import { randomBytes } from "crypto";
 import { encryptSecret, decryptSecret } from "./crypto";
 import { hashPassword } from "./auth";
@@ -594,6 +594,10 @@ export async function registerRoutes(
   // Get all published videos (global library)
   app.get("/api/videos/library", async (req, res) => {
     try {
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ error: "Authentication required" });
+      const user = await storage.getUser(sessionUserId);
+      if (!canBrowseLibrary(user)) return res.status(403).json({ error: "Forbidden" });
       const videos = await storage.getAllPublishedVideos();
       res.json(videos);
     } catch (error) {
@@ -4514,8 +4518,16 @@ export async function registerRoutes(
   // Get all published listings in global library
   app.get("/api/library", async (req, res) => {
     try {
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ error: "Authentication required" });
+      const user = await storage.getUser(sessionUserId);
+      if (!user) return res.status(401).json({ error: "User not found" });
+
       const category = req.query.category as string | undefined;
-      const listings = await storage.getGlobalVideoListings(category);
+      const all = await storage.getGlobalVideoListings(category);
+      // Creators don't browse the library, they only import into it: they get
+      // their own listings back so the import sheet can still say "Listed".
+      const listings = canBrowseLibrary(user) ? all : all.filter((l) => l.creatorId === user.id);
       
       // Enrich with video details
       const enrichedListings = await Promise.all(

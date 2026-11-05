@@ -1,4 +1,4 @@
-import { Switch, Route, useLocation, Link } from "wouter";
+import { Switch, Route, Redirect, useLocation, Link } from "wouter";
 import materializedLogo from "@assets/MTRLZD_Logo_white_transparent.png";
 import { queryClient } from "./lib/queryClient";
 import { usePageViews } from "./lib/activity";
@@ -20,7 +20,6 @@ import { AffiliateMobileNav } from "@/components/AffiliateMobileNav";
 import NotFound from "@/pages/not-found";
 import Dashboard from "@/pages/dashboard";
 import MyVideos from "@/pages/my-videos";
-import Library from "@/pages/library";
 import Analytics from "@/pages/analytics";
 import CRMAnalytics from "@/pages/crm";
 import Referrals from "@/pages/referrals";
@@ -82,9 +81,10 @@ function CreatorRouter() {
     <Switch>
       <Route path="/creator" component={Dashboard} />
       <Route path="/creator/my-videos" component={MyVideos} />
-      <Route path="/creator/library" component={Library} />
-      <Route path="/creator/playlists" component={PlaylistsPage} />
-      <Route path="/creator/wishlist" component={WishlistPage} />
+      {/* Creators import into the library from My Campaigns rather than browse it. */}
+      <Route path="/creator/library"><Redirect to="/creator/my-videos" replace /></Route>
+      <Route path="/creator/playlists"><Redirect to="/creator/my-videos" replace /></Route>
+      <Route path="/creator/wishlist"><Redirect to="/creator/my-videos" replace /></Route>
       <Route path="/creator/analytics" component={Analytics} />
       <Route path="/creator/crm" component={CRMAnalytics} />
       <Route path="/creator/affiliates" component={Affiliates} />

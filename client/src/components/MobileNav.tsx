@@ -1,4 +1,4 @@
-import { LayoutDashboard, Video, Library, Bell, MoreHorizontal } from "lucide-react";
+import { LayoutDashboard, Video, BarChart3, Bell, MoreHorizontal } from "lucide-react";
 import { FloatingDock } from "./FloatingDock";
 
 export function MobileNav() {
@@ -8,7 +8,7 @@ export function MobileNav() {
       items={[
         { path: "/creator", label: "Home", icon: LayoutDashboard },
         { path: "/creator/my-videos", label: "Campaigns", icon: Video },
-        { path: "/creator/library", label: "Library", icon: Library },
+        { path: "/creator/analytics", label: "Analytics", icon: BarChart3 },
         { path: "/creator/mailbox", label: "Mailbox", icon: Bell },
       ]}
       overflow={{ path: "/creator/more", label: "More", icon: MoreHorizontal }}
