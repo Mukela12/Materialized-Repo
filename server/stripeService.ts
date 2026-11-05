@@ -689,6 +689,48 @@ export class StripeService {
     }, { idempotencyKey: args.idempotencyKey });
   }
 
+  /**
+   * Hosted Checkout for a platform fee the user pays MTRLZD itself (the $49
+   * Global Video Library listing). No Connect transfer: the money is ours.
+   * `amountCents` must come from server constants, never from the request.
+   */
+  async createPlatformFeeCheckout(args: {
+    amountCents: number;
+    currency: string;
+    productName: string;
+    customerId?: string | null;
+    customerEmail?: string | null;
+    successUrl: string;
+    cancelUrl: string;
+    metadata: Record<string, string>;
+    idempotencyKey: string;
+  }) {
+    const stripe = await getUncachableStripeClient();
+    return await stripe.checkout.sessions.create({
+      mode: 'payment',
+      line_items: [{
+        quantity: 1,
+        price_data: {
+          currency: args.currency,
+          unit_amount: args.amountCents,
+          product_data: { name: args.productName },
+        },
+      }],
+      ...(args.customerId
+        ? { customer: args.customerId }
+        : args.customerEmail ? { customer_email: args.customerEmail } : {}),
+      success_url: args.successUrl,
+      cancel_url: args.cancelUrl,
+      payment_intent_data: { metadata: args.metadata },
+      metadata: args.metadata,
+    }, { idempotencyKey: args.idempotencyKey });
+  }
+
+  async retrieveCheckoutSession(sessionId: string) {
+    const stripe = await getUncachableStripeClient();
+    return await stripe.checkout.sessions.retrieve(sessionId);
+  }
+
   /** Whether a connected account can actually accept a card today. */
   async getConnectChargeStatus(accountId: string) {
     const stripe = await getUncachableStripeClient();

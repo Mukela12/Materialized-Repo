@@ -5,6 +5,7 @@ import { storage, type VoucherBulkAction } from "./storage";
 import { sanitizeUser, toPublicBrand } from "./serializers";
 import { viewerHash, isUniqueViolation } from "./viewerIdentity";
 import { canAccessUserResource, canBrowseLibrary } from "./authz";
+import { checkListingCheckout, listingReturnPath, LISTING_CHECKOUT_PURPOSE } from "./libraryCheckout";
 import { randomBytes } from "crypto";
 import { encryptSecret, decryptSecret } from "./crypto";
 import { hashPassword } from "./auth";
@@ -597,7 +598,7 @@ export async function registerRoutes(
       const sessionUserId = (req.session as any)?.userId;
       if (!sessionUserId) return res.status(401).json({ error: "Authentication required" });
       const user = await storage.getUser(sessionUserId);
-      if (!canBrowseLibrary(user)) return res.status(403).json({ error: "Forbidden" });
+      if (!user || !(await libraryAccess(user))) return res.status(403).json({ error: "Forbidden" });
       const videos = await storage.getAllPublishedVideos();
       res.json(videos);
     } catch (error) {
@@ -4515,6 +4516,49 @@ export async function registerRoutes(
 
   // ==================== GLOBAL VIDEO LIBRARY ROUTES ====================
 
+  /** Whether this user may browse the whole library (see canBrowseLibrary). */
+  async function libraryAccess(user: { id: string; role?: string | null; isAdmin?: boolean | null }) {
+    const paid = user.role === "brand" && !user.isAdmin ? await storage.hasPaidPublishingFee(user.id) : false;
+    return canBrowseLibrary(user, paid);
+  }
+
+  // What the library page should show: the library, or the way to unlock it.
+  app.get("/api/library/access", async (req, res) => {
+    try {
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ error: "Authentication required" });
+      const user = await storage.getUser(sessionUserId);
+      if (!user) return res.status(401).json({ error: "User not found" });
+      res.json({ canBrowse: await libraryAccess(user), fee: LICENSE_FEE });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to check library access" });
+    }
+  });
+
+  /**
+   * Send the owner of an unpaid listing to Stripe Checkout for the $49 fee.
+   * The amount is the server's constant; nothing about price comes from the
+   * request. Publishing happens in confirm-checkout or the webhook, never here.
+   */
+  async function startListingCheckout(req: any, user: { id: string; role?: string | null; email?: string | null; stripeCustomerId?: string | null }, listing: { id: string }, videoTitle: string | null | undefined) {
+    const origin = publicOrigin(req);
+    const back = listingReturnPath(user.role);
+    const session = await stripeService.createPlatformFeeCheckout({
+      amountCents: Math.round(LICENSE_FEE * 100),
+      currency: getPlatformCurrency(),
+      productName: videoTitle ? `Global Video Library listing: ${videoTitle}`.slice(0, 250) : "Global Video Library listing",
+      customerId: user.stripeCustomerId ?? null,
+      customerEmail: user.email ?? null,
+      successUrl: `${origin}${back}?listing=${encodeURIComponent(listing.id)}&session_id={CHECKOUT_SESSION_ID}`,
+      cancelUrl: `${origin}${back}?listing_cancelled=1`,
+      metadata: { purpose: LISTING_CHECKOUT_PURPOSE, listingId: listing.id, userId: user.id },
+      // Collapses a double click into one session; a later retry gets a new one.
+      idempotencyKey: `library-listing-${listing.id}-${Math.floor(Date.now() / 60_000)}`,
+    });
+    await storage.updateGlobalVideoListing(listing.id, { publishStatus: "pending_payment" });
+    return session.url;
+  }
+
   // Get all published listings in global library
   app.get("/api/library", async (req, res) => {
     try {
@@ -4525,9 +4569,13 @@ export async function registerRoutes(
 
       const category = req.query.category as string | undefined;
       const all = await storage.getGlobalVideoListings(category);
-      // Creators don't browse the library, they only import into it: they get
-      // their own listings back so the import sheet can still say "Listed".
-      const listings = canBrowseLibrary(user) ? all : all.filter((l) => l.creatorId === user.id);
+      // Creators, and brands that haven't paid a $49 publishing fee yet, only get
+      // their own listings back (any status, so the import sheet can say
+      // "Listed" or offer to finish an unpaid one). Everyone else sees the paid
+      // listings, never someone else's abandoned checkout.
+      const listings = (await libraryAccess(user))
+        ? all.filter((l) => l.publishStatus === "published" || l.creatorId === user.id)
+        : all.filter((l) => l.creatorId === user.id);
       
       // Enrich with video details
       const enrichedListings = await Promise.all(
@@ -4627,6 +4675,12 @@ export async function registerRoutes(
         });
       }
 
+      if (req.body?.payWith === "card") {
+        const cardListing = await storage.createGlobalVideoListing(validatedData);
+        const checkoutUrl = await startListingCheckout(req, user, cardListing, video.title);
+        return res.status(201).json({ listing: cardListing, checkoutUrl });
+      }
+
       const listing = await storage.createGlobalVideoListing(validatedData);
 
       // Create Stripe payment intent for listing fee.
@@ -4691,6 +4745,59 @@ export async function registerRoutes(
       res.json({ success: true, listing: await storage.getGlobalVideoListing(listing.id) });
     } catch (error) {
       res.status(500).json({ error: "Failed to confirm payment" });
+    }
+  });
+
+  // Pay an EXISTING unpaid listing by card (a token attempt that failed, or a
+  // checkout that was closed before paying). Owner only.
+  app.post("/api/library/:id/card-checkout", async (req, res) => {
+    try {
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ error: "Authentication required" });
+      const user = await storage.getUser(sessionUserId);
+      if (!user) return res.status(401).json({ error: "User not found" });
+      const listing = await storage.getGlobalVideoListing(req.params.id);
+      if (!listing) return res.status(404).json({ error: "Listing not found" });
+      if (listing.creatorId !== user.id) return res.status(403).json({ error: "Forbidden" });
+      if (listing.publishStatus === "published") return res.status(400).json({ error: "Listing already published" });
+      const video = await storage.getVideo(listing.videoId);
+      res.json({ checkoutUrl: await startListingCheckout(req, user, listing, video?.title) });
+    } catch (error) {
+      console.error("Library card checkout error:", error);
+      res.status(500).json({ error: "Couldn't start the card payment" });
+    }
+  });
+
+  // Back from Stripe Checkout: publish the listing if, and only if, Stripe says
+  // this session paid the full fee for this listing. The webhook does the same
+  // check, so a closed tab still ends with the listing live.
+  app.post("/api/library/:id/confirm-checkout", async (req, res) => {
+    try {
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ error: "Authentication required" });
+      const listing = await storage.getGlobalVideoListing(req.params.id);
+      if (!listing) return res.status(404).json({ error: "Listing not found" });
+      if (listing.creatorId !== sessionUserId) return res.status(403).json({ error: "Forbidden" });
+      if (listing.publishStatus === "published") return res.json({ success: true, listing, alreadyPaid: true });
+
+      const sessionId = typeof req.body?.sessionId === "string" ? req.body.sessionId : "";
+      if (!sessionId.startsWith("cs_")) return res.status(400).json({ error: "Missing checkout session" });
+      const session = await stripeService.retrieveCheckoutSession(sessionId);
+      const check = checkListingCheckout(session, listing, {
+        amountCents: Math.round(LICENSE_FEE * 100),
+        currency: getPlatformCurrency(),
+      });
+      if (!check.ok) return res.status(402).json({ error: "Payment not completed", reason: check.reason });
+
+      const published = await storage.updateGlobalVideoListing(listing.id, {
+        publishStatus: "published",
+        listedAt: new Date(),
+        ...(check.paymentIntentId ? { stripePaymentIntentId: check.paymentIntentId } : {}),
+      });
+      res.json({ success: true, listing: published, paidWith: "card" });
+    } catch (error) {
+      console.error("Library checkout confirm error:", error);
+      res.status(500).json({ error: "Couldn't confirm the payment" });
     }
   });
 

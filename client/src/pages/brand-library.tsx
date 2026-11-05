@@ -8,7 +8,8 @@ import { Card, CardDescription, CardFooter, CardHeader, CardTitle } from "@/comp
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
-import { ShoppingBag, Play, Search, ListVideo, X } from "lucide-react";
+import { ShoppingBag, Play, Search, ListVideo, X, Lock, Video } from "lucide-react";
+import { LICENSE_FEE } from "@shared/pricing";
 import { AddToPlaylistModal } from "@/components/AddToPlaylistModal";
 import { WishlistHeart } from "@/components/WishlistHeart";
 
@@ -18,6 +19,7 @@ type GlobalListing = {
   listingTitle: string | null;
   category: string | null;
   totalLicenses: number;
+  publishStatus?: string | null;
   video: { id: string; title: string; thumbnailUrl: string | null } | null;
   creator: { displayName: string; avatarUrl: string | null } | null;
 };
@@ -43,9 +45,17 @@ export default function BrandLibrary() {
   const [selectedIds, setSelectedIds]             = useState<Set<string>>(new Set());
   const [showPlaylistModal, setShowPlaylistModal] = useState(false);
 
-  const { data: listings = [], isLoading } = useQuery<GlobalListing[]>({
-    queryKey: ["/api/library"],
+  // A brand browses the library once it has paid one $49 listing of its own
+  // (client, 5 Nov 2026). Until then this page says how to open it.
+  const { data: access, isLoading: accessLoading } = useQuery<{ canBrowse: boolean }>({
+    queryKey: ["/api/library/access"],
   });
+
+  const { data: listings = [], isLoading: listingsLoading } = useQuery<GlobalListing[]>({
+    queryKey: ["/api/library"],
+    enabled: access?.canBrowse === true,
+  });
+  const isLoading = accessLoading || listingsLoading;
 
   const { data: wishlistItems = [] } = useQuery<WishlistEntry[]>({
     queryKey: ["/api/wishlist"],
@@ -54,6 +64,9 @@ export default function BrandLibrary() {
   const wishlistedIds = new Set(wishlistItems.map((w) => w.globalListingId));
 
   const filtered = listings.filter((l) => {
+    // The brand's own unpaid listing comes back too (its import sheet needs it),
+    // but it isn't in the library until it's paid.
+    if (l.publishStatus && l.publishStatus !== "published") return false;
     const title = (l.listingTitle || l.video?.title || "").toLowerCase();
     const matchSearch = !searchQuery || title.includes(searchQuery.toLowerCase());
     const matchCat = categoryFilter === "all" || (l.category ?? "").toLowerCase() === categoryFilter;
@@ -69,6 +82,26 @@ export default function BrandLibrary() {
   };
 
   const clearSelection = () => setSelectedIds(new Set());
+
+  if (access && !access.canBrowse) {
+    return (
+      <div className="space-y-6 pb-28 md:pb-8 max-w-6xl mx-auto">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight" data-testid="text-page-title">Global Video Library</h1>
+          <p className="text-muted-foreground mt-1">
+            Creator videos you can add to your own branded playlists.
+          </p>
+        </div>
+        <EmptyState
+          icon={Lock}
+          title="List your first video to open the library"
+          description={`List one of your own shoppable videos for ${CURRENCY_SYMBOL}${LICENSE_FEE} and the library opens, so you can add creator videos to your playlists. Publishers can share your listed video too.`}
+          action={{ label: "Go to My Videos", href: "/brand/my-videos", icon: Video }}
+          data-testid="library-locked"
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 pb-28 md:pb-8 max-w-6xl mx-auto">

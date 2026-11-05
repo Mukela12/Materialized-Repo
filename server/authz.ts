@@ -28,10 +28,16 @@ export function canAccessUserResource(
  * The client, 5 Nov 2026: publishers are the profile the library is for.
  * Creators only ever put their own videos in (the $49 import), so they see
  * their own listings and nothing else, which is all the import sheet needs to
- * show "Listed". Brands still browse it to build playlists.
+ * show "Listed". A brand browses it once it has paid at least one $49
+ * publishing fee (`hasPaidPublishingFee`), so the library stays hidden from a
+ * brand that has only signed up.
  */
-export function canBrowseLibrary(actor: { role?: string | null; isAdmin?: boolean | null } | null | undefined): boolean {
+export function canBrowseLibrary(
+  actor: { role?: string | null; isAdmin?: boolean | null } | null | undefined,
+  hasPaidPublishingFee = false,
+): boolean {
   if (!actor) return false;
   if (actor.isAdmin) return true;
-  return actor.role === "affiliate" || actor.role === "brand";
+  if (actor.role === "affiliate") return true;
+  return actor.role === "brand" && hasPaidPublishingFee;
 }

@@ -14,14 +14,15 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
-import { Eye, MousePointer, DollarSign, Image, CheckSquare, Square, Plus, Trash2, Link, ExternalLink, Library, CheckCircle2, Upload, Clapperboard } from "lucide-react";
+import { Eye, MousePointer, DollarSign, Image, CheckSquare, Square, Plus, Trash2, Link, ExternalLink, Library, CheckCircle2, Upload, Clapperboard, CreditCard, Loader2 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { Video } from "@shared/schema";
 import { LICENSE_FEE, tokensForFee } from "@shared/pricing";
 import { CURRENCY_SYMBOL } from "@/lib/currency";
 import { TokenPayOption } from "@/components/TokenPayOption";
-import { walletPost, useInvalidateWallet, tokenLabel } from "@/hooks/useWallet";
+import { walletPost, useInvalidateWallet, tokenLabel, useTokenBalance } from "@/hooks/useWallet";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { OverlayComposer } from "@/components/OverlayComposer";
 
 const CATEGORIES = [
@@ -196,6 +197,51 @@ export function VideoDetailSheet({ video, open, onOpenChange, onPreview }: Props
       toast({ title: "Couldn't list this video", description: e.message, variant: "destructive" });
     },
   });
+
+  /**
+   * The same listing, paid by card on Stripe's Checkout page. Stripe sends the
+   * payer back to My Videos / My Campaigns, which confirms the payment and
+   * shows the listing live. Brands earn no tokens, so for them this is the way
+   * in, and their first listing is what opens the library.
+   */
+  const { balance: tokenBalance, isLoading: balanceLoading } = useTokenBalance();
+  const { data: me } = useCurrentUser();
+  const isBrand = me?.role === "brand";
+  const listByCardMutation = useMutation({
+    mutationFn: async () => {
+      const pending = existingListing && existingListing.publishStatus !== "published"
+        ? existingListing
+        : null;
+      const { ok, data } = pending
+        ? await walletPost<{ checkoutUrl?: string }>(`/api/library/${pending.id}/card-checkout`, {})
+        : await walletPost<{ checkoutUrl?: string }>("/api/library/list", {
+            videoId: video!.id,
+            payWith: "card",
+            listingTitle: title.trim() || undefined,
+            category: categories[0],
+          });
+      if (!ok || !data.checkoutUrl) throw new Error(data.error || "Couldn't start the card payment");
+      return data.checkoutUrl;
+    },
+    onSuccess: (url) => { window.location.assign(url); },
+    onError: (e: Error) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/library"] });
+      toast({ title: "Couldn't start the card payment", description: e.message, variant: "destructive" });
+    },
+  });
+
+  const payByCardButton = (primary: boolean) => (
+    <Button
+      variant={primary ? "default" : "outline"}
+      className="w-full rounded-full gap-2"
+      onClick={() => listByCardMutation.mutate()}
+      disabled={listByCardMutation.isPending}
+      data-testid="button-library-card-pay"
+    >
+      {listByCardMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <CreditCard className="h-4 w-4" />}
+      {listByCardMutation.isPending ? "Opening checkout…" : `Pay ${CURRENCY_SYMBOL}${LICENSE_FEE} by card`}
+    </Button>
+  );
 
   const mutation = useMutation({
     mutationFn: async (payload: Record<string, unknown>) =>
@@ -464,38 +510,32 @@ export function VideoDetailSheet({ video, open, onOpenChange, onPreview }: Props
                 This video is live in the Global Video Library, where affiliates and publishers can license
                 it. Nothing further to pay.
               </p>
-            ) : TOKENS_TO_LIST === null ? (
-              <p className="text-xs text-muted-foreground">
-                Listing costs {CURRENCY_SYMBOL}{LICENSE_FEE}. This fee can't be settled in whole
-                tokens, so it has to be paid by card.
-              </p>
             ) : (
               <>
                 <p className="text-xs text-muted-foreground">
                   Listing makes this video licensable by affiliates and publishers, who then drive
                   commission back to you. One-off fee of {CURRENCY_SYMBOL}{LICENSE_FEE}.
+                  {isBrand && " Your first listing also opens the Global Video Library to you."}
                 </p>
-                <TokenPayOption
-                  required={TOKENS_TO_LIST}
-                  usdAmount={LICENSE_FEE}
-                  title="List with tokens"
-                  breakdown={
-                    existingListing
-                      ? "This listing was created but never paid for. One token completes it."
-                      : undefined
-                  }
-                  onPay={() => listWithTokensMutation.mutate()}
-                  isPending={listWithTokensMutation.isPending}
-                  testId="library-token-pay"
-                >
-                  {/* States the real product position instead of rendering a card
-                      button that leads nowhere — nothing in the client consumes the
-                      clientSecret that /api/library/list returns. */}
-                  <p className="text-[11px] text-muted-foreground">
-                    Card checkout for library listings isn't available in the app yet, so tokens are the
-                    self-serve option today.
-                  </p>
-                </TokenPayOption>
+                {TOKENS_TO_LIST !== null && (balanceLoading || tokenBalance >= TOKENS_TO_LIST) ? (
+                  <TokenPayOption
+                    required={TOKENS_TO_LIST}
+                    usdAmount={LICENSE_FEE}
+                    title="List with tokens"
+                    breakdown={
+                      existingListing
+                        ? "This listing was created but never paid for. One token completes it."
+                        : undefined
+                    }
+                    onPay={() => listWithTokensMutation.mutate()}
+                    isPending={listWithTokensMutation.isPending}
+                    testId="library-token-pay"
+                  >
+                    {payByCardButton(false)}
+                  </TokenPayOption>
+                ) : (
+                  payByCardButton(true)
+                )}
               </>
             )}
           </div>

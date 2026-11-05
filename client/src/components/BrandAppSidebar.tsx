@@ -14,6 +14,7 @@ import {
   Palette,
   Library,
   ListVideo,
+  Video,
   Heart,
   LogOut,
 } from "lucide-react";
@@ -48,6 +49,7 @@ const inventoryItems = [
 const creatorsItems = [
   { path: "/brand/creators", label: "Connect Your Creators", icon: Users },
   { path: "/brand/campaigns", label: "Campaigns", icon: Target },
+  { path: "/brand/my-videos", label: "My Videos", icon: Video },
   { path: "/brand/library", label: "Video Library", icon: Library },
   { path: "/brand/playlists", label: "My Playlists", icon: ListVideo },
   { path: "/brand/wishlist", label: "Wishlist", icon: Heart },

@@ -6,9 +6,11 @@ import { stripeService } from './stripeService';
 import { recordSaleCommissions } from './commissions';
 import { recordFeeAccrual } from './feeAccruals';
 import { computeSaleSplit } from './feeConfig';
-import { toCents, centsToAmount } from './feeConfig';
+import { toCents, centsToAmount, getPlatformCurrency } from './feeConfig';
 import { PLAN_CONFIG, isPlanKey, type PlanKey } from './stripeService';
 import { mintBrandConversionToken } from './wallet';
+import { checkListingCheckout, LISTING_CHECKOUT_PURPOSE } from './libraryCheckout';
+import { LICENSE_FEE } from '@shared/pricing';
 
 export const DEFAULT_PLAN: PlanKey = 'starter';
 
@@ -230,6 +232,33 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session): Promis
   // mode 'payment' and carries our marker; subscriptions are everything else.
   if (session.mode === 'payment' && session.metadata?.kind === 'in_video_order') {
     return handleInVideoOrderCompleted(session);
+  }
+
+  // The $49 Global Video Library listing paid by card. The app confirms it on
+  // return too; this covers the payer who closes the tab on Stripe's page.
+  if (session.mode === 'payment' && session.metadata?.purpose === LISTING_CHECKOUT_PURPOSE) {
+    const listingId = session.metadata?.listingId;
+    const listing = listingId ? await storage.getGlobalVideoListing(listingId) : undefined;
+    if (!listing) {
+      console.warn(`[Webhook] library listing session ${session.id}: listing ${listingId} not found`);
+      return;
+    }
+    if (listing.publishStatus === 'published') return;
+    const check = checkListingCheckout(session, listing, {
+      amountCents: Math.round(LICENSE_FEE * 100),
+      currency: getPlatformCurrency(),
+    });
+    if (!check.ok) {
+      console.warn(`[Webhook] library listing session ${session.id} not published: ${check.reason}`);
+      return;
+    }
+    await storage.updateGlobalVideoListing(listing.id, {
+      publishStatus: 'published',
+      listedAt: new Date(),
+      ...(check.paymentIntentId ? { stripePaymentIntentId: check.paymentIntentId } : {}),
+    });
+    console.log(`[Webhook] library listing ${listing.id} published (session ${session.id})`);
+    return;
   }
 
   // A card vaulted without a subscription. Stripe attaches it to the customer

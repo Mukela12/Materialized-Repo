@@ -534,6 +534,9 @@ export interface IStorage {
   // Global Video Library
   getGlobalVideoListings(category?: string): Promise<GlobalVideoLibrary[]>;
   getGlobalVideoListing(id: string): Promise<GlobalVideoLibrary | undefined>;
+  /** Whether the user has paid at least one $49 publishing fee: a published
+   *  library listing of their own, or a paid (published) playlist. */
+  hasPaidPublishingFee(userId: string): Promise<boolean>;
   getGlobalVideoListingByVideo(videoId: string): Promise<GlobalVideoLibrary | undefined>;
   createGlobalVideoListing(listing: InsertGlobalVideoLibrary): Promise<GlobalVideoLibrary>;
   updateGlobalVideoListing(id: string, data: Partial<GlobalVideoLibrary>): Promise<GlobalVideoLibrary | undefined>;
@@ -1822,6 +1825,12 @@ export class MemStorage implements IStorage {
 
   async getGlobalVideoListingByVideo(videoId: string): Promise<GlobalVideoLibrary | undefined> {
     return Array.from(this.globalVideoLibrary.values()).find((l) => l.videoId === videoId);
+  }
+
+  async hasPaidPublishingFee(userId: string): Promise<boolean> {
+    return Array.from(this.globalVideoLibrary.values())
+      .some((l) => l.creatorId === userId && l.publishStatus === "published")
+      || this.playlistsList.some((p) => p.userId === userId && p.status === "published");
   }
 
   async createGlobalVideoListing(listing: InsertGlobalVideoLibrary): Promise<GlobalVideoLibrary> {
@@ -3774,6 +3783,17 @@ export class DatabaseStorage implements IStorage {
   async getGlobalVideoListingByVideo(videoId: string): Promise<GlobalVideoLibrary | undefined> {
     const [listing] = await db.select().from(globalVideoLibrary).where(eq(globalVideoLibrary.videoId, videoId));
     return listing;
+  }
+
+  async hasPaidPublishingFee(userId: string): Promise<boolean> {
+    const [listing] = await db.select({ id: globalVideoLibrary.id }).from(globalVideoLibrary)
+      .where(and(eq(globalVideoLibrary.creatorId, userId), eq(globalVideoLibrary.publishStatus, "published")))
+      .limit(1);
+    if (listing) return true;
+    const [playlist] = await db.select({ id: playlists.id }).from(playlists)
+      .where(and(eq(playlists.userId, userId), eq(playlists.status, "published")))
+      .limit(1);
+    return !!playlist;
   }
 
   async createGlobalVideoListing(listing: InsertGlobalVideoLibrary): Promise<GlobalVideoLibrary> {

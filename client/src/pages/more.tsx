@@ -19,6 +19,10 @@ import {
   LogOut,
   ChevronRight,
   Send,
+  Video,
+  Library,
+  ListVideo,
+  Heart,
 } from "lucide-react";
 import { useProgram, programInvitesPath, partnerSalesPath } from "@/hooks/useProgram";
 
@@ -52,7 +56,18 @@ function buildSections(role: string) {
     ? [{ label: "API Key", icon: KeyRound, path: "/brand/settings/api-key" }]
     : [];
 
-  return { profile, billing, developer };
+  // A brand's phone dock has no room for its videos and the library, so they
+  // live here, as the wallet does for creators.
+  const content = isBrand
+    ? [
+        { label: "My Videos",     icon: Video,     path: "/brand/my-videos" },
+        { label: "Video Library", icon: Library,   path: "/brand/library" },
+        { label: "My Playlists",  icon: ListVideo, path: "/brand/playlists" },
+        { label: "Wishlist",      icon: Heart,     path: "/brand/wishlist" },
+      ]
+    : [];
+
+  return { profile, billing, developer, content };
 }
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -106,7 +121,7 @@ export default function More() {
   });
 
   const role        = user?.role ?? "brand";
-  const { profile: profileSection, billing: billingSection, developer: developerSection } = buildSections(role);
+  const { profile: profileSection, billing: billingSection, developer: developerSection, content: contentSection } = buildSections(role);
   const displayName = user?.displayName || (role === "creator" ? "Demo Creator" : "Demo Brand");
   const username    = user?.username    || `${role}-account`;
   const initials    = getInitials(displayName);
@@ -187,6 +202,28 @@ export default function More() {
           ))}
         </CardContent>
       </Card>
+
+      {contentSection.length > 0 && (
+        <Card>
+          <CardHeader className="px-4 pt-4 pb-1">
+            <CardTitle className="text-xs uppercase tracking-widest text-muted-foreground font-semibold">
+              Videos
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-0 pb-1">
+            {contentSection.map((item, i) => (
+              <MenuRow
+                key={item.path}
+                label={item.label}
+                icon={item.icon}
+                path={item.path}
+                testId={`link-content-${item.label.toLowerCase().replace(/\s+/g, "-")}`}
+                last={i === contentSection.length - 1}
+              />
+            ))}
+          </CardContent>
+        </Card>
+      )}
 
       {partnerSection.length > 0 && (
         <Card>

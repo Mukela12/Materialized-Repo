@@ -27,14 +27,21 @@ describe('canAccessUserResource', () => {
 });
 
 describe('canBrowseLibrary', () => {
-  it('lets publishers and brands browse the whole library', () => {
+  it('lets publishers browse the whole library', () => {
     expect(canBrowseLibrary({ role: 'affiliate' })).toBe(true);
-    expect(canBrowseLibrary({ role: 'brand' })).toBe(true);
+  });
+
+  it('opens the library to a brand only after its first paid $49', () => {
+    expect(canBrowseLibrary({ role: 'brand' })).toBe(false);
+    expect(canBrowseLibrary({ role: 'brand' }, false)).toBe(false);
+    expect(canBrowseLibrary({ role: 'brand' }, true)).toBe(true);
   });
 
   it('keeps creators to their own listings', () => {
     expect(canBrowseLibrary({ role: 'creator' })).toBe(false);
     expect(canBrowseLibrary({ role: 'creator', isAdmin: false })).toBe(false);
+    // Paying to import does not turn a creator into a browser.
+    expect(canBrowseLibrary({ role: 'creator' }, true)).toBe(false);
   });
 
   it('lets an admin browse whatever their role', () => {

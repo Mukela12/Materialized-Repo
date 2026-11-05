@@ -80,7 +80,7 @@ function CreatorRouter() {
   return (
     <Switch>
       <Route path="/creator" component={Dashboard} />
-      <Route path="/creator/my-videos" component={MyVideos} />
+      <Route path="/creator/my-videos">{() => <MyVideos />}</Route>
       {/* Creators import into the library from My Campaigns rather than browse it. */}
       <Route path="/creator/library"><Redirect to="/creator/my-videos" replace /></Route>
       <Route path="/creator/playlists"><Redirect to="/creator/my-videos" replace /></Route>
@@ -122,6 +122,7 @@ function BrandRouter() {
       <Route path="/brand/settings/payout" component={BrandSettingsPayout} />
       <Route path="/brand/settings/billing-address" component={BrandSettingsBillingAddress} />
       <Route path="/brand/settings/api-key" component={BrandSettingsApiKey} />
+      <Route path="/brand/my-videos">{() => <MyVideos audience="brand" />}</Route>
       <Route path="/brand/library" component={BrandLibrary} />
       <Route path="/brand/playlists" component={PlaylistsPage} />
       <Route path="/brand/wishlist" component={WishlistPage} />

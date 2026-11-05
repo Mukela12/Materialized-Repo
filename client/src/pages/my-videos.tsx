@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,6 +12,9 @@ import { EmbedCodeModal } from "@/components/EmbedCodeModal";
 import { Upload, Search, Grid, List, Video } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient, serverMessage } from "@/lib/queryClient";
+import { walletPost } from "@/hooks/useWallet";
+import { LICENSE_FEE } from "@shared/pricing";
+import { CURRENCY_SYMBOL } from "@/lib/currency";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
@@ -35,7 +38,15 @@ function parseCategories(raw: string | null | undefined): string[] {
   try { return JSON.parse(raw); } catch { return []; }
 }
 
-export default function MyVideos() {
+/**
+ * A creator's My Campaigns, and since 5 Nov 2026 a brand's My Videos: the
+ * client wants brands to put their own shoppable videos in the Global Video
+ * Library ($49 each) the way creators do, and their first listing is what
+ * opens the library to them.
+ */
+export default function MyVideos({ audience = "creator" }: { audience?: "creator" | "brand" }) {
+  const isBrand = audience === "brand";
+  const noun = isBrand ? "videos" : "campaigns";
   const [uploadModalOpen, setUploadModalOpen]     = useState(false);
   const [embedModalOpen, setEmbedModalOpen]       = useState(false);
   const [selectedVideo, setSelectedVideo]         = useState<VideoType | null>(null);
@@ -121,6 +132,41 @@ export default function MyVideos() {
   /** The video waiting for "Delete" to be confirmed. It used to go on the first click. */
   const [deleting, setDeleting] = useState<VideoType | null>(null);
 
+  // ── Back from paying the $49 listing fee on Stripe Checkout ────────────────
+  // Stripe returns here with ?listing=…&session_id=… (or ?listing_cancelled=1).
+  // The server checks the session with Stripe before publishing anything.
+  const checkoutHandled = useRef(false);
+  useEffect(() => {
+    if (checkoutHandled.current) return;
+    const q = new URLSearchParams(window.location.search);
+    const listingId = q.get("listing");
+    const sessionId = q.get("session_id");
+    const cancelled = q.get("listing_cancelled");
+    if (!listingId && !cancelled) return;
+    checkoutHandled.current = true;
+    window.history.replaceState(null, "", window.location.pathname);
+    if (cancelled || !listingId) {
+      toast({ title: "Payment cancelled", description: "The video isn't listed yet. Open it to pay whenever you're ready." });
+      return;
+    }
+    (async () => {
+      const { ok } = await walletPost(`/api/library/${encodeURIComponent(listingId)}/confirm-checkout`, { sessionId });
+      queryClient.invalidateQueries({ queryKey: ["/api/library"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/library/access"] });
+      toast(ok
+        ? {
+            title: "Listed in the Global Video Library",
+            description: isBrand
+              ? "Payment received. The Global Video Library is open to you now."
+              : "Payment received. Publishers can now license this video.",
+          }
+        : {
+            title: "Payment not confirmed yet",
+            description: "If you paid, the listing goes live as soon as Stripe confirms it. Refresh in a minute to check.",
+          });
+    })();
+  }, [isBrand, toast]);
+
   // ── Handlers ───────────────────────────────────────────────────────────────
   const handleVideoUpload = async (data: {
     title: string; description?: string; videoUrl: string; selectedBrands: string[];
@@ -142,8 +188,12 @@ export default function MyVideos() {
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <div>
-          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">My Campaigns</h1>
-          <p className="text-muted-foreground mt-1">Manage and track all your video campaigns</p>
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">{isBrand ? "My Videos" : "My Campaigns"}</h1>
+          <p className="text-muted-foreground mt-1">
+            {isBrand
+              ? "Upload your shoppable videos and list them in the Global Video Library"
+              : "Manage and track all your video campaigns"}
+          </p>
         </div>
         <Button
           onClick={() => setUploadModalOpen(true)}
@@ -249,17 +299,19 @@ export default function MyVideos() {
           </div>
           <h3 className="text-lg font-semibold mb-2">
             {statusFilter === "draft" ? "No drafts yet" :
-             statusFilter === "archived" ? "No expired campaigns" :
-             statusFilter === "published" ? "No active campaigns" :
-             searchQuery || categoryFilter !== "all" ? "No campaigns found" : "No campaigns yet"}
+             statusFilter === "archived" ? `No expired ${noun}` :
+             statusFilter === "published" ? `No active ${noun}` :
+             searchQuery || categoryFilter !== "all" ? `No ${noun} found` : `No ${noun} yet`}
           </h3>
           <p className="text-muted-foreground max-w-md mx-auto mb-6">
             {statusFilter === "draft" ? "Save a draft while uploading to see it here." :
-             statusFilter === "archived" ? "Campaigns that have ended will appear here." :
-             statusFilter === "published" ? "Published campaigns will appear here once your video is live." :
+             statusFilter === "archived" ? (isBrand ? "Videos that have ended will appear here." : "Campaigns that have ended will appear here.") :
+             statusFilter === "published" ? (isBrand ? "Published videos will appear here once they're live." : "Published campaigns will appear here once your video is live.") :
              searchQuery || categoryFilter !== "all"
               ? "Try adjusting your search or filters"
-              : "Upload your first video to start generating revenue with product detection and affiliate tracking."}
+              : isBrand
+                ? `Upload a shoppable video, then list it in the Global Video Library for ${CURRENCY_SYMBOL}${LICENSE_FEE}. Your first listing opens the library to you.`
+                : "Upload your first video to start generating revenue with product detection and affiliate tracking."}
           </p>
           {!searchQuery && statusFilter === "all" && categoryFilter === "all" && (
             <Button onClick={() => setUploadModalOpen(true)} className="rounded-full gap-2">
