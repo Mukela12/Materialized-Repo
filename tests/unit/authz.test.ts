@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { canAccessUserResource, canBrowseLibrary } from '../../server/authz';
+import { canAccessUserResource, canBrowseLibrary, canAddFreeLinks } from '../../server/authz';
 
 describe('canAccessUserResource', () => {
   it('denies an unauthenticated caller', () => {
@@ -51,5 +51,16 @@ describe('canBrowseLibrary', () => {
   it('denies an unauthenticated caller', () => {
     expect(canBrowseLibrary(null)).toBe(false);
     expect(canBrowseLibrary(undefined)).toBe(false);
+  });
+});
+
+describe('canAddFreeLinks', () => {
+  it('lets the editorial (admin) login type a link', () => {
+    expect(canAddFreeLinks({ isAdmin: true })).toBe(true);
+  });
+  it('keeps creators, brands and publishers to inventory products', () => {
+    expect(canAddFreeLinks({ isAdmin: false })).toBe(false);
+    expect(canAddFreeLinks({ isAdmin: null })).toBe(false);
+    expect(canAddFreeLinks(null)).toBe(false);
   });
 });

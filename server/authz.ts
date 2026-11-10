@@ -41,3 +41,17 @@ export function canBrowseLibrary(
   if (actor.role === "affiliate") return true;
   return actor.role === "brand" && hasPaidPublishingFee;
 }
+
+/**
+ * Who may type a link straight into a video's carousel.
+ *
+ * The client, 10 Nov 2026: only her Bethanie / Editorial login, for MTRLZD's
+ * own marketing (the sign-up page, MTRLZD.com). Everyone else adds products
+ * from a brand's inventory (tagged from the Marketplace, or the brand's own
+ * store connected by API key), so every sale carries the tracking that pays
+ * people. "If everyone had access to add a URL randomly, it could end up in a
+ * complete fiasco." Team accounts are admins, and her login is one of them.
+ */
+export function canAddFreeLinks(actor: { isAdmin?: boolean | null } | null | undefined): boolean {
+  return !!actor?.isAdmin;
+}

@@ -20,7 +20,7 @@
  */
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, serverMessage } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,7 +31,8 @@ import {
 } from "@/components/ui/select";
 import { ImageDropField } from "@/components/ImageDropField";
 import { Layers, Plus, Clock, Trash2, ExternalLink, Pencil } from "lucide-react";
-import type { VideoProductOverlay } from "@shared/schema";
+import type { VideoProductOverlay, Product, Brand } from "@shared/schema";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { PlacementReview } from "@/components/PlacementReview";
 import type { ReviewJob } from "@/lib/placementReview";
@@ -73,11 +74,23 @@ export function OverlayComposer({
   const [oPosition, setOPosition] = useState("bottom");
   const [oStartTime, setOStartTime] = useState("0");
   const [oEndTime, setOEndTime] = useState("");
+  /** The inventory product picked, for everyone but the editorial login. */
+  const [oProductId, setOProductId] = useState("");
+
+  /**
+   * Typing a link is the editorial login's alone (client, 10 Nov 2026), for
+   * MTRLZD's own marketing. Everyone else picks a brand's inventory product,
+   * so its link and price come from the brand and every sale is tracked. The
+   * server enforces the same rule (canAddFreeLinks).
+   */
+  const { data: me } = useCurrentUser();
+  const freeLinks = !!me?.isAdmin;
 
   const resetForm = () => {
     setOName(""); setOUrl(""); setOImageUrl(""); setOPrice(""); setOBrandName("");
     setOButtonLabel("");
     setOPosition("bottom"); setOStartTime("0"); setOEndTime("");
+    setOProductId("");
     setEditingId(null);
   };
 
@@ -101,11 +114,31 @@ export function OverlayComposer({
     enabled: !!videoId && enabled,
   });
 
+  const { data: inventory = [] } = useQuery<Product[]>({
+    queryKey: ["/api/products"],
+    enabled: enabled && !freeLinks && showAdd,
+  });
+  const { data: brands = [] } = useQuery<Brand[]>({
+    queryKey: ["/api/brands"],
+    enabled: enabled && !freeLinks && showAdd,
+  });
+  const brandName = (id: string | null) => brands.find((b) => b.id === id)?.name ?? "";
+
   const invalidate = () =>
     queryClient.invalidateQueries({ queryKey: ["/api/videos", videoId, "overlays"] });
 
+  /** Placement, timing and button text: what anyone may set. */
+  const placementPayload = () => ({
+    buttonLabel: oButtonLabel.trim() || null,
+    position: oPosition,
+    startTime: parseFloat(oStartTime) || 0,
+    endTime: oEndTime.trim() ? parseFloat(oEndTime) : null,
+  });
+
   /** One payload for both create and update, so the two cannot drift. */
-  const overlayPayload = () => ({
+  const overlayPayload = () => !freeLinks
+    ? (editingId == null ? { productId: oProductId, ...placementPayload() } : placementPayload())
+    : ({
     name: oName.trim(),
     productUrl: oUrl.trim() || null,
     imageUrl: oImageUrl.trim() || null,
@@ -133,7 +166,7 @@ export function OverlayComposer({
       // Stay open when adding several; close after an edit, which is one job done.
       setShowAdd(wasEditing ? false : startExpanded);
     },
-    onError: () => toast({ title: "Error", description: "Failed to save the link.", variant: "destructive" }),
+    onError: (err: unknown) => toast({ title: "Couldn't save", description: serverMessage(err) || "Failed to save the link.", variant: "destructive" }),
   });
 
   const removeOverlay = useMutation({
@@ -186,7 +219,7 @@ export function OverlayComposer({
             data-testid="button-toggle-add-overlay"
           >
             <Plus className="h-3 w-3" />
-            Add Link
+            {freeLinks ? "Add Link" : "Add Product"}
           </Button>
         </div>
       </div>
@@ -197,6 +230,31 @@ export function OverlayComposer({
 
       {showAdd && (
         <div className="space-y-2 border border-border rounded-lg p-3 bg-background">
+          {!freeLinks && (
+            editingId == null ? (
+              <div className="space-y-1">
+                <Label className="text-xs">Product *</Label>
+                <Select value={oProductId} onValueChange={setOProductId}>
+                  <SelectTrigger className="h-8 text-sm" data-testid="select-overlay-product">
+                    <SelectValue placeholder={inventory.length ? "Choose a product" : "No products to choose from yet"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {inventory.map((p) => (
+                      <SelectItem key={p.id} value={p.id} className="text-sm">
+                        {[p.name, brandName(p.brandId), p.price ? `$${p.price}` : ""].filter(Boolean).join(" · ")}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  From your inventory and the brands in the Marketplace. The link and price come from the brand, so every sale is tracked.
+                </p>
+              </div>
+            ) : (
+              <p className="text-sm font-medium" data-testid="text-overlay-product">{oName}</p>
+            )
+          )}
+          {freeLinks && (<>
           <div className="space-y-1">
             <Label className="text-xs">Product Name *</Label>
             <Input
@@ -233,6 +291,7 @@ export function OverlayComposer({
             <Label className="text-xs">Brand Name</Label>
             <Input data-testid="input-overlay-brand" placeholder="e.g. Zara" value={oBrandName} onChange={(e) => setOBrandName(e.target.value)} className="h-8 text-sm" />
           </div>
+          </>)}
           {/* Per-product call to action. The label used to be one setting for
               the whole video, so a showroom listing and a pair of shoes had to
               share it — the client's example was APPLY NOW against BUY NOW. */}
@@ -274,12 +333,12 @@ export function OverlayComposer({
             <Button
               size="sm" className="h-7 text-xs flex-1"
               onClick={() => saveOverlay.mutate()}
-              disabled={!oName.trim() || saveOverlay.isPending}
+              disabled={(freeLinks ? !oName.trim() : editingId == null && !oProductId) || saveOverlay.isPending}
               data-testid="button-save-overlay"
             >
               {saveOverlay.isPending
                 ? "Saving…"
-                : editingId == null ? "Add Overlay" : "Save changes"}
+                : editingId == null ? (freeLinks ? "Add Link" : "Add Product") : "Save changes"}
             </Button>
             {(!startExpanded || editingId != null) && (
               <Button

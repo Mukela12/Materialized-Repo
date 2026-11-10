@@ -4,7 +4,7 @@ import { createServer, type Server } from "http";
 import { storage, type VoucherBulkAction } from "./storage";
 import { sanitizeUser, toPublicBrand } from "./serializers";
 import { viewerHash, isUniqueViolation } from "./viewerIdentity";
-import { canAccessUserResource, canBrowseLibrary } from "./authz";
+import { canAccessUserResource, canBrowseLibrary, canAddFreeLinks } from "./authz";
 import { normaliseLinkUrl } from "@shared/linkUrl";
 import { checkListingCheckout, listingReturnPath, LISTING_CHECKOUT_PURPOSE } from "./libraryCheckout";
 import { randomBytes } from "crypto";
@@ -3539,6 +3539,9 @@ export async function registerRoutes(
       if (!actor?.isAdmin && video.creatorId !== sessionUserId) {
         return res.status(403).json({ error: "Forbidden" });
       }
+      if (!canAddFreeLinks(actor)) {
+        return res.status(403).json({ error: "Adding your own link is only on the MTRLZD editorial account." });
+      }
       const { name, buyUrl, price, imageUrl, startTime, endTime } = req.body;
       if (!name || !buyUrl) {
         return res.status(400).json({ error: "name and buyUrl are required" });
@@ -4057,6 +4060,26 @@ export async function registerRoutes(
     }
   });
 
+  /**
+   * An inventory product this user may put in a video, as overlay fields.
+   * Theirs, or a brand whose inventory is open to discovery (the Marketplace).
+   */
+  async function inventoryProductFor(uid: string, productId: unknown) {
+    if (typeof productId !== "string" || !productId) return null;
+    const product = await storage.getProduct(productId);
+    if (!product?.brandId) return null;
+    const brand = await storage.getBrand(product.brandId);
+    if (!brand) return null;
+    if (brand.ownerId !== uid && !(await isBrandInventoryDiscoverable(brand.id))) return null;
+    return {
+      name: product.name,
+      productUrl: product.productUrl ?? null,
+      imageUrl: product.imageUrl ?? null,
+      price: product.price != null ? String(product.price) : null,
+      brandName: brand.name ?? null,
+    };
+  }
+
   app.post("/api/videos/:id/overlays", async (req, res) => {
     const uid = (req.session as any)?.userId;
     if (!uid) return res.status(401).json({ error: "Not authenticated" });
@@ -4065,7 +4088,18 @@ export async function registerRoutes(
     const overlayActor = await storage.getUser(uid);
     if (!overlayActor?.isAdmin && ownerVideo.creatorId !== uid) return res.status(403).json({ error: "Forbidden" });
     try {
-      const { name, productUrl, imageUrl, price, brandName, buttonLabel, position, startTime, endTime, source, productId } = req.body;
+      let { name, productUrl, imageUrl, price, brandName } = req.body;
+      const { buttonLabel, position, startTime, endTime, source, productId } = req.body;
+      // Only the editorial login types a link (canAddFreeLinks). Everyone else
+      // names an inventory product, and its link, price and picture come from
+      // the brand's own row, never from the request.
+      if (!canAddFreeLinks(overlayActor)) {
+        const picked = await inventoryProductFor(uid, productId);
+        if (!picked) {
+          return res.status(403).json({ error: "Choose a product from a brand's inventory. Adding your own link is only on the MTRLZD editorial account." });
+        }
+        ({ name, productUrl, imageUrl, price, brandName } = picked);
+      }
       if (!name) return res.status(400).json({ error: "name is required" });
       const link = normaliseLinkUrl(productUrl);
       if (productUrl && !link) return res.status(400).json({ error: "That link doesn't look like a web address" });
@@ -4109,6 +4143,12 @@ export async function registerRoutes(
       if (position !== undefined) update.position = position;
       if (startTime !== undefined) update.startTime = String(startTime);
       if (endTime !== undefined) update.endTime = endTime != null ? String(endTime) : null;
+      // Placement, timing and button text are anyone's to change; what the
+      // product IS (name, link, price, picture) only the editorial login edits.
+      const editsProduct = [name, productUrl, imageUrl, price, brandName].some((v) => v !== undefined);
+      if (editsProduct && !canAddFreeLinks(overlayActor)) {
+        return res.status(403).json({ error: "Only the product's placement, timing and button text can be changed here." });
+      }
       if (name !== undefined) update.name = name;
       if (productUrl !== undefined) {
         const link = normaliseLinkUrl(productUrl);

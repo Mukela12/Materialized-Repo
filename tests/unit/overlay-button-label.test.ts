@@ -33,7 +33,7 @@ describe("the override is stored", () => {
   });
 
   it("is accepted on create and on update", () => {
-    expect(routes).toMatch(/const \{ name, productUrl, imageUrl, price, brandName, buttonLabel,/);
+    expect(routes).toMatch(/const \{ buttonLabel, position, startTime, endTime, source, productId \} = req\.body;/);
     expect(routes).toMatch(/const \{ position, startTime, endTime, name, productUrl, imageUrl, price, brandName, buttonLabel \}/);
   });
 
