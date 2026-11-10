@@ -146,7 +146,10 @@ describe("who can use it", () => {
     const helper = routes.slice(routes.indexOf("async function shareClipInput"), routes.indexOf("const clipView"));
     expect(helper).toMatch(/storage\.getVideoProductOverlays\(video\.id\)/);
     expect(helper).toMatch(/resolveEmbedSettings\(brandKit \?\? null, override \?\? null\)/);
-    expect(helper).toMatch(/buyable: o\.priceCents != null && o\.priceCents > 0/);
+    // A button wherever the player draws one: a priced product, or a link with
+    // its own button text (the embed's linkButton).
+    expect(helper).toMatch(/buyable: \(o\.priceCents != null && o\.priceCents > 0\) \|\| \(!!o\.buttonLabel && !!o\.productUrl\)/);
+    expect(routes).toMatch(/linkButton: !\(o\.priceCents != null && o\.priceCents > 0\) && !!o\.buttonLabel && !!o\.productUrl/);
     expect(helper).toMatch(/const NAME_LIMIT = 25;/);
   });
 

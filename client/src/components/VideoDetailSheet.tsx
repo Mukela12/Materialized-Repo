@@ -14,7 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
-import { Eye, MousePointer, DollarSign, Image, CheckSquare, Square, Plus, Trash2, Link, ExternalLink, Library, CheckCircle2, Upload, Clapperboard, CreditCard, Loader2 } from "lucide-react";
+import { Eye, MousePointer, DollarSign, Image, CheckSquare, Square, Library, CheckCircle2, Upload, Clapperboard, CreditCard, Loader2 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { Video } from "@shared/schema";
@@ -47,24 +47,6 @@ const TOKENS_TO_LIST = tokensForFee(LICENSE_FEE);
 /** Only the fields this component needs off GET /api/library. */
 type LibraryListingRef = { id: string; videoId: string; publishStatus: string | null };
 
-interface ManualProduct {
-  id: string;
-  productId?: string;
-  name?: string;
-  buyUrl?: string;
-  price?: string | null;
-  imageUrl?: string | null;
-  startTime: number;
-  endTime: number;
-  product?: {
-    id: string;
-    name: string;
-    productUrl: string;
-    buyUrl?: string;
-    price?: string | null;
-    imageUrl?: string | null;
-  };
-}
 
 interface Props {
   video: Video | null;
@@ -110,10 +92,6 @@ export function VideoDetailSheet({ video, open, onOpenChange, onPreview }: Props
     }
   };
 
-  const [productName, setProductName] = useState("");
-  const [productUrl, setProductUrl]   = useState("");
-  const [productPrice, setProductPrice] = useState("");
-  const [showAddProduct, setShowAddProduct] = useState(false);
 
 
   useEffect(() => {
@@ -124,18 +102,8 @@ export function VideoDetailSheet({ video, open, onOpenChange, onPreview }: Props
       setThumbUrl(video.thumbnailUrl ?? "");
       setEditingThumb(false);
     }
-    setShowAddProduct(false);
-    setProductName("");
-    setProductUrl("");
-    setProductPrice("");
   }, [video]);
 
-  const { data: carouselData, refetch: refetchCarousel } = useQuery<{ products?: ManualProduct[] } | null>({
-    queryKey: ["/api/videos", video?.id, "carousel"],
-    enabled: !!video?.id && open,
-  });
-
-  const manualProducts: ManualProduct[] = carouselData?.products ?? [];
 
   // ── Global Video Library listing ──────────────────────────────────────────
   const invalidateWallet = useInvalidateWallet();
@@ -256,34 +224,6 @@ export function VideoDetailSheet({ video, open, onOpenChange, onPreview }: Props
       toast({ title: "Error", description: "Failed to save changes.", variant: "destructive" }),
   });
 
-  const addProductMutation = useMutation({
-    mutationFn: async (data: { name: string; buyUrl: string; price?: string }) =>
-      apiRequest("POST", `/api/videos/${video!.id}/carousel/products`, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/videos", video?.id, "carousel"] });
-      refetchCarousel();
-      toast({ title: "Product Added", description: "The product link has been added to the carousel." });
-      setProductName("");
-      setProductUrl("");
-      setProductPrice("");
-      setShowAddProduct(false);
-    },
-    onError: () =>
-      toast({ title: "Error", description: "Failed to add product.", variant: "destructive" }),
-  });
-
-  const removeProductMutation = useMutation({
-    mutationFn: async (productId: string) =>
-      apiRequest("DELETE", `/api/videos/${video!.id}/carousel/products/${productId}`),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/videos", video?.id, "carousel"] });
-      refetchCarousel();
-      toast({ title: "Removed", description: "Product link removed from carousel." });
-    },
-    onError: () =>
-      toast({ title: "Error", description: "Failed to remove product.", variant: "destructive" }),
-  });
-
   // Overlays
   function toggleCategory(val: string) {
     setCategories((prev) =>
@@ -297,15 +237,6 @@ export function VideoDetailSheet({ video, open, onOpenChange, onPreview }: Props
       description,
       categories: JSON.stringify(categories),
       ...(thumbUrl !== video?.thumbnailUrl ? { thumbnailUrl: thumbUrl } : {}),
-    });
-  }
-
-  function handleAddProduct() {
-    if (!productName.trim() || !productUrl.trim()) return;
-    addProductMutation.mutate({
-      name: productName.trim(),
-      buyUrl: productUrl.trim(),
-      ...(productPrice.trim() ? { price: productPrice.trim() } : {}),
     });
   }
 
@@ -549,134 +480,11 @@ export function VideoDetailSheet({ video, open, onOpenChange, onPreview }: Props
             <VideoCarouselOverride videoId={video.id} videoUrl={video.videoUrl} />
           </div>
 
-          {/* Product Carousel Links */}
-          <div className="space-y-3 border border-border rounded-xl p-4 bg-muted/30">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Link className="h-4 w-4 text-primary" />
-                <Label className="text-sm font-semibold">Product Carousel Links</Label>
-              </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 px-2 text-xs gap-1"
-                onClick={() => setShowAddProduct((p) => !p)}
-                data-testid="button-toggle-add-product"
-              >
-                <Plus className="h-3 w-3" />
-                Add Link
-              </Button>
-            </div>
-
-            <p className="text-xs text-muted-foreground">
-              Add product URLs that will appear in the video carousel overlay.
-            </p>
-
-            {showAddProduct && (
-              <div className="space-y-2 border border-border rounded-lg p-3 bg-background">
-                <div className="space-y-1">
-                  <Label className="text-xs">Product Name *</Label>
-                  <Input
-                    data-testid="input-product-name"
-                    placeholder="e.g. Summer Dress"
-                    value={productName}
-                    onChange={(e) => setProductName(e.target.value)}
-                    className="h-8 text-sm"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Product URL *</Label>
-                  <Input
-                    data-testid="input-product-url"
-                    placeholder="https://shop.example.com/product"
-                    value={productUrl}
-                    onChange={(e) => setProductUrl(e.target.value)}
-                    className="h-8 text-sm"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs">Price (optional)</Label>
-                  <Input
-                    data-testid="input-product-price"
-                    placeholder="e.g. 49.99"
-                    value={productPrice}
-                    onChange={(e) => setProductPrice(e.target.value)}
-                    className="h-8 text-sm"
-                  />
-                </div>
-                <div className="flex gap-2 pt-1">
-                  <Button
-                    size="sm"
-                    className="h-7 text-xs flex-1"
-                    onClick={handleAddProduct}
-                    disabled={!productName.trim() || !productUrl.trim() || addProductMutation.isPending}
-                    data-testid="button-save-product-link"
-                  >
-                    {addProductMutation.isPending ? "Adding…" : "Add to Carousel"}
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-7 text-xs"
-                    onClick={() => setShowAddProduct(false)}
-                  >
-                    Cancel
-                  </Button>
-                </div>
-              </div>
-            )}
-
-            {manualProducts.length > 0 ? (
-              <div className="space-y-2">
-                {manualProducts.map((p) => {
-                  const name = p.product?.name ?? p.name ?? "";
-                  const url  = p.product?.productUrl ?? p.product?.buyUrl ?? p.buyUrl ?? "";
-                  const price = p.product?.price ?? p.price ?? null;
-                  return (
-                    <div
-                      key={p.id}
-                      className="flex items-center gap-2 p-2 rounded-lg bg-background border border-border"
-                      data-testid={`product-link-${p.id}`}
-                    >
-                      <div className="flex-1 min-w-0">
-                        <p className="text-xs font-medium truncate">{name}</p>
-                        <a
-                          href={url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-xs text-primary hover:underline truncate flex items-center gap-1"
-                        >
-                          <ExternalLink className="h-2.5 w-2.5 shrink-0" />
-                          <span className="truncate">{url}</span>
-                        </a>
-                        {price && (
-                          <Badge variant="secondary" className="text-xs mt-0.5 h-4">
-                            ${price}
-                          </Badge>
-                        )}
-                      </div>
-                      <button
-                        data-testid={`button-remove-product-${p.id}`}
-                        onClick={() => removeProductMutation.mutate(p.id)}
-                        className="text-muted-foreground hover:text-destructive transition-colors shrink-0"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            ) : (
-              !showAddProduct && (
-                <p className="text-xs text-muted-foreground text-center py-2">
-                  No product links yet. Click "Add Link" to get started.
-                </p>
-              )
-            )}
-          </div>
-
-          {/* Product Timeline Overlays — shared with the upload flow, so the
-              fields cannot drift between the two places that write these rows. */}
+          {/* The video's product links, shared with the upload flow so the fields
+              cannot drift between the two places that write these rows. This
+              used to sit under a separate "Product Carousel Links" list that
+              saved to a column no player reads, so those links never showed on
+              the video (client, 10 Nov 2026). */}
           {video && <OverlayComposer videoId={video.id} enabled={open} />}
 
           {/* Save */}

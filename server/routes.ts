@@ -5,6 +5,7 @@ import { storage, type VoucherBulkAction } from "./storage";
 import { sanitizeUser, toPublicBrand } from "./serializers";
 import { viewerHash, isUniqueViolation } from "./viewerIdentity";
 import { canAccessUserResource, canBrowseLibrary } from "./authz";
+import { normaliseLinkUrl } from "@shared/linkUrl";
 import { checkListingCheckout, listingReturnPath, LISTING_CHECKOUT_PURPOSE } from "./libraryCheckout";
 import { randomBytes } from "crypto";
 import { encryptSecret, decryptSecret } from "./crypto";
@@ -3542,27 +3543,21 @@ export async function registerRoutes(
       if (!name || !buyUrl) {
         return res.status(400).json({ error: "name and buyUrl are required" });
       }
-      const newProduct = {
-        id: Math.random().toString(36).slice(2),
-        name,
-        buyUrl,
-        price: price ?? null,
-        imageUrl: imageUrl ?? null,
-        startTime: startTime ?? 0,
-        endTime: endTime ?? 999999,
-      };
-      let override = await storage.getVideoCarouselOverride(req.params.id);
-      let existing: any[] = [];
-      if (override?.manualProducts) {
-        try { existing = JSON.parse(override.manualProducts); } catch {}
-      }
-      const updated = [...existing, newProduct];
-      if (override) {
-        await storage.updateVideoCarouselOverride(req.params.id, { manualProducts: JSON.stringify(updated) });
-      } else {
-        await storage.createVideoCarouselOverride({ videoId: req.params.id, manualProducts: JSON.stringify(updated) });
-      }
-      res.status(201).json(newProduct);
+      // Saved as a product link, the rows every player reads. This list used to
+      // be a JSON column nothing outside the editor read, so a link added here
+      // never showed on the video (client, 10 Nov 2026). Kept for any page
+      // still open on the old editor.
+      const link = normaliseLinkUrl(buyUrl);
+      if (!link) return res.status(400).json({ error: "That link doesn't look like a web address" });
+      const overlay = await storage.createVideoProductOverlay({
+        videoId: req.params.id, productId: null, name, productUrl: link,
+        imageUrl: imageUrl ?? null, price: price ?? null, priceCents: parsePriceToCents(price),
+        currency: getPlatformCurrency(), brandName: null, buttonLabel: null, position: "bottom",
+        startTime: String(startTime ?? "0"),
+        endTime: endTime != null && Number(endTime) < 999999 ? String(endTime) : null,
+        source: "manual",
+      });
+      res.status(201).json(overlay);
     } catch (error) {
       res.status(500).json({ error: "Failed to add product" });
     }
@@ -3895,7 +3890,9 @@ export async function registerRoutes(
       imageUrl: o.imageUrl ?? null,
       startTime: Number(o.startTime ?? 0) || 0,
       endTime: o.endTime == null ? null : Number(o.endTime),
-      buyable: o.priceCents != null && o.priceCents > 0,
+      // The clip draws a button wherever the player does: a priced product, or
+      // a link with its own button text (see linkButton in the embed).
+      buyable: (o.priceCents != null && o.priceCents > 0) || (!!o.buttonLabel && !!o.productUrl),
       buttonLabel: o.buttonLabel || null,
     }));
     const brandKit = video.creatorId ? await storage.getBrandKit(video.creatorId).catch(() => undefined) : undefined;
@@ -4070,11 +4067,13 @@ export async function registerRoutes(
     try {
       const { name, productUrl, imageUrl, price, brandName, buttonLabel, position, startTime, endTime, source, productId } = req.body;
       if (!name) return res.status(400).json({ error: "name is required" });
+      const link = normaliseLinkUrl(productUrl);
+      if (productUrl && !link) return res.status(400).json({ error: "That link doesn't look like a web address" });
       const overlay = await storage.createVideoProductOverlay({
         videoId: req.params.id,
         productId: productId ?? null,
         name,
-        productUrl: productUrl ?? null,
+        productUrl: link,
         imageUrl: imageUrl ?? null,
         price: price ?? null,
         // Derived, not asked for. The typed price stays the display label; this
@@ -4111,7 +4110,11 @@ export async function registerRoutes(
       if (startTime !== undefined) update.startTime = String(startTime);
       if (endTime !== undefined) update.endTime = endTime != null ? String(endTime) : null;
       if (name !== undefined) update.name = name;
-      if (productUrl !== undefined) update.productUrl = productUrl;
+      if (productUrl !== undefined) {
+        const link = normaliseLinkUrl(productUrl);
+        if (productUrl && !link) return res.status(400).json({ error: "That link doesn't look like a web address" });
+        update.productUrl = link;
+      }
       if (imageUrl !== undefined) update.imageUrl = imageUrl;
       if (price !== undefined) {
         update.price = price;
@@ -8348,6 +8351,9 @@ export async function registerRoutes(
         // from the database, so nothing on this page can change what is charged.
         overlayId: o.id,
         buyable: o.priceCents != null && o.priceCents > 0,
+        // A link with no price and its own button text (the client's APPLY NOW
+        // to the sign-up page) gets a button too, which just opens the link.
+        linkButton: !(o.priceCents != null && o.priceCents > 0) && !!o.buttonLabel && !!o.productUrl,
         /**
          * WHEN this product is on screen.
          *
@@ -8603,6 +8609,11 @@ ${embedCarouselCss(carousel)}
         b.className="buy-btn";b.type="button";b.textContent=p.buttonLabel||BUY_LABEL;
         b.addEventListener("click",function(ev){ev.preventDefault();ev.stopPropagation();openPay(p.overlayId);});
         a.appendChild(b);
+      }else if(p.linkButton){
+        // Inside the card's link, so a tap goes where the card goes.
+        var lb=document.createElement("span");
+        lb.className="buy-btn";lb.textContent=p.buttonLabel;
+        a.appendChild(lb);
       }
     });
 
@@ -8731,7 +8742,7 @@ ${embedCarouselCss(carousel)}
         // NO inline display: the .buy-btn rule carries display:none when Show
         // Button is off, and an inline display would override it — the toggle
         // would work in the carousel and be silently ignored here.
-        cta.textContent=BUY_LABEL;
+        cta.textContent=p.buttonLabel||BUY_LABEL;
         row.appendChild(cta);
         row.addEventListener("click",function(){track("click")});
         endRows.appendChild(row);

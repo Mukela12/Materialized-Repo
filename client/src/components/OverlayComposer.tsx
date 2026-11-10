@@ -125,21 +125,21 @@ export function OverlayComposer({
     onSuccess: () => {
       invalidate();
       toast({
-        title: editingId == null ? "Overlay added" : "Overlay updated",
-        description: editingId == null ? "Product overlay added to timeline." : "Your changes have been saved.",
+        title: editingId == null ? "Link added" : "Link updated",
+        description: editingId == null ? "It's in the carousel on your video." : "Your changes have been saved.",
       });
       const wasEditing = editingId != null;
       resetForm();
       // Stay open when adding several; close after an edit, which is one job done.
       setShowAdd(wasEditing ? false : startExpanded);
     },
-    onError: () => toast({ title: "Error", description: "Failed to save overlay.", variant: "destructive" }),
+    onError: () => toast({ title: "Error", description: "Failed to save the link.", variant: "destructive" }),
   });
 
   const removeOverlay = useMutation({
     mutationFn: async (id: number) => apiRequest("DELETE", `/api/videos/${videoId}/overlays/${id}`),
-    onSuccess: () => { invalidate(); toast({ title: "Removed", description: "Overlay removed." }); },
-    onError: () => toast({ title: "Error", description: "Failed to remove overlay.", variant: "destructive" }),
+    onSuccess: () => { invalidate(); toast({ title: "Removed", description: "Link removed from the carousel." }); },
+    onError: () => toast({ title: "Error", description: "Failed to remove the link.", variant: "destructive" }),
   });
 
   // AI placements go through review, never straight onto the carousel. This
@@ -161,7 +161,7 @@ export function OverlayComposer({
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Layers className="h-4 w-4 text-primary" />
-          <Label className="text-sm font-semibold">Timeline Overlays</Label>
+          <Label className="text-sm font-semibold">Product Links</Label>
           {overlays.length > 0 && (
             <Badge variant="secondary" className="text-xs">{overlays.length}</Badge>
           )}
@@ -186,13 +186,13 @@ export function OverlayComposer({
             data-testid="button-toggle-add-overlay"
           >
             <Plus className="h-3 w-3" />
-            Add
+            Add Link
           </Button>
         </div>
       </div>
 
       <p className="text-xs text-muted-foreground">
-        Pin products to specific timestamps and screen positions. Unlike carousel links, overlays control exact timing.
+        The products and links in the carousel on your video, each with its own button text if you like. Leave the end time blank to show one for the whole video.
       </p>
 
       {showAdd && (
@@ -317,9 +317,9 @@ export function OverlayComposer({
                     </a>
                   )}
                   {/* The absent Buy button, explained on the row it belongs to. */}
-                  {!o.price && (
+                  {!o.price && !(o as any).buttonLabel && (
                     <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5" data-testid={`text-no-price-${o.id}`}>
-                      No price, so no Buy button. Edit to add one.
+                      No price or button text, so no button. Add a price for checkout in the video, or button text such as Apply Now to open the link.
                     </p>
                   )}
                 </div>
@@ -350,7 +350,7 @@ export function OverlayComposer({
       ) : (
         !showAdd && (
           <p className="text-xs text-muted-foreground text-center py-2">
-            No overlays yet. Add one or import from AI detections.
+            No links yet. Add one, or review the products AI found in the video.
           </p>
         )
       )}

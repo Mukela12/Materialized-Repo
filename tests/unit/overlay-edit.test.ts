@@ -81,8 +81,8 @@ describe("the price rule is stated where it is decided", () => {
     expect(composer).toMatch(/Prices can be hidden in the Editing Suite/);
   });
 
-  it("and on any row that has no price", () => {
+  it("and on any row that has no price or button text", () => {
     expect(composer).toContain("text-no-price-");
-    expect(composer).toMatch(/No price, so no Buy button/);
+    expect(composer).toMatch(/No price or button text, so no button/);
   });
 });
