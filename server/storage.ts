@@ -1420,6 +1420,8 @@ export class MemStorage implements IStorage {
       defaultButtonHoverColor: kit.defaultButtonHoverColor ?? null,
       defaultButtonOpacity: kit.defaultButtonOpacity ?? null,
       defaultCommerceEnabled: kit.defaultCommerceEnabled ?? null,
+      defaultShowBrand: kit.defaultShowBrand ?? null,
+      defaultCarouselWidth: kit.defaultCarouselWidth ?? null,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -1467,6 +1469,8 @@ export class MemStorage implements IStorage {
       buttonHoverColor: override.buttonHoverColor ?? null,
       buttonOpacity: override.buttonOpacity ?? null,
       commerceEnabled: override.commerceEnabled ?? null,
+      showBrand: override.showBrand ?? null,
+      carouselWidth: override.carouselWidth ?? null,
       manualProducts: override.manualProducts ?? null,
       createdAt: new Date(),
     };

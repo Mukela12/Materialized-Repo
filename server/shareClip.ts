@@ -168,7 +168,8 @@ export function cardMetrics(s: CarouselSettings, w: number, h: number = w * 16 /
     compact: h < 320,
     edge: clamp(8, base * 0.03, 16),
     cardGap: clamp(3, base * 0.01, 6),
-    cardW: clamp(52, Math.min(w * 0.24, h * 0.15), 104),
+    // The editor's carousel width (60-160%) scales the size the player picks.
+    cardW: Math.min(clamp(52, Math.min(w * 0.24, h * 0.15), 104) * (s.carouselWidth / 100), w * 0.45),
     cardPad: clamp(4, base * 0.012, 7),
     brandFs: clamp(6.5, base * 0.021, 8.5) * title,
     nameFs: clamp(8.5, base * 0.03, 12) * title,
@@ -209,7 +210,7 @@ function cardHeight(p: ClipProduct, s: CarouselSettings, m: Metrics): number {
   const inner = m.cardW - m.cardPad * 2;
   let h = m.cardPad * 2;
   if (p.imageUrl && s.showThumbnail) h += inner;
-  if (p.brandName && s.showTitle && !m.compact) h += m.cardPad + 1 + m.brandFs * 1.3;
+  if (p.brandName && s.showBrand && !m.compact) h += m.cardPad + 1 + m.brandFs * 1.3;
   if (s.showTitle) h += (m.compact ? 4 : m.nameTop) + m.nameFs * LINE * nameLines(m);
   if (p.price && s.showPrice) h += 2 + m.priceFs * LINE;
   if (p.buyable && s.showButton) h += (m.compact ? 5 : 8) + m.btnH;
@@ -235,7 +236,7 @@ function drawCard(
     out.push(`<rect x="${left + 0.5}" y="${cy + 0.5}" width="${inner - 1}" height="${inner - 1}" rx="${r}" fill="none" stroke="#ffffff" stroke-opacity="0.1" stroke-width="1"/>`);
     cy += inner;
   }
-  if (p.brandName && s.showTitle && !m.compact) {
+  if (p.brandName && s.showBrand && !m.compact) {
     cy += m.cardPad + 1;
     const ls = 0.12;
     const t = fitText(fonts.semibold, p.brandName.toUpperCase(), m.brandFs, inner, ls);
@@ -392,9 +393,9 @@ export function endListSvg(
     const ctaLs = 0.08;
     const ctaW = s.showButton ? fonts.semibold.getAdvanceWidth(cta, m.buyFs, { letterSpacing: ctaLs }) + 28 : 0;
     const textW = x + rowW - 8 - ctaW - 12 - tx;
-    const textH = (p.brandName && s.showTitle ? brandFs * 1.3 + 2 : 0) + (s.showTitle ? nameFs * LINE : 0) + (p.price && s.showPrice ? priceFs * LINE : 0);
+    const textH = (p.brandName && s.showBrand ? brandFs * 1.3 + 2 : 0) + (s.showTitle ? nameFs * LINE : 0) + (p.price && s.showPrice ? priceFs * LINE : 0);
     let ty = y + (rowH - textH) / 2;
-    if (p.brandName && s.showTitle) {
+    if (p.brandName && s.showBrand) {
       out.push(textPath(fonts.semibold, fitText(fonts.semibold, p.brandName.toUpperCase(), brandFs, textW, 0.12), tx, ty + brandFs, brandFs, paint(s.brandTitleColor, 0.62), 0.12));
       ty += brandFs * 1.3 + 2;
     }

@@ -239,6 +239,19 @@ export function ProductCarouselEditor({
               />
             </div>
           </div>
+
+          <div>
+            <Label className="text-xs">Carousel width: {settings.carouselWidth}%</Label>
+            <Slider
+              value={[settings.carouselWidth]}
+              onValueChange={(val) => updateSetting("carouselWidth", val[0])}
+              min={60}
+              max={160}
+              step={5}
+              className="mt-2"
+              data-testid="slider-carousel-width"
+            />
+          </div>
         </TabsContent>
 
         <TabsContent value="style" className="space-y-3 mt-3">
@@ -574,7 +587,15 @@ export function ProductCarouselEditor({
             />
           </div>
           <div className="flex items-center justify-between py-1">
-            <Label className="text-xs">Show Title</Label>
+            <Label className="text-xs">Show Brand</Label>
+            <Switch
+              checked={settings.showBrand}
+              onCheckedChange={(checked) => updateSetting("showBrand", checked)}
+              data-testid="switch-show-brand"
+            />
+          </div>
+          <div className="flex items-center justify-between py-1">
+            <Label className="text-xs">Show Product Title</Label>
             <Switch
               checked={settings.showTitle}
               onCheckedChange={(checked) => updateSetting("showTitle", checked)}
@@ -638,6 +659,8 @@ export function carouselSettingsFromBrandKit(kit: unknown): CarouselSettings {
     showButton: bool(k.defaultShowButton, defaultSettings.showButton),
     showPrice: bool(k.defaultShowPrice, defaultSettings.showPrice),
     showTitle: bool(k.defaultShowTitle, defaultSettings.showTitle),
+    showBrand: bool(k.defaultShowBrand, defaultSettings.showBrand),
+    carouselWidth: num(k.defaultCarouselWidth, defaultSettings.carouselWidth),
     buttonLabel: str(k.defaultButtonLabel, defaultSettings.buttonLabel) as CarouselSettings["buttonLabel"],
     position: str(k.defaultPosition, defaultSettings.position) as CarouselSettings["position"],
   };

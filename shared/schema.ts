@@ -414,6 +414,9 @@ export const brandKits = pgTable("brand_kits", {
    * behaving as it did rather than being silently switched by a default.
    */
   defaultCommerceEnabled: boolean("default_commerce_enabled"),
+  // 0052: the brand line has its own toggle, and the carousel a width (% of normal).
+  defaultShowBrand: boolean("default_show_brand"),
+  defaultCarouselWidth: integer("default_carousel_width"),
 
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
   updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`),
@@ -448,6 +451,8 @@ export const videoCarouselOverrides = pgTable("video_carousel_overrides", {
   buttonHoverColor: text("button_hover_color"),
   buttonOpacity: integer("button_opacity"),
   commerceEnabled: boolean("commerce_enabled"),
+  showBrand: boolean("show_brand"),
+  carouselWidth: integer("carousel_width"),
 
   manualProducts: text("manual_products"),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),

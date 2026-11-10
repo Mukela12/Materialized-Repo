@@ -8403,7 +8403,11 @@ export async function registerRoutes(
        So body does the centring and #player is sized to the video's own aspect
        by fitPlayer() below, which puts every overlay back on the footage for any
        shape of video. */
-    body{background:#000;overflow:hidden;font-family:-apple-system,sans-serif;width:100vw;height:100vh;display:flex;align-items:center;justify-content:center;margin:0}
+    /* Transparent, not black: a vertical video in a wider embed box would
+       otherwise sit in a black frame on the brand's page (client, 10 Nov 2026).
+       The stage below is the video, so nothing else needs a background. */
+    html,body{background:transparent}
+    body{overflow:hidden;font-family:-apple-system,sans-serif;width:100vw;height:100vh;display:flex;align-items:center;justify-content:center;margin:0}
     /* Falls back to the full frame until loadedmetadata arrives, so a slow or
        failed video shows the loader where it always was rather than collapsing
        the stage to nothing. fitPlayer() replaces these with explicit pixels. */
@@ -8799,11 +8803,17 @@ ${embedCarouselCss(carousel)}
   el.style.position="relative";el.style.width="100%";el.style.maxWidth="640px";
   el.style.aspectRatio="16/9";el.style.background="#000";el.style.borderRadius="12px";
   el.style.overflow="hidden";
+  // Take the video's own shape once it is known, so a vertical video is not
+  // cropped into 16:9 or framed in black.
+  function fitShape(){if(!v.videoWidth||!v.videoHeight)return;
+    el.style.aspectRatio=v.videoWidth+"/"+v.videoHeight;
+    el.style.maxWidth=v.videoWidth<v.videoHeight?"360px":"640px";el.style.background="transparent";}
   var v=document.createElement("video");
   var vsrc="${videoDeliveryUrl(safeVideoUrl, "embed")}";
   v.src=vsrc;v.muted=true;v.loop=true;v.playsInline=true;v.preload="auto";
   v.style.cssText="width:100%;height:100%;object-fit:cover;";
   v.addEventListener("canplay",function(){v.play().catch(function(){});});
+  v.addEventListener("loadedmetadata",fitShape);
   el.appendChild(v);
   var products=${JSON.stringify(products)};
   var WSTYLE=${JSON.stringify(widgetStyles)};

@@ -60,7 +60,12 @@ export interface CarouselSettings {
   showThumbnail: boolean;
   showButton: boolean;
   showPrice: boolean;
+  /** The product name. */
   showTitle: boolean;
+  /** The brand line above it. It shared showTitle until 10 Nov 2026. */
+  showBrand: boolean;
+  /** Card width as a % of the size the player picks for the video (60-160). */
+  carouselWidth: number;
 
   /**
    * Sell during playback, or list the products at the end instead.
@@ -102,6 +107,8 @@ export const CAROUSEL_DEFAULTS: CarouselSettings = {
   showButton: true,
   showPrice: true,
   showTitle: true,
+  showBrand: true,
+  carouselWidth: 100,
 
   commerceEnabled: true,
 };
@@ -113,6 +120,7 @@ const SHARED_KEYS = [
   "buttonLabel", "buttonFont", "buttonColor", "buttonTextColor",
   "carouselBackgroundColor", "buttonCornerRadius", "brandTitleColor",
   "productTitleColor", "buttonHoverColor", "buttonOpacity", "commerceEnabled",
+  "showBrand", "carouselWidth",
 ] as const;
 
 /** Keys that only a per-video override carries. */
@@ -313,6 +321,8 @@ export function sanitiseSettings(raw: Partial<CarouselSettings> | null | undefin
     showButton: typeof r.showButton === "boolean" ? r.showButton : d.showButton,
     showPrice: typeof r.showPrice === "boolean" ? r.showPrice : d.showPrice,
     showTitle: typeof r.showTitle === "boolean" ? r.showTitle : d.showTitle,
+    showBrand: typeof r.showBrand === "boolean" ? r.showBrand : d.showBrand,
+    carouselWidth: safeInt(r.carouselWidth, 60, 160, d.carouselWidth),
 
     commerceEnabled: typeof r.commerceEnabled === "boolean" ? r.commerceEnabled : d.commerceEnabled,
   };

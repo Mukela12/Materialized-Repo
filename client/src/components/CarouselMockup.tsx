@@ -46,7 +46,7 @@ export function CarouselMockup({
         boxShadow: "inset 0 0 0 1px rgba(255,255,255,.09), 0 14px 32px -14px rgba(0,0,0,.6)",
       }
     : {};
-  const brand = (text = "Brand") => settings.showTitle && (
+  const brand = (text = "Brand") => settings.showBrand && (
     <p
       className="truncate uppercase"
       style={{
@@ -168,7 +168,7 @@ export function CarouselMockup({
           two-line name, price, slim button. Two sample products, so spacing
           and the dock's shape read as they will on the video. */}
       {[0, 1].map((n) => (
-        <div key={n} className="flex flex-col" style={{ width: px(64), padding: px(3) }}>
+        <div key={n} className="flex flex-col" style={{ width: px(64 * settings.carouselWidth / 100), padding: px(3) }}>
           {thumb("100%", 20 + n * 140)}
           <div style={{ marginTop: settings.showThumbnail ? px(5) : 0 }}>
             {brand()}

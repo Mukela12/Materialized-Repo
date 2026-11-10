@@ -57,7 +57,9 @@ const FIELD_LABELS: Record<string, string> = {
   showThumbnail: "thumbnail",
   showButton: "button",
   showPrice: "price",
-  showTitle: "title",
+  showTitle: "product title",
+  showBrand: "brand",
+  carouselWidth: "carousel width",
   commerceEnabled: "commerce",
 };
 

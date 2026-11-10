@@ -105,7 +105,7 @@ export function embedCarouselCss(raw: CarouselSettings): string {
       padding:var(--card-pad,6px);
       ${glass ? "-webkit-backdrop-filter:blur(18px) saturate(1.5);backdrop-filter:blur(18px) saturate(1.5);box-shadow:inset 0 0 0 1px rgba(255,255,255,.09),0 18px 40px -18px rgba(0,0,0,.6);" : ""}
     }
-    .product-card{ border-radius:${Math.max(0, s.cornerRadius - 4)}px; }
+    .product-card{ border-radius:${Math.max(0, s.cornerRadius - 4)}px; width:calc(var(--card-w,96px) * ${s.carouselWidth / 100}); }
     .product-card .thumb{ border-radius:${Math.max(0, s.cornerRadius - 7)}px; ${s.showThumbnail ? "" : "display:none;"} }
     .product-name{
       color:${s.productTitleColor};
@@ -128,7 +128,7 @@ export function embedCarouselCss(raw: CarouselSettings): string {
       color:${s.brandTitleColor};
       font-family:${fontStack(s.titleFont)};
       font-size:calc(var(--card-brand,8px) * ${s.titleFontSize / 100});
-      ${s.showTitle ? "" : "display:none;"}
+      ${s.showBrand ? "" : "display:none;"}
     }
     .buy-btn{
       background:${buttonBackground(s)};
@@ -188,7 +188,7 @@ export function widgetInlineStyles(raw: CarouselSettings) {
       `background:${panelBackground(s)};border-radius:${s.cornerRadius}px;padding:4px;`,
     card:
       `flex:0 0 auto;background:transparent;padding:clamp(3px,1%,6px);` +
-      `${stacked ? "width:100%;" : "width:clamp(60px,20%,100px);"}text-decoration:none;`,
+      `${stacked ? "width:100%;" : `width:calc(clamp(60px,20%,100px) * ${s.carouselWidth / 100});`}text-decoration:none;`,
     image: s.showThumbnail
       ? "width:100%;height:clamp(30px,8vw,60px);object-fit:cover;border-radius:clamp(4px,1%,6px)"
       : "display:none",
@@ -203,7 +203,7 @@ export function widgetInlineStyles(raw: CarouselSettings) {
     brand:
       `font-size:calc(7px * ${s.titleFontSize / 100});color:${s.brandTitleColor};` +
       `text-transform:uppercase;letter-spacing:.04em;opacity:.85;` +
-      `font-family:${fontStack(s.titleFont)};${s.showTitle ? "" : "display:none;"}`,
+      `font-family:${fontStack(s.titleFont)};${s.showBrand ? "" : "display:none;"}`,
   };
 }
 

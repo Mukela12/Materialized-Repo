@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -16,6 +16,7 @@ import { useToast } from "@/hooks/use-toast";
 import { copyText } from "@/lib/clipboard";
 import type { Video } from "@shared/schema";
 import { ShareClipPanel } from "@/components/ShareClipPanel";
+import { videoDeliveryUrl } from "@shared/videoDelivery";
 
 interface EmbedCodeModalProps {
   open: boolean;
@@ -29,9 +30,26 @@ export function EmbedCodeModal({ open, onOpenChange, video }: EmbedCodeModalProp
   const [showPreview, setShowPreview] = useState(true);
   /** Closed by default: the video is what people open this for. */
   const [showCode, setShowCode] = useState(false);
+  /** The video's width / height, once its metadata loads. */
+  const [aspect, setAspect] = useState<number | null>(null);
   const { toast } = useToast();
+  useEffect(() => { setAspect(null); }, [video?.id]);
 
   if (!video) return null;
+
+  /**
+   * The embed takes the video's own shape.
+   *
+   * It was a fixed 450px-tall box (or a 16:9 one), so a vertical video sat in
+   * a black frame on the brand's page. The client, 10 Nov 2026: "Vertical
+   * videos should not have a black outer frame at all", because brands use
+   * vertical influencer videos as product thumbnails on their stores.
+   */
+  const ratio = aspect ?? 16 / 9;
+  const vertical = ratio < 1;
+  const boxW = vertical ? 360 : 640;
+  const boxH = Math.round(boxW / ratio);
+  const shapeLabel = vertical ? "vertical" : ratio > 1.01 ? "landscape" : "square";
 
   // Embed URL goes through the Vercel proxy to Railway backend
   const embedUrl = `/embed/${video.id}?utm=${video.utmCode || ""}`;
@@ -39,14 +57,15 @@ export function EmbedCodeModal({ open, onOpenChange, video }: EmbedCodeModalProp
 
   const iframeCode = `<iframe
   src="${fullEmbedUrl}"
-  width="100%"
-  height="450"
+  width="${boxW}"
+  height="${boxH}"
+  style="width:100%;max-width:${boxW}px;height:auto;aspect-ratio:${boxW} / ${boxH};border:0;display:block"
   frameborder="0"
   allowfullscreen
   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
 ></iframe>`;
 
-  const responsiveCode = `<div style="position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden;">
+  const responsiveCode = `<div style="position: relative; width: 100%;${vertical ? ` max-width: ${boxW}px;` : ""} aspect-ratio: ${boxW} / ${boxH}; overflow: hidden;">
   <iframe
     src="${fullEmbedUrl}"
     style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;"
@@ -76,6 +95,19 @@ export function EmbedCodeModal({ open, onOpenChange, video }: EmbedCodeModalProp
           grew to the widest row, so on a phone the whole screen was 549px
           wide inside a 390px window and ran off the right edge. */}
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto grid-cols-[minmax(0,1fr)]">
+        {/* Reads the video's shape for the preview and the embed code. */}
+        {video.videoUrl && aspect === null && (
+          <video
+            src={videoDeliveryUrl(video.videoUrl, "preview")}
+            preload="metadata"
+            muted
+            className="hidden"
+            onLoadedMetadata={(e) => {
+              const v = e.currentTarget;
+              if (v.videoWidth && v.videoHeight) setAspect(v.videoWidth / v.videoHeight);
+            }}
+          />
+        )}
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-xl font-bold">
             <Clapperboard className="h-5 w-5" />
@@ -146,11 +178,16 @@ export function EmbedCodeModal({ open, onOpenChange, video }: EmbedCodeModalProp
            * standard embed is height="450", so the preview can simply be 450
            * tall and stack like everything else.
            */
-          <div className="rounded-lg overflow-hidden bg-black" data-testid="embed-preview-frame">
+          <div
+            className="mx-auto overflow-hidden rounded-lg"
+            style={vertical
+              ? { height: 450, width: "100%", maxWidth: Math.round(450 * ratio) }
+              : { width: "100%", aspectRatio: String(ratio) }}
+            data-testid="embed-preview-frame"
+          >
             <iframe
               src={embedUrl}
-              className="block w-full border-0"
-              style={{ height: 450 }}
+              className="block h-full w-full border-0"
               allow="autoplay; encrypted-media"
               title="Embed preview"
             />
@@ -207,7 +244,7 @@ export function EmbedCodeModal({ open, onOpenChange, video }: EmbedCodeModalProp
               </Button>
             </div>
             <p className="text-xs text-muted-foreground">
-              Fixed 450px height. Best for sidebars or fixed-size containers.
+              Sized to your {shapeLabel} video{vertical ? `, up to ${boxW}px wide` : ""}, with no black frame around it.
             </p>
           </TabsContent>
 
@@ -230,7 +267,7 @@ export function EmbedCodeModal({ open, onOpenChange, video }: EmbedCodeModalProp
               </Button>
             </div>
             <p className="text-xs text-muted-foreground">
-              Maintains 16:9 aspect ratio. Best for responsive layouts.
+              Keeps the video's own shape at any width. Best for responsive layouts.
             </p>
           </TabsContent>
         </Tabs>

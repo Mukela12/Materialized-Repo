@@ -85,13 +85,17 @@ export function CarouselPreviewFrame({
              * The product carousel therefore must sit on the video and not get
              * cropped out."
              *
-             * With width and aspect-ratio set and max-height as the only cap,
-             * the browser shrinks the width to keep the ratio — so the box is
-             * always precisely the video, and there is nothing to letterbox.
+             * It then set width 100% with aspect-ratio and a max-height, on the
+             * belief that the browser would shrink the width to keep the ratio.
+             * It does not: with an explicit width, max-height just clips the
+             * height, so a vertical video in a wide panel got a wide black box
+             * again, and the carousel sat on the bar (client, 10 Nov 2026).
+             *
+             * So the width is the smaller of the panel and the width the cap
+             * allows (maxHeight x aspect), and the height follows from the ratio.
              */
-            width: zoom === 1 ? "100%" : `calc(100% * ${zoom})`,
+            width: `calc(min(100%, ${Math.round(maxHeight * aspect)}px) * ${zoom})`,
             aspectRatio: String(aspect),
-            maxHeight: maxHeight * zoom,
           }}
         >
           {videoUrl ? (

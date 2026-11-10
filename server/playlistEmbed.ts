@@ -169,6 +169,14 @@ export function playlistRenderScript(input: PlaylistRenderInput): string {
   // Loop only when there is a single video; with several, "ended" is what
   // advances to the next one and a looping video never emits it.
   vid.loop=D.items.length===1;
+  // The frame takes each video's own shape, so a vertical video is not set in
+  // a black 16:9 box with the carousel on the bars.
+  vid.addEventListener("loadedmetadata",function(){
+    if(!vid.videoWidth||!vid.videoHeight)return;
+    frame.style.aspectRatio=vid.videoWidth+"/"+vid.videoHeight;
+    frame.style.maxWidth=vid.videoWidth<vid.videoHeight?"360px":"640px";
+    frame.style.background="transparent";
+  });
   frame.appendChild(vid);
 
   var carousel=document.createElement("div");
