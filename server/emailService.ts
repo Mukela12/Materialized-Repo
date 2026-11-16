@@ -917,6 +917,11 @@ export async function sendOpsAlertEmail(opts: {
   await sendEmail(opts.to, `[MTRLZD ops] ${opts.subject}`, baseTemplate(body));
 }
 
+/** The Monday and Thursday snapshot (server/snapshotReport.ts writes it). */
+export async function sendSnapshotEmail(to: string, subject: string, html: string): Promise<void> {
+  await sendEmail(to, subject, html);
+}
+
 // ── Day-2 trial nurture ────────────────────────────────────────────────────
 export interface TrialFollowupEmailOpts {
   to: string;

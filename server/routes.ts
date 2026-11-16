@@ -2672,6 +2672,32 @@ export async function registerRoutes(
     res.json(await activityReport(windowDays(req.query.days)));
   });
 
+  // Admin: email the Monday and Thursday snapshot now, to the admin who asked
+  // only, covering the time since the last scheduled one.
+  const snapshotAsked = new Map<string, number>();
+  app.post("/api/admin/snapshot-report/send", requireAdmin, async (req: any, res) => {
+    const me = req.user;
+    if (!me?.email) return res.status(400).json({ error: "Your account has no email address." });
+    const last = snapshotAsked.get(me.id) ?? 0;
+    if (Date.now() - last < 60_000) return res.status(429).json({ error: "One a minute. Check your inbox for the last one." });
+    snapshotAsked.set(me.id, Date.now());
+    const { runSnapshotReport } = await import("./snapshotReport");
+    const { sendSnapshotEmail } = await import("./emailService");
+    const { db } = await import("./db");
+    const r = await runSnapshotReport({
+      exec: (q) => db.execute(q) as any,
+      send: sendSnapshotEmail,
+      force: true,
+      recipients: [me.email],
+      appUrl: process.env.APP_URL || "https://www.mtrlzd.com",
+    });
+    if (r.status !== "success") {
+      console.error("[snapshot-report] send now failed:", r.detail);
+      return res.status(502).json({ error: "The snapshot could not be sent. Try again in a minute." });
+    }
+    res.json({ ok: true, to: me.email });
+  });
+
   // ── Email journeys (server/journeys.ts) ──────────────────────────────────
   app.get("/api/admin/journeys", requireAdmin, async (_req, res) => {
     const { journeysOverview } = await import("./journeyStore");

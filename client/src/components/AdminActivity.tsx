@@ -10,7 +10,11 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { format, formatDistanceToNow } from "date-fns";
-import { Activity, DoorOpen, LogIn, RefreshCw, Ticket, UserPlus, Users } from "lucide-react";
+import { Activity, DoorOpen, LogIn, Mail, RefreshCw, Ticket, UserPlus, Users } from "lucide-react";
+import { useMutation } from "@tanstack/react-query";
+import { Button } from "@/components/ui/button";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest, serverMessage } from "@/lib/queryClient";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { TableToolbar } from "@/components/TableToolbar";
@@ -178,6 +182,7 @@ export function AdminActivity() {
               </button>
             ))}
           </div>
+          <SendSnapshotButton />
           <button
             onClick={() => refetch()}
             className="p-1.5 rounded-md text-muted-foreground hover:text-foreground"
@@ -427,5 +432,32 @@ export function AdminActivity() {
 
       {openPerson && <PersonSheet userId={openPerson} onClose={() => setOpenPerson(null)} />}
     </div>
+  );
+}
+
+/**
+ * The Monday and Thursday snapshot goes out by itself (server/snapshotReport.ts).
+ * This sends one now, to the admin who presses it, covering the time since the
+ * last scheduled one.
+ */
+function SendSnapshotButton() {
+  const { toast } = useToast();
+  const send = useMutation({
+    mutationFn: async () => (await apiRequest("POST", "/api/admin/snapshot-report/send")).json(),
+    onSuccess: (r: { to: string }) => toast({ title: "Snapshot sent", description: `Check ${r.to}. It also arrives by itself every Monday and Thursday at 8am Paris time.` }),
+    onError: (err: unknown) => toast({ title: "Couldn't send it", description: serverMessage(err) || "Try again in a minute.", variant: "destructive" }),
+  });
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      className="h-8 gap-1.5 text-xs"
+      onClick={() => send.mutate()}
+      disabled={send.isPending}
+      data-testid="button-send-snapshot"
+    >
+      <Mail className="w-3.5 h-3.5" />
+      {send.isPending ? "Sending…" : "Email me the snapshot"}
+    </Button>
   );
 }

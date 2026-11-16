@@ -558,6 +558,21 @@ function startScheduler() {
           return runInviteCampaigns({ now: new Date(), origin: process.env.APP_URL || "https://www.mtrlzd.com", send: sendCampaignInvites });
         },
       },
+      // The Monday and Thursday snapshot for the client (server/snapshotReport.ts).
+      {
+        name: "snapshot-report",
+        schedule: process.env.SNAPSHOT_CRON || "0 7 * * 1,4",
+        run: async () => {
+          const { runSnapshotReport } = await import("./snapshotReport");
+          const { sendSnapshotEmail } = await import("./emailService");
+          const { db } = await import("./db");
+          return runSnapshotReport({
+            exec: (q) => db.execute(q) as any,
+            send: sendSnapshotEmail,
+            appUrl: process.env.APP_URL || "https://www.mtrlzd.com",
+          });
+        },
+      },
       makeCertWatchJob(probeCertificate, {
         sendAlert: async (subject, lines) => {
           const { sendOpsAlertEmail } = await import("./emailService");
