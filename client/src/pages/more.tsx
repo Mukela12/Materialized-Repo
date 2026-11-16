@@ -123,7 +123,6 @@ export default function More() {
   const role        = user?.role ?? "brand";
   const { profile: profileSection, billing: billingSection, developer: developerSection, content: contentSection } = buildSections(role);
   const displayName = user?.displayName || (role === "creator" ? "Demo Creator" : "Demo Brand");
-  const username    = user?.username    || `${role}-account`;
   const initials    = getInitials(displayName);
   // Partners: phones have no sidebar, so their invite and sales pages live here.
   const { data: program } = useProgram();
@@ -161,10 +160,9 @@ export default function More() {
               <h3 className="font-semibold text-lg leading-tight truncate" data-testid="text-display-name">
                 {displayName}
               </h3>
-              <p className="text-sm text-muted-foreground truncate" data-testid="text-username">
-                {username}
-              </p>
-              <RolePill role={role} className="mt-2" />
+              {/* The badge says the account type; the username line under the
+                  name repeated it ("brand", "creator") or showed a generated id. */}
+              <RolePill role={role} className="mt-1.5" />
             </div>
             <Button
               variant="outline"
