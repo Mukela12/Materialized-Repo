@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { RolePill } from "@/components/RolePill";
+import { Badge } from "@/components/ui/badge";
 import type { User } from "@shared/schema";
 import { useLogout } from "@/hooks/useCurrentUser";
 import { PaymentMethodCard } from "@/components/PaymentMethodCard";
@@ -164,7 +164,10 @@ export default function More() {
               <p className="text-sm text-muted-foreground truncate" data-testid="text-username">
                 {username}
               </p>
-              <RolePill role={role} className="mt-2" />
+              {/* Was blue text on a blue fill, unreadable (mobile QA, 23 Oct 2026). */}
+              <Badge variant="secondary" className="mt-2 border-transparent bg-primary/10 text-primary hover:bg-primary/10" data-testid="badge-role">
+                {role === "affiliate" ? "Publisher" : role === "brand" ? "Brand" : "Creator"}
+              </Badge>
             </div>
             <Button
               variant="outline"
