@@ -36,6 +36,7 @@ import {
 } from "@/components/ui/sidebar";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { RolePill } from "@/components/RolePill";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 const overviewItems = [
@@ -154,10 +155,8 @@ export function BrandAppSidebar({ user }: BrandAppSidebarProps) {
             <p className="text-xs text-muted-foreground truncate">
               {user?.email || user?.username || ""}
             </p>
+            <RolePill role="brand" className="mt-2" />
           </div>
-          <Badge className="shrink-0 px-2 py-0 text-[10.5px] font-semibold group-data-[collapsible=icon]:hidden" data-testid="badge-sidebar-role">
-            Brand
-          </Badge>
         </div>
 
         <div className="relative mt-3 group-data-[collapsible=icon]:hidden">

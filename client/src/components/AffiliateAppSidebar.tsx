@@ -28,6 +28,7 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { RolePill } from "@/components/RolePill";
 import { useLogout } from "@/hooks/useCurrentUser";
 import { useMailboxUnreadCount } from "@/hooks/useMailbox";
 import { useProgram } from "@/hooks/useProgram";
@@ -192,6 +193,7 @@ export function AffiliateAppSidebar({ user }: AffiliateAppSidebarProps) {
           <div className="flex-1 min-w-0 group-data-[collapsible=icon]:hidden">
             <p className="text-sm font-medium truncate">{user?.displayName || "Publisher"}</p>
             <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
+            <RolePill role="affiliate" className="mt-1.5" />
           </div>
           <Button
             size="icon"
