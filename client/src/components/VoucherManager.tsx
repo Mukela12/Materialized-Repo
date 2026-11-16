@@ -72,7 +72,12 @@ const GTM_DEFAULTS = {
   grantType: "free_access" as const,
   roleRestriction: "creator",
   maxRedemptions: "1",
-  quantity: "20",
+  /**
+   * One code unless asked for more (client, 16 Nov 2026): at 20, making one
+   * pass for one person minted twenty, and the count field sits off-screen on
+   * a laptop. The button still says the count whenever it is above one.
+   */
+  quantity: "1",
   assignedTo: "",
 };
 
