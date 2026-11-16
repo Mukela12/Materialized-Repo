@@ -26,6 +26,7 @@
  */
 import { sanitisePlaylistStyle, styleFromPlaylist, isWatermark, logoPositionCss, type PlaylistStyle } from "../shared/playlistStyle";
 import { withAlpha } from "../shared/carousel";
+import { watchTrackerJs } from "./watchTime";
 
 /** One playable entry, already resolved and safe to serialise into the script. */
 export interface PlaylistEmbedItem {
@@ -179,6 +180,10 @@ export function playlistRenderScript(input: PlaylistRenderInput): string {
   });
   frame.appendChild(vid);
 
+  // Watch time for each video's creator dashboard (server/watchTime.ts).
+  ${watchTrackerJs()}
+  var watch=matWatch(vid,D.apiBase,null);
+
   var carousel=document.createElement("div");
   frame.appendChild(carousel);
 
@@ -260,6 +265,7 @@ export function playlistRenderScript(input: PlaylistRenderInput): string {
   function show(i){
     idx=i;
     var item=D.items[i];
+    watch.setVideo(item.videoId);
     vid.src=item.videoUrl;
     drawCarousel(item);
     tiles.forEach(function(t,j){

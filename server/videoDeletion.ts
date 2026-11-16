@@ -64,6 +64,7 @@ export async function deleteVideoCompletely(videoId: string): Promise<DeleteVide
     await tx.execute(sql`DELETE FROM video_products WHERE video_id = ${videoId}`);
     await tx.execute(sql`DELETE FROM video_publish_records WHERE video_id = ${videoId}`);
     await tx.execute(sql`DELETE FROM embed_deployments WHERE video_id = ${videoId}`);
+    await tx.execute(sql`DELETE FROM video_watch_time WHERE video_id = ${videoId}`);
     await tx.execute(sql`DELETE FROM analytics_events WHERE video_id = ${videoId}`);
     await tx.execute(sql`DELETE FROM videos WHERE id = ${videoId}`);
     return { deleted: true as const };

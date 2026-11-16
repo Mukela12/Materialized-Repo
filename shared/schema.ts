@@ -331,6 +331,37 @@ export const analyticsEvents = pgTable("analytics_events", {
     .where(sql`${t.eventType} = 'view' AND ${t.viewerHash} IS NOT NULL`),
 }));
 
+/**
+ * How long people watch (client, 16 Nov 2026: "average view duration" on the
+ * creator dashboard). Nothing measured it before.
+ *
+ * One row per viewing per video per UTC day, raised as the viewer keeps
+ * watching: the players report the seconds watched so far and the row keeps
+ * the largest figure, capped at the video's length and at what the time since
+ * the row was opened allows (server/watchTime.ts). The client is never trusted
+ * for more than that.
+ *
+ * viewer_hash is the same kind of salted, day-rotating digest as
+ * analytics_events.viewer_hash: never a raw IP and never stored by the browser.
+ */
+export const videoWatchTime = pgTable("video_watch_time", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  videoId: varchar("video_id").notNull().references(() => videos.id),
+  /** The video's owner, denormalised at write time like analytics_events.creator_id. */
+  creatorId: varchar("creator_id").references(() => users.id),
+  viewerHash: text("viewer_hash").notNull(),
+  secondsWatched: integer("seconds_watched").notNull().default(0),
+  /** The length the cap was taken from: videos.duration_seconds, else the player's figure. */
+  videoSeconds: integer("video_seconds"),
+  createdAt: timestamp("created_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+  updatedAt: timestamp("updated_at").notNull().default(sql`CURRENT_TIMESTAMP`),
+}, (t) => ({
+  viewerUniq: uniqueIndex("video_watch_time_viewer_uniq").on(t.videoId, t.viewerHash),
+  creatorPeriodIdx: index("video_watch_time_creator_period_idx").on(t.creatorId, t.createdAt),
+}));
+
+export type VideoWatchTime = typeof videoWatchTime.$inferSelect;
+
 // Affiliate payouts
 export const affiliatePayouts = pgTable("affiliate_payouts", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

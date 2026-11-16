@@ -4,6 +4,7 @@ import { createServer, type Server } from "http";
 import { storage, type VoucherBulkAction } from "./storage";
 import { sanitizeUser, toPublicBrand } from "./serializers";
 import { viewerHash, isUniqueViolation } from "./viewerIdentity";
+import { watchTrackerJs } from "./watchTime";
 import { canAccessUserResource, canBrowseLibrary, canAddFreeLinks } from "./authz";
 import { normaliseLinkUrl } from "@shared/linkUrl";
 import { checkListingCheckout, listingReturnPath, LISTING_CHECKOUT_PURPOSE } from "./libraryCheckout";
@@ -1500,6 +1501,58 @@ export async function registerRoutes(
       }
       console.error("Analytics event error:", error);
       res.status(500).json({ error: "Failed to track event" });
+    }
+  });
+
+  /**
+   * Watch progress from the players (server/watchTime.ts). Open by necessity,
+   * like the events route above: the players run on publishers' pages with no
+   * session. The video decides the creator and the length; the seconds are
+   * capped server-side, so the body can only ever claim what was possible.
+   * sendBeacon posts text/plain, which the global JSON parser leaves alone.
+   */
+  app.post("/api/analytics/watch", express.text({ type: "text/plain", limit: "4kb" }), async (req, res) => {
+    try {
+      const { parseWatchReport, resolveVideoSeconds, watchViewerKey, recordWatchTime } = await import("./watchTime");
+      const report = parseWatchReport(req.body);
+      if (!report) return res.status(400).json({ error: "Invalid watch report" });
+      const video = await storage.getVideo(report.videoId);
+      if (!video) return res.status(404).json({ error: "Unknown video" });
+      const key = watchViewerKey(report.sid, req);
+      // No way to tell one viewing from another: record nothing rather than guess.
+      if (!key) return res.status(204).end();
+      await recordWatchTime({
+        videoId: video.id,
+        creatorId: video.creatorId,
+        key,
+        reported: report.seconds,
+        videoSeconds: resolveVideoSeconds(video.durationSeconds, report.duration),
+      });
+      res.status(204).end();
+    } catch (error) {
+      console.error("Watch time error:", error);
+      res.status(500).json({ error: "Failed to record watch time" });
+    }
+  });
+
+  /**
+   * The creator dashboard (client, 16 Nov 2026): the signed-in account's own
+   * videos only, for a period, its previous period, a category and a currency.
+   * See server/creatorDashboard.ts for what each number is counted from.
+   */
+  app.get("/api/creator/dashboard", async (req, res) => {
+    try {
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ error: "Authentication required" });
+      const user = await storage.getUser(sessionUserId);
+      if (!user) return res.status(401).json({ error: "User not found" });
+      const { parseDashboardQuery, creatorDashboard } = await import("./creatorDashboard");
+      const q = parseDashboardQuery(req.query as Record<string, unknown>);
+      if (!q.ok) return res.status(400).json({ error: q.error });
+      res.json(await creatorDashboard(user.id, q.value));
+    } catch (error) {
+      console.error("Creator dashboard error:", error);
+      res.status(500).json({ error: "Failed to load the dashboard" });
     }
   });
 
@@ -8416,6 +8469,8 @@ export async function registerRoutes(
         // AMOUNT is deliberately not sent: the checkout endpoint re-reads it
         // from the database, so nothing on this page can change what is charged.
         overlayId: o.id,
+        // Sent with a click so the creator dashboard can rank products by clicks.
+        productId: o.productId ?? null,
         buyable: o.priceCents != null && o.priceCents > 0,
         // A link with no price and its own button text (the client's APPLY NOW
         // to the sign-up page) gets a button too, which just opens the link.
@@ -8660,7 +8715,7 @@ ${embedCarouselCss(carousel)}
       if(p.brandName){var bd=document.createElement("div");bd.className="product-brand";bd.textContent=p.brandName;a.appendChild(bd);}
       var nameDiv=document.createElement("div");nameDiv.className="product-name";nameDiv.textContent=p.name;a.appendChild(nameDiv);
       if(p.price){var priceDiv=document.createElement("div");priceDiv.className="product-price";priceDiv.textContent=CURRENCY_SYMBOL+p.price;a.appendChild(priceDiv);}
-      a.addEventListener("click",function(){track("click")});
+      a.addEventListener("click",function(){track("click",p.productId?{productId:p.productId}:null)});
       carousel.appendChild(a);
       // Remembered with its window so timeupdate can show and hide it.
       timedCards.push({el:a,start:Number(p.startTime)||0,end:p.endTime==null?Infinity:Number(p.endTime)});
@@ -8810,7 +8865,7 @@ ${embedCarouselCss(carousel)}
         // would work in the carousel and be silently ignored here.
         cta.textContent=p.buttonLabel||BUY_LABEL;
         row.appendChild(cta);
-        row.addEventListener("click",function(){track("click")});
+        row.addEventListener("click",function(){track("click",p.productId?{productId:p.productId}:null)});
         endRows.appendChild(row);
       });
       document.getElementById("player").appendChild(endList);
@@ -8830,6 +8885,9 @@ ${embedCarouselCss(carousel)}
       }).catch(function(){});
     }
     track("view");
+    // Watch time for the creator dashboard (server/watchTime.ts).
+    ${watchTrackerJs()}
+    matWatch(vid,apiBase,videoId);
   </script>
 </body>
 </html>`);
@@ -8857,6 +8915,7 @@ ${embedCarouselCss(carousel)}
         imageUrl: o.imageUrl,
         price: o.price,
         productUrl: appendUtm(o.productUrl, utm),
+        productId: o.productId ?? null,
       }));
 
       const apiBase = publicOrigin(req);
@@ -8910,7 +8969,7 @@ ${embedCarouselCss(carousel)}
       var nd=document.createElement("div");nd.style.cssText=WSTYLE.name;
       nd.textContent=p.name||"";a.appendChild(nd);
       if(p.price){var pd=document.createElement("div");pd.style.cssText=WSTYLE.price;pd.textContent=CURRENCY_SYMBOL+p.price;a.appendChild(pd);}
-      a.addEventListener("click",function(){track("click")});
+      a.addEventListener("click",function(){track("click",p.productId?{productId:p.productId}:null)});
       c.appendChild(a);
     });
     el.appendChild(c);
@@ -8922,6 +8981,9 @@ ${embedCarouselCss(carousel)}
     else{fetch(apiBase+"/api/analytics/events",{method:"POST",headers:{"Content-Type":"application/json"},body:body}).catch(function(){});}
   }
   track("view");
+  // Watch time for the creator dashboard (server/watchTime.ts).
+  ${watchTrackerJs()}
+  matWatch(v,apiBase,videoId);
 })();`);
     } catch (error) {
       res.set("Content-Type", "application/javascript");

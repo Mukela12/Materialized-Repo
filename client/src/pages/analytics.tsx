@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { StatCard } from "@/components/StatCard";
 import { AffiliateTable } from "@/components/AffiliateTable";
 import { AffiliatePublishersTable } from "@/components/AffiliatePublishersTable";
+import { CreatorDashboard } from "@/components/CreatorDashboard";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Cell,
@@ -202,6 +203,9 @@ export default function Analytics() {
           )}
         </div>
         <div className="flex gap-2 items-center">
+          {/* Creators pick the currency inside their dashboard (live rates);
+              a second picker here, on fixed rates, only confused the two. */}
+          {!isCreatorView && (
           <Select value={currency} onValueChange={setCurrency} data-testid="select-currency">
             <SelectTrigger className="w-[120px]" data-testid="select-currency-trigger">
               <SelectValue placeholder="Currency" />
@@ -214,6 +218,7 @@ export default function Analytics() {
               ))}
             </SelectContent>
           </Select>
+          )}
           <Button
             variant="outline"
             size="icon"
@@ -226,6 +231,13 @@ export default function Analytics() {
           </Button>
         </div>
       </div>
+
+      {/* The creator dashboard (client, 16 Nov 2026) leads; the all-time
+          figures below stay as they were. */}
+      {isCreatorView && <CreatorDashboard />}
+      {isCreatorView && (
+        <h2 className="pt-2 text-lg font-semibold tracking-tight" data-testid="text-all-time-heading">All time</h2>
+      )}
 
       <div className="stat-panel grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
