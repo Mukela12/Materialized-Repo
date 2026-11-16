@@ -35,6 +35,7 @@ import {
 } from "@/components/ui/sidebar";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { RolePill } from "@/components/RolePill";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 const overviewItems = [
@@ -186,12 +187,9 @@ export function AppSidebar({ user }: AppSidebarProps) {
             <p className="text-xs text-muted-foreground truncate">
               {user?.email || user?.username || ""}
             </p>
+            <RolePill role={user?.role ?? "creator"} className="mt-2" />
           </div>
         </div>
-        
-        <Badge className="mt-3 w-fit group-data-[collapsible=icon]:hidden" variant="default">
-          Creator
-        </Badge>
         
         <div className="relative mt-4 group-data-[collapsible=icon]:hidden">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
