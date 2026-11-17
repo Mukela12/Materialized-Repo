@@ -106,6 +106,8 @@ export default function ProfilePage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/profile"] });
+      // The photo is also the account's avatar (sidebar, phone menu).
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
       toast({
         title: "Profile updated",
         description: "Your personal details have been saved successfully.",

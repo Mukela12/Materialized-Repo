@@ -5672,6 +5672,12 @@ export async function registerRoutes(
       }
       const validated = insertUserProfileSchema.partial().parse(req.body);
       const profile = await storage.updateUserProfile(user.id, validated);
+      // The photo saved here is the one the sidebar, the phone menu and every
+      // creator card show, and those read the account's avatar, not this
+      // profile row. Until 17 Nov 2026 a new photo never reached them.
+      const { avatarFromProfileMedia } = await import("./profileAvatar");
+      const avatar = avatarFromProfileMedia(validated, user.avatarUrl ?? null);
+      if (avatar !== undefined) await storage.updateUser(user.id, { avatarUrl: avatar } as any);
       res.json(profile);
     } catch (error) {
       res.status(500).json({ error: "Failed to update profile" });
