@@ -8,7 +8,7 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { DateRange } from "react-day-picker";
 import { format } from "date-fns";
-import { Area, AreaChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Bar, BarChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import {
   ArrowDownRight, ArrowUpRight, CalendarDays, Clock, DollarSign, Eye, Gauge, Globe, MousePointerClick, Package, Percent, Repeat2,
   ShoppingBag, Store, Target, Users, Wallet,
@@ -41,10 +41,26 @@ const PRESETS: { id: Exclude<Preset, "custom">; label: string; days: number }[] 
  * name and count beside it, never by colour alone.
  */
 const SOURCES = [
-  { key: "own", label: "Your audience", light: "#2a78d6", dark: "#3987e5" },
-  { key: "publisher", label: "Publishers", light: "#eb6834", dark: "#d95926" },
-  { key: "brand", label: "Brand reposts", light: "#1baf7a", dark: "#199e70" },
+  { key: "own", label: "Your audience", light: "#8b5cf6", dark: "#a78bfa" },
+  { key: "publisher", label: "Publishers", light: "#ec4899", dark: "#f472b6" },
+  { key: "brand", label: "Brand reposts", light: "#06b6d4", dark: "#22d3ee" },
 ] as const;
+
+/**
+ * The dashboard's colours (client, 17 Nov 2026: "this should be a page that
+ * brings the user joy ... rounded, joyful, like colorful dumplings"). Each stat
+ * card takes one; its number is written in it, and on hover the card takes a
+ * border and a wash of it. `l` is dark enough to read on white, `d` on the dark
+ * card. The chart's capsule bars cycle through the same five.
+ */
+const TONES = [
+  { l: "#7c3aed", d: "#a78bfa", bar: "#8b5cf6" }, // violet
+  { l: "#0891b2", d: "#22d3ee", bar: "#06b6d4" }, // cyan
+  { l: "#db2777", d: "#f472b6", bar: "#ec4899" }, // pink
+  { l: "#ea580c", d: "#fb923c", bar: "#f97316" }, // orange
+  { l: "#059669", d: "#34d399", bar: "#10b981" }, // emerald
+] as const;
+type Tone = (typeof TONES)[number];
 
 const CATEGORY_LABEL: Record<string, string> = Object.fromEntries(VIDEO_CATEGORY_OPTIONS.map((o) => [o.value, o.label]));
 
@@ -80,20 +96,59 @@ function Delta({ current, previous, label }: { current: number; previous: number
   );
 }
 
+/** A small progress ring for the rate cards, drawn in the card's colour. */
+function RateRing({ pct }: { pct: number }) {
+  const r = 15, c = 2 * Math.PI * r;
+  const v = Math.max(0, Math.min(100, pct));
+  return (
+    <svg width="40" height="40" viewBox="0 0 40 40" className="-rotate-90 shrink-0" aria-hidden="true">
+      <circle cx="20" cy="20" r={r} fill="none" strokeWidth="6" className="stroke-[color-mix(in_srgb,var(--tl)_16%,transparent)] dark:stroke-[color-mix(in_srgb,var(--td)_22%,transparent)]" />
+      <circle
+        cx="20" cy="20" r={r} fill="none" strokeWidth="6" strokeLinecap="round"
+        strokeDasharray={c} strokeDashoffset={c * (1 - v / 100)}
+        className="dash-ring stroke-[color:var(--tl)] dark:stroke-[color:var(--td)]"
+        style={{ ["--ring-from" as string]: c }}
+      />
+    </svg>
+  );
+}
+
 function Metric({
-  icon: Icon, label, value, hint, current, previous, compare, testId,
+  icon: Icon, label, value, hint, current, previous, compare, testId, tone, ring,
 }: {
   icon: LucideIcon; label: string; value: string; hint?: string; current: number; previous: number; compare: string; testId: string;
+  tone: Tone; ring?: number;
 }) {
   return (
-    <Card className="min-w-0">
-      <CardContent className="p-3.5 md:p-5">
-        <div className="flex min-w-0 items-center gap-1.5 text-muted-foreground">
-          <Icon className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden="true" />
-          <p className="truncate text-[12px] font-medium">{label}</p>
+    <Card
+      style={{ ["--tl" as string]: tone.l, ["--td" as string]: tone.d }}
+      className={cn(
+        "group min-w-0 border",
+        "transition-[transform,box-shadow,border-color,background-color] duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)]",
+        "hover:-translate-y-0.5 hover:border-[color:var(--tl)] hover:bg-[color-mix(in_srgb,var(--tl)_6%,hsl(var(--card)))]",
+        "hover:shadow-[0_10px_24px_-12px_color-mix(in_srgb,var(--tl)_55%,transparent)]",
+        "dark:hover:border-[color:var(--td)] dark:hover:bg-[color-mix(in_srgb,var(--td)_10%,hsl(var(--card)))]",
+        "motion-reduce:transition-none motion-reduce:hover:translate-y-0",
+      )}
+      data-testid={`card-${testId}`}
+    >
+      <CardContent className="relative p-3.5 md:p-5">
+        {ring !== undefined && <span className="absolute right-4 top-4 hidden sm:block md:right-5 md:top-5"><RateRing pct={ring} /></span>}
+        <div className="flex items-start justify-between gap-2">
+          <div className={cn("flex min-w-0 items-center gap-2 text-muted-foreground", ring !== undefined && "sm:pr-11")}>
+            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[color-mix(in_srgb,var(--tl)_12%,transparent)] text-[color:var(--tl)] dark:bg-[color-mix(in_srgb,var(--td)_18%,transparent)] dark:text-[color:var(--td)]">
+              <Icon className="h-3.5 w-3.5" aria-hidden="true" />
+            </span>
+            <p className="truncate text-[12px] font-medium">{label}</p>
+          </div>
+
         </div>
         <p
-          className={cn("mt-2 text-[clamp(1.25rem,4.5vw,1.75rem)] font-semibold leading-none tracking-[-0.03em] tabular-nums", current === 0 && "text-foreground/40")}
+          className={cn(
+            "mt-2 text-[clamp(1.25rem,4.5vw,1.75rem)] font-semibold leading-none tracking-[-0.03em] tabular-nums",
+            "text-[color:var(--tl)] dark:text-[color:var(--td)]",
+            current === 0 && "opacity-45",
+          )}
           data-testid={testId}
         >
           {value}
@@ -137,6 +192,32 @@ const SERIES_METRICS = [
 ] as const;
 type SeriesMetric = (typeof SERIES_METRICS)[number]["key"];
 
+/**
+ * One bar of the trend chart, drawn as a rounded capsule ("colorful
+ * dumplings"): fully rounded ends, a soft shadow in its own colour for depth, a
+ * thin highlight down one side, and a springy grow from the baseline. Days
+ * with nothing still show a faint dot, so the rhythm of the period reads.
+ */
+function CapsuleBar(props: any) {
+  const { x, y, width, height, fill, index = 0, background } = props;
+  if (!(width > 0)) return null;
+  const w = width;
+  const baseY = background ? background.y + background.height : y + height;
+  if (!(height > 0)) {
+    return <circle cx={x + w / 2} cy={baseY - w / 2} r={Math.min(w / 2, 4)} fill={fill} opacity={0.18} />;
+  }
+  const h = Math.max(height, w);
+  const top = baseY - h;
+  return (
+    <g className="capsule-bar" style={{ animationDelay: `${Math.min(index, 40) * 18}ms`, filter: `drop-shadow(0 6px 8px ${fill}55)` }}>
+      <rect x={x} y={top} width={w} height={h} rx={w / 2} fill={fill} />
+      {h > w * 1.4 && (
+        <rect x={x + w * 0.2} y={top + w * 0.35} width={Math.max(2, w * 0.18)} height={h - w * 0.9} rx={w * 0.09} fill="#fff" opacity={0.32} />
+      )}
+    </g>
+  );
+}
+
 function TrendChart({ series, bucket, money }: { series: DashboardSeriesPoint[]; bucket: "hour" | "day"; money: (c: number) => string }) {
   const [metric, setMetric] = useState<SeriesMetric>("views");
   const total = series.reduce((n, p) => n + (p[metric] || 0), 0);
@@ -176,7 +257,7 @@ function TrendChart({ series, bucket, money }: { series: DashboardSeriesPoint[];
             </div>
           ) : (
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={series} margin={{ top: 6, right: 4, left: 0, bottom: 0 }}>
+              <BarChart data={series} margin={{ top: 10, right: 4, left: 0, bottom: 0 }} barCategoryGap="28%">
                 <CartesianGrid vertical={false} strokeDasharray="3 3" className="stroke-border" />
                 <XAxis
                   dataKey="t"
@@ -197,21 +278,15 @@ function TrendChart({ series, bucket, money }: { series: DashboardSeriesPoint[];
                   className="fill-muted-foreground"
                 />
                 <Tooltip
-                  cursor={{ stroke: "hsl(var(--muted-foreground))", strokeDasharray: "3 3" }}
-                  contentStyle={{ borderRadius: 10, border: "1px solid hsl(var(--border))", backgroundColor: "hsl(var(--card))", fontSize: 12 }}
+                  cursor={{ fill: "hsl(var(--muted))", opacity: 0.5, radius: 10 } as any}
+                  contentStyle={{ borderRadius: 12, border: "1px solid hsl(var(--border))", backgroundColor: "hsl(var(--card))", fontSize: 12 }}
                   labelFormatter={(t: unknown) => tooltipLabel(t, bucket)}
                   formatter={(v: number) => [fmt(v), current.label]}
                 />
-                <Area
-                  type="monotone"
-                  dataKey={metric}
-                  stroke="hsl(var(--primary))"
-                  strokeWidth={2}
-                  fill="hsl(var(--primary))"
-                  fillOpacity={0.1}
-                  activeDot={{ r: 4, strokeWidth: 2, stroke: "hsl(var(--card))" }}
-                />
-              </AreaChart>
+                <Bar dataKey={metric} maxBarSize={22} isAnimationActive={false} shape={<CapsuleBar />}>
+                  {series.map((_, i) => <Cell key={i} fill={TONES[i % TONES.length].bar} />)}
+                </Bar>
+              </BarChart>
             </ResponsiveContainer>
           )}
         </div>
@@ -228,16 +303,16 @@ function SourcesDonut({ sales, prevTotal, compare }: { sales: Dashboard["current
       <CardContent className="p-4 md:p-5">
         <p className="text-[12px] font-medium text-muted-foreground">Sales by source</p>
         <div className="mt-3 flex items-center gap-4">
-          <div className="relative h-32 w-32 shrink-0" data-testid="chart-sales-sources">
+          <div className="donut-pop relative h-32 w-32 shrink-0" data-testid="chart-sales-sources">
             <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
                   data={sales.total > 0 ? data : [{ key: "none", value: 1, color: "hsl(var(--muted))" }]}
                   dataKey="value"
-                  innerRadius="72%"
+                  innerRadius="64%"
                   outerRadius="100%"
-                  paddingAngle={sales.total > 0 && data.filter((d) => d.value > 0).length > 1 ? 3 : 0}
-                  cornerRadius={4}
+                  paddingAngle={sales.total > 0 && data.filter((d) => d.value > 0).length > 1 ? 6 : 0}
+                  cornerRadius={12}
                   stroke="none"
                   isAnimationActive={false}
                 >
@@ -659,36 +734,36 @@ export function CreatorDashboard() {
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <Metric icon={Eye} label="Views" value={num(c.views)}
               hint={`${c.watchSessions} timed viewings`}
-              current={c.views} previous={p.views} compare={compare} testId="stat-views" />
+              current={c.views} previous={p.views} compare={compare} testId="stat-views" tone={TONES[0]} />
             <Metric icon={Clock} label="Avg. view time" value={formatWatchDuration(c.avgViewSeconds)}
               hint={c.watchSessions > 0 ? `${c.avgCompletionPct}% of each video` : "No watch time yet"}
-              current={c.avgViewSeconds} previous={p.avgViewSeconds} compare={compare} testId="stat-avg-view-duration" />
+              current={c.avgViewSeconds} previous={p.avgViewSeconds} compare={compare} testId="stat-avg-view-duration" tone={TONES[1]} />
             <Metric icon={Gauge} label="Completion rate" value={`${c.completionRate}%`}
               hint="Viewings that reached 90%"
-              current={c.completionRate} previous={p.completionRate} compare={compare} testId="stat-completion-rate" />
+              current={c.completionRate} previous={p.completionRate} compare={compare} testId="stat-completion-rate" tone={TONES[2]} ring={c.completionRate} />
             <Metric icon={Percent} label="Click-through rate" value={`${c.ctr}%`}
               hint="Clicks per view"
-              current={c.ctr} previous={p.ctr} compare={compare} testId="stat-ctr" />
+              current={c.ctr} previous={p.ctr} compare={compare} testId="stat-ctr" tone={TONES[3]} ring={c.ctr} />
             <Metric icon={MousePointerClick} label="Avg. clicks" value={num(c.avg.clicksPerVideo)}
               hint={`Per video, ${num(c.clicks)} in total`}
-              current={c.avg.clicksPerVideo} previous={p.avg.clicksPerVideo} compare={compare} testId="stat-avg-clicks" />
+              current={c.avg.clicksPerVideo} previous={p.avg.clicksPerVideo} compare={compare} testId="stat-avg-clicks" tone={TONES[4]} />
             <Metric icon={Repeat2} label="Avg. reposts" value={num(c.avg.repostsPerVideo)}
               hint={`Per video, ${c.repostsByBrand} brand, ${c.repostsByPublisher} Publisher`}
-              current={c.avg.repostsPerVideo} previous={p.avg.repostsPerVideo} compare={compare} testId="stat-avg-reposts" />
+              current={c.avg.repostsPerVideo} previous={p.avg.repostsPerVideo} compare={compare} testId="stat-avg-reposts" tone={TONES[0]} />
             <Metric icon={Target} label="Conversion rate" value={`${c.conversionRate}%`}
               hint="Sales per click"
-              current={c.conversionRate} previous={p.conversionRate} compare={compare} testId="stat-conversion-rate" />
+              current={c.conversionRate} previous={p.conversionRate} compare={compare} testId="stat-conversion-rate" tone={TONES[1]} ring={c.conversionRate} />
             <Metric icon={DollarSign} label="Avg. sales value" value={fmt.exact(c.avg.grossPerVideoCents)}
               hint={c.sales.total > 0 ? `Per video, avg. order ${fmt.exact(c.avg.orderValueCents)}` : "No sales yet in this period"}
-              current={c.avg.grossPerVideoCents} previous={p.avg.grossPerVideoCents} compare={compare} testId="stat-avg-gross" />
+              current={c.avg.grossPerVideoCents} previous={p.avg.grossPerVideoCents} compare={compare} testId="stat-avg-gross" tone={TONES[2]} />
             <Metric icon={Users} label="Avg. audience sales" value={num(c.avg.ownSalesPerVideo)} hint={`Your own audience, ${c.sales.own} in total`}
-              current={c.avg.ownSalesPerVideo} previous={p.avg.ownSalesPerVideo} compare={compare} testId="stat-avg-own-sales" />
+              current={c.avg.ownSalesPerVideo} previous={p.avg.ownSalesPerVideo} compare={compare} testId="stat-avg-own-sales" tone={TONES[3]} />
             <Metric icon={ShoppingBag} label="Avg. Publisher sales" value={num(c.avg.publisherSalesPerVideo)} hint={`From Publishers, ${c.sales.publisher} in total`}
-              current={c.avg.publisherSalesPerVideo} previous={p.avg.publisherSalesPerVideo} compare={compare} testId="stat-avg-publisher-sales" />
+              current={c.avg.publisherSalesPerVideo} previous={p.avg.publisherSalesPerVideo} compare={compare} testId="stat-avg-publisher-sales" tone={TONES[4]} />
             <Metric icon={Store} label="Avg. brand sales" value={num(c.avg.brandSalesPerVideo)} hint={`From brand reposts, ${c.sales.brand} in total`}
-              current={c.avg.brandSalesPerVideo} previous={p.avg.brandSalesPerVideo} compare={compare} testId="stat-avg-brand-sales" />
+              current={c.avg.brandSalesPerVideo} previous={p.avg.brandSalesPerVideo} compare={compare} testId="stat-avg-brand-sales" tone={TONES[0]} />
             <Metric icon={Wallet} label="Commission earned" value={fmt.exact(c.commissionCents)} hint="Before payout"
-              current={c.commissionCents} previous={p.commissionCents} compare={compare} testId="stat-commission" />
+              current={c.commissionCents} previous={p.commissionCents} compare={compare} testId="stat-commission" tone={TONES[1]} />
           </div>
 
           <div className="grid gap-3 lg:grid-cols-3">
