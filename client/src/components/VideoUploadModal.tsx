@@ -96,6 +96,13 @@ interface VideoUploadModalProps {
   brands: Brand[];
   onUpload: (data: VideoUploadForm & { videoUrl: string; selectedBrands: string[]; carouselSettings: CarouselSettings }) => Promise<void>;
   onReferBrand: (data: ReferralForm) => Promise<void>;
+  /**
+   * Creators only: offer "Enter Creator Challenge" while entries are open
+   * (1st to 15th). `enterChallenge` starts it ticked (opened from the
+   * challenge card on the homepage).
+   */
+  offerChallenge?: boolean;
+  enterChallenge?: boolean;
 }
 
 type Step = "upload" | "details" | "detecting" | "review" | "carousel" | "refer";
@@ -117,8 +124,17 @@ export function VideoUploadModal({
   brands,
   onUpload,
   onReferBrand,
+  offerChallenge = false,
+  enterChallenge: startTicked = false,
 }: VideoUploadModalProps) {
   const [step, setStep] = useState<Step>("upload");
+  const { data: toolkit } = useQuery<{ status: { open: boolean; closesAt: string }; challenge: { enabled: boolean; title: string; prize: string } }>({
+    queryKey: ["/api/toolkit"],
+    enabled: offerChallenge && open,
+  });
+  const challengeOpen = !!(offerChallenge && toolkit?.challenge.enabled && toolkit.status.open);
+  const [enterChallenge, setEnterChallenge] = useState(startTicked);
+  useEffect(() => { if (open) setEnterChallenge(startTicked); }, [open, startTicked]);
   const [videoFile, setVideoFile] = useState<File | null>(null);
   const [videoUrl, setVideoUrl] = useState<string>("");
   const [videoDurationSeconds, setVideoDurationSeconds] = useState<number | null>(null);
@@ -482,6 +498,16 @@ export function VideoUploadModal({
           await apiRequest("POST", `/api/videos/${createdVideoId}/overlays/import-detections`, {});
         } catch {
           /* video still publishes even if overlay import fails */
+        }
+        // Creator Challenge entry, ticked on the details step.
+        if (challengeOpen && enterChallenge) {
+          try {
+            await apiRequest("POST", `/api/videos/${createdVideoId}/challenge`, { enter: true });
+            queryClient.invalidateQueries({ queryKey: ["/api/toolkit"] });
+            toast({ title: "Entered in the Creator Challenge", description: "Share it with your audience: views, clicks, sales and reposts all count." });
+          } catch {
+            toast({ title: "Published, but not entered", description: "The challenge entry did not go through. Try again from your homepage.", variant: "destructive" });
+          }
         }
         /**
          * Refresh the lists before the modal closes.
@@ -881,6 +907,24 @@ export function VideoUploadModal({
                     </div>
                   </CardContent>
                 </Card>
+              )}
+
+              {challengeOpen && toolkit && (
+                <label className="flex cursor-pointer items-start gap-3 rounded-xl border p-3.5 transition-colors hover:bg-muted/40" data-testid="label-enter-challenge">
+                  <input
+                    type="checkbox"
+                    className="mt-0.5 h-4 w-4 shrink-0 accent-primary"
+                    checked={enterChallenge}
+                    onChange={(e) => setEnterChallenge(e.target.checked)}
+                    data-testid="checkbox-enter-challenge"
+                  />
+                  <span className="min-w-0">
+                    <span className="block text-sm font-medium">Enter {toolkit.challenge.title}</span>
+                    <span className="block text-xs text-muted-foreground">
+                      {toolkit.challenge.prize} for the most engaged video. Entries close {new Date(new Date(toolkit.status.closesAt).getTime() - 1).toLocaleDateString(undefined, { day: "numeric", month: "long", timeZone: "UTC" })}. You enter when you publish.
+                    </span>
+                  </span>
+                </label>
               )}
 
               <Separator />

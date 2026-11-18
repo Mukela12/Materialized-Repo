@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { HomeHighlights } from "@/components/HomeHighlights";
+import { CreatorToolkit } from "@/components/CreatorToolkit";
 import { greeting, todayLabel } from "@/lib/greeting";
 import { AffiliateCard } from "@/components/AffiliateCard";
 import { DashboardTabs } from "@/components/DashboardTabs";
@@ -21,6 +22,9 @@ export default function Dashboard() {
   const [activeTab, setActiveTab] = useState("stats");
   const [, navigate] = useLocation();
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
+  // Opened from the Creator Challenge card: the entry box starts ticked.
+  const [challengeUpload, setChallengeUpload] = useState(false);
+  const openUpload = (forChallenge = false) => { setChallengeUpload(forChallenge); setUploadModalOpen(true); };
   const [demoEarnings, setDemoEarnings] = useState(0);
   const { toast } = useToast();
 
@@ -130,7 +134,7 @@ export default function Dashboard() {
           <h1 className="mt-1 text-2xl md:text-3xl font-bold tracking-tight">{greeting(currentUser?.displayName)}</h1>
         </div>
         <Button 
-          onClick={() => setUploadModalOpen(true)} 
+          onClick={() => openUpload()} 
           className="rounded-full gap-2 w-full sm:w-auto"
           data-testid="button-upload-video"
         >
@@ -154,6 +158,9 @@ export default function Dashboard() {
             videos generated for brands. Your commission is paid to you directly by the brand you work
             with, not through Materialized. Use it as your performance record when agreeing rates.
           </p>
+          <div className="pt-4">
+            <CreatorToolkit email={currentUser?.email ?? ""} onEnterChallenge={() => openUpload(true)} />
+          </div>
         </section>
       )}
 
@@ -200,7 +207,7 @@ export default function Dashboard() {
 
       {activeTab === "actions" && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          <Card className="hover-elevate cursor-pointer" onClick={() => setUploadModalOpen(true)}>
+          <Card className="hover-elevate cursor-pointer" onClick={() => openUpload()}>
             <CardContent className="p-6 text-center">
               <div className="h-12 w-12 mx-auto rounded-xl bg-primary/10 flex items-center justify-center mb-3">
                 <Upload className="h-6 w-6 text-primary" />
@@ -246,6 +253,8 @@ export default function Dashboard() {
         brands={brands}
         onUpload={handleVideoUpload}
         onReferBrand={handleReferBrand}
+        offerChallenge
+        enterChallenge={challengeUpload}
       />
     </div>
   );

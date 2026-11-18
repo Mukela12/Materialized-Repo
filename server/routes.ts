@@ -1564,6 +1564,66 @@ export async function registerRoutes(
     }
   });
 
+  // ─── Creator Toolkit (client, 18 Nov 2026): server/creatorToolkit.ts ───────
+  app.get("/api/toolkit", async (req, res) => {
+    try {
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ error: "Authentication required" });
+      const { toolkitForViewer } = await import("./creatorToolkit");
+      res.json(await toolkitForViewer(sessionUserId));
+    } catch (error) {
+      console.error("Toolkit error:", error);
+      res.status(500).json({ error: "Failed to load the toolkit" });
+    }
+  });
+
+  // A tool card's link goes through here so each click is counted, then on
+  // to the partner. It only ever redirects to a link admin saved on a live card.
+  app.get("/api/toolkit/go/:slot", async (req, res) => {
+    try {
+      const slot = Number(req.params.slot);
+      if (!Number.isInteger(slot) || slot < 0 || slot > 1) return res.status(404).send("Not found");
+      const { recordToolClick } = await import("./creatorToolkit");
+      const to = await recordToolClick(slot, (req.session as any)?.userId ?? null);
+      if (!to) return res.status(404).send("This offer has ended");
+      res.redirect(302, to);
+    } catch (error) {
+      console.error("Toolkit click error:", error);
+      res.status(500).send("Something went wrong");
+    }
+  });
+
+  app.post("/api/videos/:id/challenge", async (req, res) => {
+    try {
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ error: "Authentication required" });
+      const enter = req.body?.enter !== false;
+      const { setChallengeEntry } = await import("./creatorToolkit");
+      const r = await setChallengeEntry(String(req.params.id), sessionUserId, enter);
+      if (!r.ok) return res.status(r.status).json({ error: r.error });
+      res.json({ month: r.month });
+    } catch (error) {
+      console.error("Challenge entry error:", error);
+      res.status(500).json({ error: "Could not update the entry" });
+    }
+  });
+
+  app.post("/api/film-awards/register", async (req, res) => {
+    try {
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ error: "Authentication required" });
+      const { filmAwardRegistrationSchema } = await import("@shared/creatorToolkit");
+      const parsed = filmAwardRegistrationSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Check the details" });
+      const { registerForFilmAwards } = await import("./creatorToolkit");
+      await registerForFilmAwards(sessionUserId, parsed.data.email, parsed.data.handle);
+      res.json({ ok: true });
+    } catch (error) {
+      console.error("Film awards registration error:", error);
+      res.status(500).json({ error: "Could not register" });
+    }
+  });
+
   /**
    * The same dashboard for every account type (client, 18 Nov 2026):
    * ?as=creator|brand|publisher, defaulting to the account's role. Each
@@ -2758,6 +2818,36 @@ export async function registerRoutes(
 
   // Admin: email the Monday and Thursday snapshot now, to the admin who asked
   // only, covering the time since the last scheduled one.
+  // Creator Toolkit content and its report (Admin > Homepage).
+  app.get("/api/admin/toolkit", requireAdmin, async (req: any, res) => {
+    try {
+      const { getToolkit, toolkitReport } = await import("./creatorToolkit");
+      const { monthKey } = await import("@shared/creatorToolkit");
+      const month = typeof req.query.month === "string" && /^\d{4}-\d{2}$/.test(req.query.month) ? req.query.month : monthKey(new Date());
+      res.json({ content: await getToolkit(), report: await toolkitReport(month) });
+    } catch (error) {
+      console.error("Admin toolkit error:", error);
+      res.status(500).json({ error: "Failed to load the toolkit" });
+    }
+  });
+
+  app.put("/api/admin/toolkit", requireAdmin, async (req: any, res) => {
+    try {
+      const { toolkitSchema } = await import("@shared/creatorToolkit");
+      const parsed = toolkitSchema.safeParse(req.body);
+      if (!parsed.success) {
+        const i = parsed.error.issues[0];
+        return res.status(400).json({ error: `${i?.path.join(" ") || "Content"}: ${i?.message ?? "invalid"}` });
+      }
+      const { saveToolkit } = await import("./creatorToolkit");
+      await saveToolkit(parsed.data, req.user.id);
+      res.json(parsed.data);
+    } catch (error) {
+      console.error("Admin toolkit save error:", error);
+      res.status(500).json({ error: "Could not save" });
+    }
+  });
+
   const snapshotAsked = new Map<string, number>();
   app.post("/api/admin/snapshot-report/send", requireAdmin, async (req: any, res) => {
     const me = req.user;
