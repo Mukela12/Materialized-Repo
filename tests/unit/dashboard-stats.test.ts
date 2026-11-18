@@ -94,8 +94,10 @@ describe("the queries are scoped", () => {
 
   it("the creator panel reads the month endpoint, not the lifetime one", () => {
     expect(routeBody(code("server/routes.ts"), "/api/analytics/month")).toMatch(/creatorMonthStats\(sessionUserId\)/);
-    const page = code("client/src/pages/dashboard.tsx");
-    expect(page).toMatch(/useQuery<MonthStats>\(\{\s*queryKey: \["\/api\/analytics\/month"\]/);
+    // Since 18 Nov 2026 the homepage shows the month through HomeHighlights,
+    // which reads the scoped performance dashboard for the first of the month on.
+    expect(code("client/src/pages/dashboard.tsx")).toMatch(/<HomeHighlights audience="creator" \/>/);
+    expect(code("client/src/components/HomeHighlights.tsx")).toMatch(/Date\.UTC\(now\.getUTCFullYear\(\), now\.getUTCMonth\(\), 1\)/);
   });
 });
 

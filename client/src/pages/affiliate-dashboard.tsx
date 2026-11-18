@@ -6,13 +6,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { StatCard } from "@/components/StatCard";
+import { HomeHighlights } from "@/components/HomeHighlights";
 import { greeting, todayLabel } from "@/lib/greeting";
 import { 
   DollarSign, 
-  TrendingUp, 
   Video, 
-  MousePointer, 
   ShoppingBag,
   Eye,
   ArrowRight
@@ -58,11 +56,6 @@ export default function AffiliateDashboard() {
     queryKey: ["/api/library"],
   });
 
-  const activeCampaigns = campaigns.filter(c => c.status === "active").length;
-  const totalEarnings = campaigns.reduce((sum, c) => sum + parseFloat(c.totalEarnings || "0"), 0);
-  const totalClicks = campaigns.reduce((sum, c) => sum + (c.totalClicks || 0), 0);
-  const totalConversions = campaigns.reduce((sum, c) => sum + (c.totalConversions || 0), 0);
-
   if (userLoading) {
     return (
       <div className="space-y-6">
@@ -88,46 +81,9 @@ export default function AffiliateDashboard() {
 
       <ProgramInviteBanner />
 
-      {/* No trend on earnings: this used to show a hard-coded "+15% vs last
-          month" to every publisher with any earnings. A trend appears only
-          when it is computed from real history. */}
-      <div className="stat-panel grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
-        <StatCard
-          hero
-          className="col-span-2 sm:col-span-3 lg:col-span-2"
-          title="Earnings"
-          value={`${CURRENCY_SYMBOL}${totalEarnings.toFixed(2)}`}
-          subtitle="Commission from every sale your pages drove, all time"
-          icon={DollarSign}
-          action={
-            <>
-              <span className="block">Nothing earned yet.</span>
-              <Link href="/affiliate/campaigns" className="stat-card__cta" data-testid="link-stat-find-campaign">
-                Put a campaign on your site
-                <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
-              </Link>
-            </>
-          }
-        />
-        <StatCard
-          title="Live campaigns"
-          value={activeCampaigns.toLocaleString()}
-          subtitle="Videos running on your site"
-          icon={Video}
-        />
-        <StatCard
-          title="Clicks"
-          value={totalClicks.toLocaleString()}
-          subtitle="Readers who tapped a product"
-          icon={MousePointer}
-        />
-        <StatCard
-          title="Sales"
-          value={totalConversions.toLocaleString()}
-          subtitle="Purchases after a click"
-          icon={TrendingUp}
-        />
-      </div>
+      {/* This month's views, click-through rate and earnings from their own
+          pages only, then their three best videos (client, 18 Nov 2026). */}
+      <HomeHighlights audience="publisher" />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>

@@ -328,3 +328,41 @@ describe("the route", () => {
     expect(body).not.toMatch(/req\.query\.(creatorId|userId)/);
   });
 });
+
+describe('dashboards for brands and Publishers (18 Nov 2026)', () => {
+  it('picks the dashboard from the role unless one is asked for', async () => {
+    const { audienceFor } = await import('../../server/creatorDashboard');
+    expect(audienceFor(undefined, 'brand')).toBe('brand');
+    expect(audienceFor(undefined, 'affiliate')).toBe('publisher');
+    expect(audienceFor(undefined, 'creator')).toBe('creator');
+    expect(audienceFor('Publisher', 'brand')).toBe('publisher');
+    expect(audienceFor('admin', 'creator')).toBeNull();
+  });
+
+  it('classifies a sale by the video\'s own maker when the row names one', async () => {
+    const { foldWindow } = await import('../../server/creatorDashboard');
+    const rows = {
+      events: [], watch: [], reposts: [], commissions: [],
+      sales: [
+        { k: 'a:1', video_id: 'v1', t: '2026-11-18', cents: 1000, currency: 'usd', publisher_id: 'maker', role: 'creator', creator_id: 'maker' },
+        { k: 'a:2', video_id: 'v1', t: '2026-11-18', cents: 500, currency: 'usd', publisher_id: 'pub', role: 'affiliate', creator_id: 'maker' },
+      ],
+    };
+    // A brand's dashboard has no single maker: each row carries its own.
+    const f = foldWindow(rows as any, '', 'usd', { usd: 1 });
+    expect(f.perVideo.get('v1')!.sales).toEqual({ own: 1, publisher: 1, brand: 0, total: 2 });
+  });
+});
+
+describe('the dashboard SQL stays scoped to the signed-in account', () => {
+  const src = require('fs').readFileSync(require('path').join(__dirname, '../../server/creatorDashboard.ts'), 'utf8');
+  it('a Publisher only reads their own events, viewings and sales', () => {
+    expect(src).toContain('sql`e.affiliate_id = ${me}`');
+    expect(src).toContain('sql`w.affiliate_id = ${me}`');
+    expect(src).toContain('where s.publisher_id = ${me}');
+  });
+  it('a brand only reads its own orders', () => {
+    expect(src).toContain('and a.brand_user_id = ${me}');
+    expect(src).toContain('and o.brand_user_id = ${me}');
+  });
+});

@@ -44,6 +44,16 @@
  * own audience; an account with the brand role is a brand repost; anyone else
  * is a Publisher.
  *
+ * WHOSE NUMBERS (18 Nov 2026). The same counting serves brands and
+ * Publishers too, each scoped to their own (see DashboardAudience):
+ *   brand      the videos it uploaded, that feature its products or that its
+ *              orders came from, with every repost's views; sales are only the
+ *              brand's own orders; "commission" is the creator and Publisher
+ *              commission written on those orders.
+ *   publisher  only events, viewings (video_watch_time.affiliate_id) and
+ *              sales credited to them, over the videos they reposted; their
+ *              "reposts" are the videos they picked up in the period.
+ *
  * CURRENCY. Amounts are converted at today's ECB reference rate (server/fx.ts),
  * not the rate on the day of each sale. If the chosen currency's rate cannot
  * be had, everything is shown in US dollars and marked approximate.
@@ -51,8 +61,10 @@
 import { sql, type SQL } from "drizzle-orm";
 import { VIDEO_CATEGORY_OPTIONS } from "@shared/schema";
 import {
+  DASHBOARD_AUDIENCES,
   DASHBOARD_CURRENCIES,
   type CreatorDashboard,
+  type DashboardAudience,
   type DashboardCurrency,
   type DashboardPayouts,
   type DashboardProduct,
@@ -199,7 +211,8 @@ export interface WindowRows {
   events: { video_id: string; t: string; views: number; clicks: number }[];
   watch: { video_id: string; t: string; sessions: number; completed: number; seconds: number; video_seconds: number }[];
   reposts: { video_id: string; t: string; role: string | null; n: number }[];
-  sales: { k: string; video_id: string; t: string; cents: number; currency: string; publisher_id: string | null; role: string | null }[];
+  /** creator_id is the video's maker: a sale they brought in themself is "own". */
+  sales: { k: string; video_id: string; t: string; cents: number; currency: string; publisher_id: string | null; role: string | null; creator_id?: string | null }[];
   commissions: { video_id: string; t: string; currency: string; cents: number }[];
 }
 
@@ -210,7 +223,10 @@ export interface Folded {
   approximate: boolean;
 }
 
-/** Add one period's rows up, per video and per bucket, in the target currency. */
+/**
+ * Add one period's rows up, per video and per bucket, in the target currency.
+ * `creatorId` is the fallback maker for sale rows that do not name one.
+ */
 export function foldWindow(rows: WindowRows, creatorId: string, target: string, usdPer: UsdRates): Folded {
   const perVideo = new Map<string, VideoFacts>();
   const series = new Map<string, DashboardSeriesPoint>();
@@ -256,7 +272,7 @@ export function foldWindow(rows: WindowRows, creatorId: string, target: string, 
     if (seen.has(r.k)) continue;
     seen.add(r.k);
     const f = v(r.video_id);
-    const src = classifySaleSource(r.publisher_id, creatorId, r.role);
+    const src = classifySaleSource(r.publisher_id, r.creator_id || creatorId, r.role);
     f.sales[src] += 1;
     f.sales.total += 1;
     const cents = money(r.cents, r.currency);
@@ -339,6 +355,7 @@ export interface DashboardVideo {
   id: string;
   title: string;
   thumbnail_url: string | null;
+  creator_name?: string | null;
   categories: string | null;
   status: string | null;
   created_at: Date | string | null;
@@ -373,6 +390,7 @@ export function videoRow(v: DashboardVideo, f: VideoFacts | undefined): Dashboar
     videoId: v.id,
     title: v.title,
     thumbnailUrl: v.thumbnail_url ?? null,
+    creatorName: v.creator_name ?? null,
     category: firstCategory(v.categories),
     views: x.views,
     clicks: x.clicks,
@@ -523,6 +541,12 @@ export function buildPayouts(
 
 type Db = { execute: (q: SQL) => Promise<{ rows: unknown[] }> };
 
+/** Whose dashboard: see DashboardAudience in shared/creatorDashboard.ts. */
+export interface DashboardScope {
+  audience: DashboardAudience;
+  userId: string;
+}
+
 /** The category filter on a videos alias. The value is checked against the list first. */
 function categorySql(alias: string, category: string | null): SQL {
   return category ? sql`and ${sql.raw(alias)}.categories like ${`%"${category}"%`}` : sql``;
@@ -538,30 +562,99 @@ function bucketSql(col: SQL, unit: "hour" | "day"): SQL {
   return sql`to_char(date_trunc(${unit}, (${col} at time zone current_setting('TimeZone')) at time zone 'UTC'), ${fmt})`;
 }
 
-async function loadVideos(db: Db, creatorId: string, category: string | null): Promise<DashboardVideo[]> {
+/** The brand's own products. */
+function brandProductsSql(me: string): SQL {
+  return sql`select p.id from products p join brands b on b.id = p.brand_id where b.owner_id = ${me}`;
+}
+
+/**
+ * Every pick-up of a video by an account: a live embed seen on a site, a
+ * repost code issued on a campaign, a paid library licence, or a published
+ * playlist holding it. Columns: who, video_id, at.
+ */
+function repostsSql(): SQL {
+  return sql`
+    select ed.affiliate_id as who, ed.video_id, ed.first_seen_at as at from embed_deployments ed
+    union all
+    select ca.affiliate_id, ca.video_id, ca.created_at from campaign_affiliates ca
+    union all
+    select lp.affiliate_id, g.video_id, coalesce(lp.purchased_at, lp.created_at)
+    from video_license_purchases lp join global_video_library g on g.id = lp.global_listing_id
+    where lp.status = 'paid'
+    union all
+    select pl.user_id, g.video_id, greatest(pi.added_at, coalesce(pl.published_at, pi.added_at))
+    from playlist_items pi join playlists pl on pl.id = pi.playlist_id
+    join global_video_library g on g.id = pi.listing_id
+    where pl.status = 'published'`;
+}
+
+/**
+ * The ids of the videos a dashboard covers.
+ *   creator    the ones they made.
+ *   brand      the ones they uploaded, that feature their products (detected
+ *              or on a carousel card), or that one of their orders came from.
+ *   publisher  the ones they reposted, or earned or sold through.
+ */
+function videoSetSql(s: DashboardScope): SQL {
+  const me = s.userId;
+  if (s.audience === "creator") return sql`select v0.id from videos v0 where v0.creator_id = ${me}`;
+  if (s.audience === "brand") {
+    return sql`
+      select v0.id from videos v0 where v0.creator_id = ${me}
+      union select vp.video_id from video_products vp where vp.product_id in (${brandProductsSql(me)})
+      union select ov.video_id from video_product_overlays ov where ov.product_id in (${brandProductsSql(me)})
+      union select a.video_id from platform_fee_accruals a where a.brand_user_id = ${me} and a.video_id is not null
+      union select o.video_id from video_orders o where o.brand_user_id = ${me}`;
+  }
+  return sql`
+    select r.video_id from (${repostsSql()}) r where r.who = ${me}
+    union select o.video_id from video_orders o where o.affiliate_id = ${me}
+    union select c.video_id from commission_transactions c where c.affiliate_id = ${me} and c.video_id is not null`;
+}
+
+async function loadVideos(db: Db, scope: DashboardScope, category: string | null): Promise<DashboardVideo[]> {
+  // A Publisher's averages divide by the videos they had picked up by the end
+  // of the period, so for them a video "starts" when they first reposted it.
+  const started = scope.audience === "publisher"
+    ? sql`coalesce((select min(r.at) from (${repostsSql()}) r where r.who = ${scope.userId} and r.video_id = v.id), v.created_at)`
+    : sql`v.created_at`;
   const r = await db.execute(sql`
-    select v.id, v.title, v.thumbnail_url, v.categories, v.status::text as status, v.created_at
-    from videos v where v.creator_id = ${creatorId} ${categorySql("v", category)}
+    select v.id, v.title, v.thumbnail_url, v.categories, v.status::text as status, ${started} as created_at,
+      u.display_name as creator_name
+    from videos v left join users u on u.id = v.creator_id
+    where v.id in (${videoSetSql(scope)}) ${categorySql("v", category)}
     order by v.created_at desc
     limit 1000`);
   return r.rows as DashboardVideo[];
 }
 
 async function loadWindow(
-  db: Db, me: string, w: { from: Date; to: Date }, unit: "hour" | "day", category: string | null, platformCurrency: string,
+  db: Db, scope: DashboardScope, w: { from: Date; to: Date }, unit: "hour" | "day", category: string | null, platformCurrency: string,
 ): Promise<WindowRows> {
   const { from, to } = w;
+  const me = scope.userId;
   const cat = categorySql("v", category);
+  const set = videoSetSql(scope);
 
+  // Which events count. A brand's clicks are on its own products (or on no
+  // named product); a click on another brand's product in a shared video is not.
+  const eventScope =
+    scope.audience === "creator" ? sql`e.creator_id = ${me} and v.creator_id = ${me}`
+    : scope.audience === "brand" ? sql`v.id in (${set}) and (e.event_type = 'view' or e.product_id is null or e.product_id in (${brandProductsSql(me)}))`
+    : sql`e.affiliate_id = ${me}`;
   const events = db.execute(sql`
     select e.video_id, ${bucketSql(sql`e.created_at`, unit)} as t,
       count(*) filter (where e.event_type = 'view')::int as views,
       count(*) filter (where e.event_type = 'click')::int as clicks
     from analytics_events e join videos v on v.id = e.video_id
-    where e.creator_id = ${me} and v.creator_id = ${me} and e.event_type in ('view', 'click')
+    where ${eventScope} and e.event_type in ('view', 'click')
       and e.created_at >= ${from} and e.created_at < ${to} ${cat}
     group by 1, 2`);
 
+  const watchScope =
+    scope.audience === "creator" ? sql`w.creator_id = ${me} and v.creator_id = ${me}`
+    : scope.audience === "brand" ? sql`v.id in (${set})`
+    : sql`w.affiliate_id = ${me}`;
   const watch = db.execute(sql`
     select w.video_id, ${bucketSql(sql`w.created_at`, unit)} as t,
       count(*) filter (where w.seconds_watched > 0)::int as sessions,
@@ -570,29 +663,20 @@ async function loadWindow(
       coalesce(sum(w.seconds_watched), 0)::float8 as seconds,
       coalesce(sum(w.video_seconds) filter (where w.seconds_watched > 0), 0)::float8 as video_seconds
     from video_watch_time w join videos v on v.id = w.video_id
-    where w.creator_id = ${me} and v.creator_id = ${me}
+    where ${watchScope}
       and w.created_at >= ${from} and w.created_at < ${to} ${cat}
     group by 1, 2`);
 
+  // Creators and brands: others picking up their videos. Publishers: the
+  // videos they themselves picked up in the period.
+  const repostScope = scope.audience === "publisher"
+    ? sql`r.who = ${me}`
+    : sql`v.id in (${set}) and r.who <> ${me}`;
   const reposts = db.execute(sql`
-    with r as (
-      select ed.affiliate_id as who, ed.video_id, ed.first_seen_at as at from embed_deployments ed
-      union all
-      select ca.affiliate_id, ca.video_id, ca.created_at from campaign_affiliates ca
-      union all
-      select lp.affiliate_id, g.video_id, coalesce(lp.purchased_at, lp.created_at)
-      from video_license_purchases lp join global_video_library g on g.id = lp.global_listing_id
-      where lp.status = 'paid'
-      union all
-      select pl.user_id, g.video_id, greatest(pi.added_at, coalesce(pl.published_at, pi.added_at))
-      from playlist_items pi join playlists pl on pl.id = pi.playlist_id
-      join global_video_library g on g.id = pi.listing_id
-      where pl.status = 'published'
-    ),
-    firsts as (
+    with firsts as (
       select r.who, r.video_id, min(r.at) as at
-      from r join videos v on v.id = r.video_id
-      where v.creator_id = ${me} and r.who <> ${me} and r.at is not null ${cat}
+      from (${repostsSql()}) r join videos v on v.id = r.video_id
+      where ${repostScope} and r.at is not null ${cat}
       group by 1, 2
     )
     select f.video_id, ${bucketSql(sql`f.at`, unit)} as t, u.role::text as role, count(*)::int as n
@@ -600,43 +684,48 @@ async function loadWindow(
     where f.at >= ${from} and f.at < ${to}
     group by 1, 2, 3`);
 
-  // One row per real order. See SALES in the file header.
+  // One row per real order. See SALES in the file header. A brand takes only
+  // its own orders; a Publisher only the ones they brought in.
+  const isBrand = scope.audience === "brand";
   const sales = db.execute(sql`
-    with mine as (select v.id from videos v where v.creator_id = ${me} ${cat}),
+    with mine as (select v.id, v.creator_id from videos v where v.id in (${set}) ${cat}),
     s as (
-      select 'a:' || a.id as k, a.video_id, a.occurred_at as at, a.sale_cents::float8 as cents, lower(a.currency) as currency,
+      select 'a:' || a.id as k, a.video_id, m.creator_id, a.occurred_at as at, a.sale_cents::float8 as cents, lower(a.currency) as currency,
         coalesce(
           (select o.affiliate_id from video_orders o
             where a.store_connection_id is null and o.stripe_checkout_session_id = a.external_order_id limit 1),
           (select c.affiliate_id from commission_transactions c
             where c.external_order_id = a.external_order_id
               and c.store_connection_id is not distinct from a.store_connection_id
-              and (c.kind = 'publisher' or (c.kind is null and c.affiliate_id <> ${me}))
+              and (c.kind = 'publisher' or (c.kind is null and c.affiliate_id <> m.creator_id))
             limit 1)
         ) as publisher_id
-      from platform_fee_accruals a
-      where a.video_id in (select id from mine) and a.attribution_state = 'attributed' and a.status <> 'void'
+      from platform_fee_accruals a join mine m on m.id = a.video_id
+      where a.attribution_state = 'attributed' and a.status <> 'void'
         and a.occurred_at >= ${from} and a.occurred_at < ${to}
+        ${isBrand ? sql`and a.brand_user_id = ${me}` : sql``}
       union all
-      select 'o:' || o.id, o.video_id, o.paid_at, o.amount_cents::float8, lower(o.currency), o.affiliate_id
-      from video_orders o
-      where o.video_id in (select id from mine) and o.status = 'paid'
+      select 'o:' || o.id, o.video_id, m.creator_id, o.paid_at, o.amount_cents::float8, lower(o.currency), o.affiliate_id
+      from video_orders o join mine m on m.id = o.video_id
+      where o.status = 'paid'
         and o.paid_at >= ${from} and o.paid_at < ${to}
+        ${isBrand ? sql`and o.brand_user_id = ${me}` : sql``}
         and not exists (
           select 1 from platform_fee_accruals a
           where a.store_connection_id is null and a.external_order_id = o.stripe_checkout_session_id)
       union all
-      select 'c:' || c.id, c.video_id, c.created_at, round(c.sale_amount * 100)::float8, ${platformCurrency},
+      select 'c:' || c.id, c.video_id, m.creator_id, c.created_at, round(c.sale_amount * 100)::float8, ${platformCurrency},
         (select p.affiliate_id from commission_transactions p
           where p.external_order_id is null and p.video_id = c.video_id and p.sale_amount = c.sale_amount
             and p.analytics_event_id is not distinct from c.analytics_event_id
             and abs(extract(epoch from (p.created_at - c.created_at))) < 10
-            and (p.kind = 'publisher' or (p.kind is null and p.affiliate_id <> ${me}))
+            and (p.kind = 'publisher' or (p.kind is null and p.affiliate_id <> m.creator_id))
           limit 1)
-      from commission_transactions c
-      where c.video_id in (select id from mine) and c.external_order_id is null
+      from commission_transactions c join mine m on m.id = c.video_id
+      where c.external_order_id is null
         and c.status not in ('reversed', 'rejected')
         and c.created_at >= ${from} and c.created_at < ${to}
+        ${isBrand ? sql`and c.product_id in (${brandProductsSql(me)})` : sql``}
         and not exists (
           select 1 from commission_transactions e
           where e.external_order_id is null and e.id <> c.id and e.video_id = c.video_id
@@ -645,20 +734,45 @@ async function loadWindow(
             and abs(extract(epoch from (e.created_at - c.created_at))) < 10
             and (e.created_at < c.created_at or (e.created_at = c.created_at and e.id < c.id)))
     )
-    select s.k, s.video_id, ${bucketSql(sql`s.at`, unit)} as t, s.cents, s.currency, s.publisher_id, u.role::text as role
-    from s left join users u on u.id = s.publisher_id`);
+    select s.k, s.video_id, s.creator_id, ${bucketSql(sql`s.at`, unit)} as t, s.cents, s.currency, s.publisher_id, u.role::text as role
+    from s left join users u on u.id = s.publisher_id
+    ${scope.audience === "publisher" ? sql`where s.publisher_id = ${me}` : sql``}`);
 
-  const commissions = db.execute(sql`
-    select c.video_id, ${bucketSql(sql`c.created_at`, unit)} as t,
-      coalesce(lower(o.currency), ${platformCurrency}) as currency,
-      round(sum(c.commission_amount) * 100)::float8 as cents
-    from commission_transactions c
-    join videos v on v.id = c.video_id
-    left join video_orders o on c.store_connection_id is null and c.external_order_id is not null
-      and o.stripe_checkout_session_id = c.external_order_id
-    where c.affiliate_id = ${me} and c.status not in ('reversed', 'rejected')
-      and c.created_at >= ${from} and c.created_at < ${to} ${cat}
-    group by 1, 2, 3`);
+  // Creators and Publishers: what they earned. Brands: the creator and
+  // Publisher commission written on the brand's own orders (in-video orders,
+  // store orders by their accrual, and sales recorded by hand for its
+  // products). Partner commission is not the brand's to see.
+  const commissions = isBrand
+    ? db.execute(sql`
+        select c.video_id, ${bucketSql(sql`c.created_at`, unit)} as t,
+          coalesce(lower(o.currency), ${platformCurrency}) as currency,
+          round(sum(c.commission_amount) * 100)::float8 as cents
+        from commission_transactions c
+        join videos v on v.id = c.video_id
+        left join video_orders o on c.store_connection_id is null and c.external_order_id is not null
+          and o.stripe_checkout_session_id = c.external_order_id
+        where c.status not in ('reversed', 'rejected') and (c.kind is null or c.kind in ('creator', 'publisher'))
+          and c.created_at >= ${from} and c.created_at < ${to} ${cat}
+          and (
+            o.brand_user_id = ${me}
+            or (c.external_order_id is not null and exists (
+              select 1 from platform_fee_accruals a
+              where a.brand_user_id = ${me} and a.external_order_id = c.external_order_id
+                and a.store_connection_id is not distinct from c.store_connection_id))
+            or (c.external_order_id is null and c.product_id in (${brandProductsSql(me)}))
+          )
+        group by 1, 2, 3`)
+    : db.execute(sql`
+        select c.video_id, ${bucketSql(sql`c.created_at`, unit)} as t,
+          coalesce(lower(o.currency), ${platformCurrency}) as currency,
+          round(sum(c.commission_amount) * 100)::float8 as cents
+        from commission_transactions c
+        join videos v on v.id = c.video_id
+        left join video_orders o on c.store_connection_id is null and c.external_order_id is not null
+          and o.stripe_checkout_session_id = c.external_order_id
+        where c.affiliate_id = ${me} and c.status not in ('reversed', 'rejected')
+          and c.created_at >= ${from} and c.created_at < ${to} ${cat}
+        group by 1, 2, 3`);
 
   const [e, wt, rp, sl, cm] = await Promise.all([events, watch, reposts, sales, commissions]);
   return {
@@ -676,17 +790,34 @@ async function loadWindow(
  * product id. Sales on a brand's own store carry no product, so they are not
  * in this list. Clicks count only where the player sent the product.
  */
-async function loadProducts(db: Db, me: string, w: { from: Date; to: Date }, category: string | null, platformCurrency: string): Promise<ProductRows> {
+async function loadProducts(db: Db, scope: DashboardScope, w: { from: Date; to: Date }, category: string | null, platformCurrency: string): Promise<ProductRows> {
+  const me = scope.userId;
   const cat = categorySql("v", category);
+  const orderScope =
+    scope.audience === "brand" ? sql`and o.brand_user_id = ${me}`
+    : scope.audience === "publisher" ? sql`and o.affiliate_id = ${me}`
+    : sql``;
+  // Hand-recorded sales: one per sale (the earliest row of its group), or for
+  // a Publisher their own row of it.
+  const handScope =
+    scope.audience === "publisher" ? sql`and c.affiliate_id = ${me}`
+    : sql`${scope.audience === "brand" ? sql`and c.product_id in (${brandProductsSql(me)})` : sql``}
+      and not exists (
+        select 1 from commission_transactions e
+        where e.external_order_id is null and e.id <> c.id and e.video_id = c.video_id
+          and e.sale_amount = c.sale_amount
+          and e.analytics_event_id is not distinct from c.analytics_event_id
+          and abs(extract(epoch from (e.created_at - c.created_at))) < 10
+          and (e.created_at < c.created_at or (e.created_at = c.created_at and e.id < c.id)))`;
   const sales = db.execute(sql`
-    with mine as (select v.id from videos v where v.creator_id = ${me} ${cat})
+    with mine as (select v.id from videos v where v.id in (${videoSetSql(scope)}) ${cat})
     select coalesce(ov.product_id, 'card:' || ov.id::text) as key, coalesce(pr.name, ov.name) as name,
       o.amount_cents::float8 as cents, lower(o.currency) as currency
     from video_orders o
     join video_product_overlays ov on ov.id = o.overlay_id
     left join products pr on pr.id = ov.product_id
     where o.video_id in (select id from mine) and o.status = 'paid'
-      and o.paid_at >= ${w.from} and o.paid_at < ${w.to}
+      and o.paid_at >= ${w.from} and o.paid_at < ${w.to} ${orderScope}
     union all
     select c.product_id, pr.name, round(c.sale_amount * 100)::float8, ${platformCurrency}
     from commission_transactions c
@@ -694,19 +825,17 @@ async function loadProducts(db: Db, me: string, w: { from: Date; to: Date }, cat
     where c.video_id in (select id from mine) and c.external_order_id is null
       and c.status not in ('reversed', 'rejected')
       and c.created_at >= ${w.from} and c.created_at < ${w.to}
-      and not exists (
-        select 1 from commission_transactions e
-        where e.external_order_id is null and e.id <> c.id and e.video_id = c.video_id
-          and e.sale_amount = c.sale_amount
-          and e.analytics_event_id is not distinct from c.analytics_event_id
-          and abs(extract(epoch from (e.created_at - c.created_at))) < 10
-          and (e.created_at < c.created_at or (e.created_at = c.created_at and e.id < c.id)))`);
+      ${handScope}`);
+  const clickScope =
+    scope.audience === "creator" ? sql`e.creator_id = ${me} and v.creator_id = ${me}`
+    : scope.audience === "brand" ? sql`e.product_id in (${brandProductsSql(me)})`
+    : sql`e.affiliate_id = ${me}`;
   const clicks = db.execute(sql`
     select e.product_id as key, pr.name, count(*)::int as n
     from analytics_events e
     join videos v on v.id = e.video_id
     join products pr on pr.id = e.product_id
-    where e.creator_id = ${me} and v.creator_id = ${me} and e.event_type = 'click'
+    where ${clickScope} and e.event_type = 'click'
       and e.created_at >= ${w.from} and e.created_at < ${w.to} ${cat}
     group by 1, 2`);
   const [s, c] = await Promise.all([sales, clicks]);
@@ -714,12 +843,17 @@ async function loadProducts(db: Db, me: string, w: { from: Date; to: Date }, cat
 }
 
 /** Views in the period by referrer domain and by country. */
-async function loadViewSources(db: Db, me: string, w: { from: Date; to: Date }, category: string | null) {
+async function loadViewSources(db: Db, scope: DashboardScope, w: { from: Date; to: Date }, category: string | null) {
+  const me = scope.userId;
   const cat = categorySql("v", category);
+  const viewScope =
+    scope.audience === "creator" ? sql`e.creator_id = ${me} and v.creator_id = ${me}`
+    : scope.audience === "brand" ? sql`v.id in (${videoSetSql(scope)})`
+    : sql`e.affiliate_id = ${me}`;
   const by = (col: SQL) => db.execute(sql`
     select ${col} as label, count(*)::int as n
     from analytics_events e join videos v on v.id = e.video_id
-    where e.creator_id = ${me} and v.creator_id = ${me} and e.event_type = 'view'
+    where ${viewScope} and e.event_type = 'view'
       and e.created_at >= ${w.from} and e.created_at < ${w.to} ${cat}
     group by 1 order by 2 desc limit 20`);
   const [r, c] = await Promise.all([by(sql`e.referrer_domain`), by(sql`e.country`)]);
@@ -760,22 +894,37 @@ async function ratesFor(currencies: Set<string>, wanted: DashboardCurrency): Pro
   return { usdPer, target, date, approximate };
 }
 
+/**
+ * Which dashboard an account gets when it does not say: brands the brand
+ * one, Publishers (role "affiliate") theirs, everyone else the creator one.
+ * Any account may ask for any of the three; each only ever shows its own.
+ */
+export function audienceFor(requested: unknown, role: string | null | undefined): DashboardAudience | null {
+  if (typeof requested === "string" && requested.trim()) {
+    const a = requested.trim().toLowerCase();
+    return (DASHBOARD_AUDIENCES as readonly string[]).includes(a) ? (a as DashboardAudience) : null;
+  }
+  return role === "brand" ? "brand" : role === "affiliate" ? "publisher" : "creator";
+}
+
 // ─── The whole dashboard ──────────────────────────────────────────────────────
 
-export async function creatorDashboard(creatorId: string, q: DashboardQuery, now: Date = new Date()): Promise<CreatorDashboard> {
+export async function performanceDashboard(scope: DashboardScope, q: DashboardQuery, now: Date = new Date()): Promise<CreatorDashboard> {
   const { db } = await import("./db");
+  const d = db as unknown as Db;
   const platformCurrency = getPlatformCurrency();
   const cur = { from: q.from, to: q.to };
   const prev = previousWindow(q.from, q.to);
   const unit = bucketUnit(q.from, q.to);
+  const paid = scope.audience !== "brand";
 
   const [videos, rowsCur, rowsPrev, payoutRows, productRows, sourceRows] = await Promise.all([
-    loadVideos(db as unknown as Db, creatorId, q.category),
-    loadWindow(db as unknown as Db, creatorId, cur, unit, q.category, platformCurrency),
-    loadWindow(db as unknown as Db, creatorId, prev, unit, q.category, platformCurrency),
-    loadPayoutRows(db as unknown as Db, creatorId, cur, platformCurrency),
-    loadProducts(db as unknown as Db, creatorId, cur, q.category, platformCurrency),
-    loadViewSources(db as unknown as Db, creatorId, cur, q.category),
+    loadVideos(d, scope, q.category),
+    loadWindow(d, scope, cur, unit, q.category, platformCurrency),
+    loadWindow(d, scope, prev, unit, q.category, platformCurrency),
+    paid ? loadPayoutRows(d, scope.userId, cur, platformCurrency) : Promise.resolve([] as PayoutRow[]),
+    loadProducts(d, scope, cur, q.category, platformCurrency),
+    loadViewSources(d, scope, cur, q.category),
   ]);
 
   const currencies = new Set<string>();
@@ -784,8 +933,10 @@ export async function creatorDashboard(creatorId: string, q: DashboardQuery, now
   }
   const fx = await ratesFor(currencies, q.currency);
 
-  const foldedCur = foldWindow(rowsCur, creatorId, fx.target, fx.usdPer);
-  const foldedPrev = foldWindow(rowsPrev, creatorId, fx.target, fx.usdPer);
+  // The fallback maker for sale rows: only a creator is the maker of every video.
+  const owner = scope.audience === "creator" ? scope.userId : "";
+  const foldedCur = foldWindow(rowsCur, owner, fx.target, fx.usdPer);
+  const foldedPrev = foldWindow(rowsPrev, owner, fx.target, fx.usdPer);
 
   const totalsFor = (folded: Folded, to: Date) => {
     const set = videosInPeriod(videos, to, new Set(folded.perVideo.keys()));
@@ -800,13 +951,14 @@ export async function creatorDashboard(creatorId: string, q: DashboardQuery, now
     if (c == null) { payoutApprox = true; return Math.round(cents); }
     return c;
   };
-  const payouts = buildPayouts(payoutRows, cur, now, convert);
+  const payouts = paid ? buildPayouts(payoutRows, cur, now, convert) : null;
   const products = topProducts(productRows, convert);
   const totalViews = current.totals.views;
 
   const series = bucketKeys(cur.from, cur.to, unit).map((t) => foldedCur.series.get(t) ?? { t, views: 0, clicks: 0, sales: 0, grossCents: 0 });
 
   return {
+    audience: scope.audience,
     period: {
       from: cur.from.toISOString(),
       to: cur.to.toISOString(),
@@ -830,4 +982,9 @@ export async function creatorDashboard(creatorId: string, q: DashboardQuery, now
       countries: topSources(sourceRows.countries, totalViews),
     },
   };
+}
+
+/** The creator's own dashboard (the original, 16 Nov 2026). */
+export function creatorDashboard(creatorId: string, q: DashboardQuery, now: Date = new Date()): Promise<CreatorDashboard> {
+  return performanceDashboard({ audience: "creator", userId: creatorId }, q, now);
 }

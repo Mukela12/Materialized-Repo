@@ -172,25 +172,22 @@ describe("round 7: scroll affordance, hero metric, concentric corners", () => {
     expect(css).toMatch(/@media \(max-width: 370px\) \{ \.mz-dock-item \{ border-radius: 26px; \} \}/);
   });
 
-  it("each dashboard leads with exactly one hero that offers a next step at zero", () => {
-    for (const p of ["client/src/pages/dashboard.tsx", "client/src/pages/brand-dashboard.tsx", "client/src/pages/affiliate-dashboard.tsx"]) {
-      const src = code(p);
-      expect(src.match(/<StatCard\s+hero\b/g), p).toHaveLength(1);
-      expect(src, p).toMatch(/action=\{/);
-      expect(src, p).toMatch(/className="stat-card__cta"/);
-    }
-    const card = code("client/src/components/StatCard.tsx");
-    expect(card).toMatch(/const showAction = hero && zero && action;/);
+  // Replaced 18 Nov 2026 (client: "the most valuable stats are what they first
+  // see when they login"): every homepage now leads with the month's views,
+  // click-through rate and money plus the top 3 videos, scoped to the account.
+  it("each homepage leads with this month's highlights for its own account type", () => {
+    expect(code("client/src/pages/dashboard.tsx")).toMatch(/<HomeHighlights audience="creator" \/>/);
+    expect(code("client/src/pages/brand-dashboard.tsx")).toMatch(/<HomeHighlights audience="brand" \/>/);
+    expect(code("client/src/pages/affiliate-dashboard.tsx")).toMatch(/<HomeHighlights audience="publisher" \/>/);
+    const h = code("client/src/components/HomeHighlights.tsx");
+    expect(h).toMatch(/\.slice\(0, 3\)/);
+    for (const id of ["home-stat-views", "home-stat-ctr", "home-stat-sales", "home-stat-commission"]) expect(h).toContain(id);
   });
 
   it("the hero's trend line is real data or nothing", () => {
     const spark = code("client/src/components/Sparkline.tsx");
     expect(spark).toMatch(/if \(!values \|\| !hasTrend\(values\)\) return null;/);
     expect(spark).toMatch(/sparkPaths\(cumulative\(values\)/);
-    // Only the pages with real daily data pass one; the publisher has none.
-    expect(code("client/src/pages/brand-dashboard.tsx")).toMatch(/sparkline=\{stats\?\.revenueByDay\}/);
-    expect(code("client/src/pages/dashboard.tsx")).toMatch(/sparkline=\{stats\?\.revenueByDay\}/);
-    expect(code("client/src/pages/affiliate-dashboard.tsx")).not.toMatch(/sparkline=/);
   });
 
   it("a hero told to span columns cannot conjure columns on a phone", () => {

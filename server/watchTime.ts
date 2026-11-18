@@ -43,6 +43,8 @@ export const watchReportSchema = z.object({
   sid: z.string().regex(/^[A-Za-z0-9]{8,64}$/).optional(),
   seconds: z.number().finite().min(0).max(86_400),
   duration: z.number().finite().min(0).max(86_400).nullable().optional(),
+  /** The repost's utm code, when a Publisher's page is playing it. */
+  utm: z.string().max(128).optional(),
 });
 export type WatchReport = z.infer<typeof watchReportSchema>;
 
@@ -98,6 +100,8 @@ export function watchViewerKey(sid: string | undefined, req: Request, now: Date 
 export async function recordWatchTime(input: {
   videoId: string;
   creatorId: string | null;
+  /** The Publisher the viewing is credited to; set on the first report only. */
+  affiliateId?: string | null;
   key: string;
   reported: number;
   videoSeconds: number;
@@ -105,8 +109,8 @@ export async function recordWatchTime(input: {
   const { db } = await import("./db");
   const first = clampWatchSeconds({ reported: input.reported, previous: 0, videoSeconds: input.videoSeconds, elapsedSeconds: 0 });
   const ins = await db.execute(sql`
-    insert into video_watch_time (video_id, creator_id, viewer_hash, seconds_watched, video_seconds)
-    values (${input.videoId}, ${input.creatorId}, ${input.key}, ${first}, ${input.videoSeconds})
+    insert into video_watch_time (video_id, creator_id, affiliate_id, viewer_hash, seconds_watched, video_seconds)
+    values (${input.videoId}, ${input.creatorId}, ${input.affiliateId ?? null}, ${input.key}, ${first}, ${input.videoSeconds})
     on conflict (video_id, viewer_hash) do nothing
     returning seconds_watched`);
   if (ins.rows.length) return first;
@@ -134,19 +138,20 @@ export async function recordWatchTime(input: {
  * The browser side, shared by all three players so they measure the same way.
  * ES5, no dependencies: it runs on publishers' pages.
  *
- * Defines matWatch(video, apiBase, videoId), which returns {setVideo(id)} for
- * the playlist player to call when it moves to the next video.
+ * Defines matWatch(video, apiBase, videoId, utm), which returns
+ * {setVideo(id, utm)} for the playlist player to call when it moves to the
+ * next video. utm is the repost's code, so a Publisher's viewings are theirs.
  */
 export function watchTrackerJs(): string {
-  return `function matWatch(v,apiBase,firstId){
+  return `function matWatch(v,apiBase,firstId,firstUtm){
   var sid="";for(var i=0;i<24;i++){sid+="abcdefghijklmnopqrstuvwxyz0123456789".charAt(Math.floor(Math.random()*36));}
-  var id=firstId,acc={},sent={},last=null,timer=null;
+  var id=firstId,utm=firstUtm||"",acc={},sent={},last=null,timer=null;
   function flush(beacon){
     if(!id)return;
     var s=Math.floor(acc[id]||0);
     if(s<1||s<=(sent[id]||0))return;
     sent[id]=s;
-    var body=JSON.stringify({videoId:id,sid:sid,seconds:s,duration:isFinite(v.duration)?Math.round(v.duration):null});
+    var body=JSON.stringify({videoId:id,sid:sid,seconds:s,duration:isFinite(v.duration)?Math.round(v.duration):null,utm:utm||undefined});
     var u=apiBase+"/api/analytics/watch";
     try{
       if(beacon&&navigator.sendBeacon&&navigator.sendBeacon(u,new Blob([body],{type:"text/plain"})))return;
@@ -164,6 +169,6 @@ export function watchTrackerJs(): string {
   v.addEventListener("ended",function(){flush(false);});
   document.addEventListener("visibilitychange",function(){if(document.visibilityState==="hidden"){flush(true);}});
   window.addEventListener("pagehide",function(){flush(true);});
-  return {setVideo:function(next){flush(true);id=next;last=null;}};
+  return {setVideo:function(next,nextUtm){flush(true);id=next;utm=nextUtm||"";last=null;}};
 }`;
 }

@@ -265,7 +265,7 @@ export function playlistRenderScript(input: PlaylistRenderInput): string {
   function show(i){
     idx=i;
     var item=D.items[i];
-    watch.setVideo(item.videoId);
+    watch.setVideo(item.videoId,item.utm);
     vid.src=item.videoUrl;
     drawCarousel(item);
     tiles.forEach(function(t,j){

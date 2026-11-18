@@ -99,10 +99,10 @@ describe("the players", () => {
   it("is wired into the embed page, the script widget and the playlist player", () => {
     const routes = readFileSync(join(__dirname, "../../server/routes.ts"), "utf8");
     const playlist = readFileSync(join(__dirname, "../../server/playlistEmbed.ts"), "utf8");
-    expect(routes).toMatch(/matWatch\(vid,apiBase,videoId\);/);
-    expect(routes).toMatch(/matWatch\(v,apiBase,videoId\);/);
+    expect(routes).toMatch(/matWatch\(vid,apiBase,videoId,utm\);/);
+    expect(routes).toMatch(/matWatch\(v,apiBase,videoId,utm\);/);
     expect(playlist).toMatch(/var watch=matWatch\(vid,D\.apiBase,null\);/);
-    expect(playlist).toMatch(/watch\.setVideo\(item\.videoId\);/);
+    expect(playlist).toMatch(/watch\.setVideo\(item\.videoId,item\.utm\);/);
   });
 
   it("the ingest route caps on the server and records nothing it cannot attribute", () => {

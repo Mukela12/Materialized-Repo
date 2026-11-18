@@ -1521,9 +1521,17 @@ export async function registerRoutes(
       const key = watchViewerKey(report.sid, req);
       // No way to tell one viewing from another: record nothing rather than guess.
       if (!key) return res.status(204).end();
+      // Credited to a Publisher only when the code and the video agree, the
+      // same rule /api/analytics/events applies to views.
+      let affiliateId: string | null = null;
+      if (report.utm) {
+        const resolved = await storage.resolveUtmToAffiliate(report.utm);
+        if (resolved && resolved.videoId === video.id) affiliateId = resolved.affiliateId;
+      }
       await recordWatchTime({
         videoId: video.id,
         creatorId: video.creatorId,
+        affiliateId,
         key,
         reported: report.seconds,
         videoSeconds: resolveVideoSeconds(video.durationSeconds, report.duration),
@@ -1552,6 +1560,29 @@ export async function registerRoutes(
       res.json(await creatorDashboard(user.id, q.value));
     } catch (error) {
       console.error("Creator dashboard error:", error);
+      res.status(500).json({ error: "Failed to load the dashboard" });
+    }
+  });
+
+  /**
+   * The same dashboard for every account type (client, 18 Nov 2026):
+   * ?as=creator|brand|publisher, defaulting to the account's role. Each
+   * audience only ever reads the signed-in account's own numbers.
+   */
+  app.get("/api/dashboard/performance", async (req, res) => {
+    try {
+      const sessionUserId = (req.session as any)?.userId;
+      if (!sessionUserId) return res.status(401).json({ error: "Authentication required" });
+      const user = await storage.getUser(sessionUserId);
+      if (!user) return res.status(401).json({ error: "User not found" });
+      const { parseDashboardQuery, performanceDashboard, audienceFor } = await import("./creatorDashboard");
+      const audience = audienceFor(req.query.as, (user as any).role);
+      if (!audience) return res.status(400).json({ error: "Unknown dashboard" });
+      const q = parseDashboardQuery(req.query as Record<string, unknown>);
+      if (!q.ok) return res.status(400).json({ error: q.error });
+      res.json(await performanceDashboard({ audience, userId: user.id }, q.value));
+    } catch (error) {
+      console.error("Performance dashboard error:", error);
       res.status(500).json({ error: "Failed to load the dashboard" });
     }
   });
@@ -8893,7 +8924,7 @@ ${embedCarouselCss(carousel)}
     track("view");
     // Watch time for the creator dashboard (server/watchTime.ts).
     ${watchTrackerJs()}
-    matWatch(vid,apiBase,videoId);
+    matWatch(vid,apiBase,videoId,utm);
   </script>
 </body>
 </html>`);
@@ -8989,7 +9020,7 @@ ${embedCarouselCss(carousel)}
   track("view");
   // Watch time for the creator dashboard (server/watchTime.ts).
   ${watchTrackerJs()}
-  matWatch(v,apiBase,videoId);
+  matWatch(v,apiBase,videoId,utm);
 })();`);
     } catch (error) {
       res.set("Content-Type", "application/javascript");

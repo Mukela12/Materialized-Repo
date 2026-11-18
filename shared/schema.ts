@@ -349,6 +349,8 @@ export const videoWatchTime = pgTable("video_watch_time", {
   videoId: varchar("video_id").notNull().references(() => videos.id),
   /** The video's owner, denormalised at write time like analytics_events.creator_id. */
   creatorId: varchar("creator_id").references(() => users.id),
+  /** The Publisher whose repost played it (from its utm code), or null. Migration 0054. */
+  affiliateId: varchar("affiliate_id").references(() => users.id),
   viewerHash: text("viewer_hash").notNull(),
   secondsWatched: integer("seconds_watched").notNull().default(0),
   /** The length the cap was taken from: videos.duration_seconds, else the player's figure. */
@@ -358,6 +360,7 @@ export const videoWatchTime = pgTable("video_watch_time", {
 }, (t) => ({
   viewerUniq: uniqueIndex("video_watch_time_viewer_uniq").on(t.videoId, t.viewerHash),
   creatorPeriodIdx: index("video_watch_time_creator_period_idx").on(t.creatorId, t.createdAt),
+  affiliatePeriodIdx: index("video_watch_time_affiliate_period_idx").on(t.affiliateId, t.createdAt),
 }));
 
 export type VideoWatchTime = typeof videoWatchTime.$inferSelect;

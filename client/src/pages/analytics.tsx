@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { StatCard } from "@/components/StatCard";
 import { AffiliateTable } from "@/components/AffiliateTable";
 import { AffiliatePublishersTable } from "@/components/AffiliatePublishersTable";
-import { CreatorDashboard } from "@/components/CreatorDashboard";
+import { PerformanceDashboard } from "@/components/CreatorDashboard";
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, Cell,
@@ -132,6 +132,7 @@ export default function Analytics() {
 
   const { data: stats } = useQuery<DetailedStats>({
     queryKey: [apiEndpoint],
+    enabled: dashboardContext !== "brand",
   });
 
   const defaultStats: DetailedStats = {
@@ -203,22 +204,8 @@ export default function Analytics() {
           )}
         </div>
         <div className="flex gap-2 items-center">
-          {/* Creators pick the currency inside their dashboard (live rates);
-              a second picker here, on fixed rates, only confused the two. */}
-          {!isCreatorView && (
-          <Select value={currency} onValueChange={setCurrency} data-testid="select-currency">
-            <SelectTrigger className="w-[120px]" data-testid="select-currency-trigger">
-              <SelectValue placeholder="Currency" />
-            </SelectTrigger>
-            <SelectContent>
-              {CURRENCIES.map((c) => (
-                <SelectItem key={c.code} value={c.code} data-testid={`select-currency-${c.code}`}>
-                  {c.code} ({c.symbol.trim()})
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          )}
+          {/* Every account picks the currency inside its dashboard (live
+              rates); a second picker here, on fixed rates, only confused the two. */}
           <Button
             variant="outline"
             size="icon"
@@ -232,13 +219,18 @@ export default function Analytics() {
         </div>
       </div>
 
-      {/* The creator dashboard (client, 16 Nov 2026) leads; the all-time
-          figures below stay as they were. */}
-      {isCreatorView && <CreatorDashboard />}
-      {isCreatorView && (
+      {/* The performance dashboard leads for every account (creators 16 Nov,
+          brands and Publishers 18 Nov 2026). The all-time figures below stay
+          for creators and Publishers. Brands no longer get them: that endpoint
+          counted the whole marketplace, never one brand's own numbers
+          (/api/analytics/brand-detailed), and the dashboard above replaces
+          every part of it with figures scoped to the brand. */}
+      <PerformanceDashboard audience={dashboardContext} />
+      {dashboardContext !== "brand" && (
         <h2 className="pt-2 text-lg font-semibold tracking-tight" data-testid="text-all-time-heading">All time</h2>
       )}
 
+      {dashboardContext !== "brand" && (<>
       <div className="stat-panel grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           title={isPublisherView ? "My Views" : "Total Views"}
@@ -380,13 +372,11 @@ export default function Analytics() {
                     icon={BarChart3}
                     title="No views yet"
                     description={
-                      dashboardContext === "brand" ? "Views appear as creators publish videos featuring your products."
-                      : dashboardContext === "publisher" ? "Views appear once you repost a video from the library."
+                      dashboardContext === "publisher" ? "Views appear once you repost a video from the library."
                       : "Views appear here from the first play of your first published video."
                     }
                     action={
-                      dashboardContext === "brand" ? { label: "Invite creators", href: "/brand/creators" }
-                      : dashboardContext === "publisher" ? { label: "Browse the library", href: "/affiliate/library" }
+                      dashboardContext === "publisher" ? { label: "Browse the library", href: "/affiliate/library" }
                       : { label: "Upload a video", href: "/creator" }
                     }
                   />
@@ -638,6 +628,7 @@ export default function Analytics() {
           )}
         </TabsContent>
       </Tabs>
+      </>)}
     </div>
   );
 }

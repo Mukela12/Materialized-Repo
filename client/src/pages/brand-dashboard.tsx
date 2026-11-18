@@ -5,9 +5,9 @@ import { Button } from "@/components/ui/button";
 import { EmptyState } from "@/components/EmptyState";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { StatCard } from "@/components/StatCard";
+import { HomeHighlights } from "@/components/HomeHighlights";
 import { CreatorPassesLeft } from "@/components/CreatorPassesLeft";
-import { greeting, todayLabel, monthToDateLabel } from "@/lib/greeting";
+import { greeting, todayLabel } from "@/lib/greeting";
 import { BrandDashboardTabs } from "@/components/BrandDashboardTabs";
 import { VideoUploadModal } from "@/components/VideoUploadModal";
 import { defaultCarouselSettings } from "@/components/ProductCarouselEditor";
@@ -17,8 +17,7 @@ import { apiRequest, queryClient, serverMessage } from "@/lib/queryClient";
 import { Link, useLocation } from "wouter";
 import type { Brand, User, Product } from "@shared/schema";
 import { OVERAGE_RATES } from "@shared/plans";
-import { CURRENCY_SYMBOL, formatStatMoney } from "@/lib/currency";
-import type { MonthStats } from "@shared/monthStats";
+import { CURRENCY_SYMBOL } from "@/lib/currency";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -63,12 +62,6 @@ export default function BrandDashboard() {
 
   const { data: brands = [] } = useQuery<Brand[]>({
     queryKey: ["/api/brands"],
-  });
-
-  // Month to date, scoped to this brand's products; money from real orders.
-  // See server/dashboardStats.ts.
-  const { data: stats } = useQuery<MonthStats>({
-    queryKey: ["/api/brands/stats"],
   });
 
   const form = useForm<ConnectCreatorForm>({
@@ -187,70 +180,9 @@ export default function BrandDashboard() {
       <BrandDashboardTabs activeTab={activeTab} onTabChange={setActiveTab} />
 
       {activeTab === "stats" && (
-        // A section, not a card holding cards; revenue leads as the hero.
-        <section className="space-y-3" aria-labelledby="brand-stats-heading">
-          <div className="flex items-baseline justify-between gap-3">
-            <h2 id="brand-stats-heading" className="text-base font-semibold tracking-tight">This month</h2>
-            <span className="text-xs text-muted-foreground tabular-nums">{monthToDateLabel()}</span>
-          </div>
-          {/* Hero spans two columns wherever there are columns, so the money
-              leads by size rather than every metric weighing the same. */}
-          <div className="stat-panel grid grid-cols-2 lg:grid-cols-6">
-            <div data-testid="stat-brand-revenue" className="col-span-2">
-              <StatCard
-                hero
-                title="Revenue from creators"
-                value={formatStatMoney(stats?.revenue ?? 0, stats?.currency)}
-                subtitle={stats?.orders
-                  ? `${stats.orders.toLocaleString()} ${stats.orders === 1 ? "order" : "orders"} that started in a creator's video`
-                  : "Sales that started in a creator's video"}
-                icon={DollarSign}
-                sparkline={stats?.revenueByDay}
-                action={
-                  <>
-                    <span className="block">No sales yet this month.</span>
-                    <button type="button" className="stat-card__cta" onClick={() => setActiveTab("creators")} data-testid="button-stat-invite-creator">
-                      Invite a creator to feature them
-                      <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
-                    </button>
-                  </>
-                }
-              />
-            </div>
-            <div data-testid="stat-brand-views">
-              <StatCard
-                title="Views"
-                value={(stats?.views ?? 0).toLocaleString()}
-                subtitle="Plays of videos with your products"
-                icon={Eye}
-              />
-            </div>
-            <div data-testid="stat-brand-clicks">
-              <StatCard
-                title="Clicks to store"
-                value={(stats?.clicks ?? 0).toLocaleString()}
-                subtitle={stats?.views ? `${(stats.ctr ?? 0).toFixed(1)}% of views` : "Taps through to your shop"}
-                icon={MousePointer}
-              />
-            </div>
-            <div data-testid="stat-brand-conversions">
-              <StatCard
-                title="Orders"
-                value={(stats?.orders ?? 0).toLocaleString()}
-                subtitle="Led by a creator's video"
-                icon={TrendingUp}
-              />
-            </div>
-            <div data-testid="stat-brand-creators">
-              <StatCard
-                title="Active creators"
-                value={(stats?.activeCreators ?? 0).toLocaleString()}
-                subtitle="Creators whose videos got views"
-                icon={Users}
-              />
-            </div>
-          </div>
-        </section>
+        // This month's views, click-through rate and affiliate sales, then the
+        // three best videos with the brand's products (client, 18 Nov 2026).
+        <HomeHighlights audience="brand" />
       )}
 
       {activeTab === "stats" && (

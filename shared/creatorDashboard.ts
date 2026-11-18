@@ -7,6 +7,18 @@
  * published by the end of the period or had any activity in it.
  */
 
+/**
+ * Whose numbers (client, 18 Nov 2026). Every audience sees only its own:
+ *   creator    their own videos, with everything every repost of them did.
+ *   brand      videos the brand uploaded or that feature its products, with
+ *              everything every repost did; sales are the brand's own orders;
+ *              commission is what those orders pay creators and Publishers.
+ *   publisher  only what their own reposts did: views, viewings, clicks and
+ *              sales on their pages, and their own commission and payouts.
+ */
+export const DASHBOARD_AUDIENCES = ["creator", "brand", "publisher"] as const;
+export type DashboardAudience = (typeof DASHBOARD_AUDIENCES)[number];
+
 export const DASHBOARD_CURRENCIES = ["usd", "eur", "gbp"] as const;
 export type DashboardCurrency = (typeof DASHBOARD_CURRENCIES)[number];
 
@@ -44,7 +56,10 @@ export interface DashboardTotals {
   repostsByPublisher: number;
   sales: SalesBySource;
   grossCents: number;
-  /** What the creator earned in commission in the period, before payout. */
+  /**
+   * Creators and Publishers: commission they earned in the period, before
+   * payout. Brands: commission their orders pay creators and Publishers.
+   */
   commissionCents: number;
   avg: {
     clicksPerVideo: number;
@@ -71,6 +86,8 @@ export interface DashboardVideoRow {
   videoId: string;
   title: string;
   thumbnailUrl: string | null;
+  /** Who made the video (shown to brands and Publishers). */
+  creatorName: string | null;
   /** First category on the video, or null. */
   category: string | null;
   views: number;
@@ -114,6 +131,7 @@ export interface DashboardViewSource {
 }
 
 export interface CreatorDashboard {
+  audience: DashboardAudience;
   period: {
     from: string;
     to: string;
@@ -130,7 +148,8 @@ export interface CreatorDashboard {
   previous: DashboardTotals;
   series: DashboardSeriesPoint[];
   videos: DashboardVideoRow[];
-  payouts: DashboardPayouts;
+  /** Paid vs Upcoming. null for brands, who are not paid commission. */
+  payouts: DashboardPayouts | null;
   /** Top 5 products by sales, then sales value, then clicks (current period). */
   topProducts: DashboardProduct[];
   /** Where the period's views came from: top 5 sites and countries. */

@@ -24,7 +24,7 @@ import { cn } from "@/lib/utils";
 import { VIDEO_CATEGORY_OPTIONS } from "@shared/schema";
 import {
   DASHBOARD_CURRENCIES, formatWatchDuration, pctChange,
-  type CreatorDashboard as Dashboard, type DashboardCurrency, type DashboardProduct, type DashboardSeriesPoint, type DashboardViewSource,
+  type CreatorDashboard as Dashboard, type DashboardAudience, type DashboardCurrency, type DashboardProduct, type DashboardSeriesPoint, type DashboardViewSource,
 } from "@shared/creatorDashboard";
 
 const DAY = 86_400_000;
@@ -47,13 +47,24 @@ const SOURCES = [
 ] as const;
 
 /**
+ * Words that change with whose dashboard it is (18 Nov 2026). For a brand,
+ * "own" sales came from where the video was first posted (its creator's
+ * audience, or the brand's own post), and commission is what it pays out.
+ */
+const COPY: Record<DashboardAudience, { own: string; ownShort: string; ownAvg: string; commission: string; commissionHint: string; videos: string; empty: string }> = {
+  creator: { own: "Your audience", ownShort: "your audience", ownAvg: "Avg. audience sales", commission: "Commission earned", commissionHint: "Before payout", videos: "videos", empty: "No videos in this period yet. Publish a video to see its numbers here." },
+  brand: { own: "Original post", ownShort: "original post", ownAvg: "Avg. original post sales", commission: "Commission paid", commissionHint: "To creators and Publishers", videos: "videos with your products", empty: "No videos with your products in this period yet. Upload one or invite a creator to feature them." },
+  publisher: { own: "Your pages", ownShort: "your pages", ownAvg: "Avg. sales", commission: "Commission earned", commissionHint: "Before payout", videos: "videos you reposted", empty: "No reposted videos in this period yet. Pick one from the library to put it on your site." },
+};
+
+/**
  * The dashboard's colours (client, 17 Nov 2026: "this should be a page that
  * brings the user joy ... rounded, joyful, like colorful dumplings"). Each stat
  * card takes one; its number is written in it, and on hover the card takes a
  * border and a wash of it. `l` is dark enough to read on white, `d` on the dark
  * card. The chart's capsule bars cycle through the same five.
  */
-const TONES = [
+export const TONES = [
   { l: "#7c3aed", d: "#a78bfa", bar: "#8b5cf6" }, // violet
   { l: "#0891b2", d: "#22d3ee", bar: "#06b6d4" }, // cyan
   { l: "#db2777", d: "#f472b6", bar: "#ec4899" }, // pink
@@ -65,7 +76,7 @@ type Tone = (typeof TONES)[number];
 const CATEGORY_LABEL: Record<string, string> = Object.fromEntries(VIDEO_CATEGORY_OPTIONS.map((o) => [o.value, o.label]));
 
 /** Money in the dashboard's currency: exact for figures, whole units for chart axes. */
-function moneyFormat(currency: string) {
+export function moneyFormat(currency: string) {
   const whole = new Intl.NumberFormat(undefined, { style: "currency", currency: currency.toUpperCase(), maximumFractionDigits: 0 });
   const exact = new Intl.NumberFormat(undefined, { style: "currency", currency: currency.toUpperCase() });
   return {
@@ -74,7 +85,7 @@ function moneyFormat(currency: string) {
   };
 }
 
-const num = (n: number) => (Number.isInteger(n) ? n.toLocaleString() : n.toLocaleString(undefined, { maximumFractionDigits: 1 }));
+export const num = (n: number) => (Number.isInteger(n) ? n.toLocaleString() : n.toLocaleString(undefined, { maximumFractionDigits: 1 }));
 
 /** "vs previous 7 days", with the change in colour and an arrow, or nothing to compare. */
 function Delta({ current, previous, label }: { current: number; previous: number; label: string }) {
@@ -113,7 +124,7 @@ function RateRing({ pct }: { pct: number }) {
   );
 }
 
-function Metric({
+export function Metric({
   icon: Icon, label, value, hint, current, previous, compare, testId, tone, ring,
 }: {
   icon: LucideIcon; label: string; value: string; hint?: string; current: number; previous: number; compare: string; testId: string;
@@ -293,9 +304,9 @@ function TrendChart({ series, bucket, money }: { series: DashboardSeriesPoint[];
   );
 }
 
-function SourcesDonut({ sales, prevTotal, compare }: { sales: Dashboard["current"]["sales"]; prevTotal: number; compare: string }) {
+function SourcesDonut({ sales, prevTotal, compare, ownLabel }: { sales: Dashboard["current"]["sales"]; prevTotal: number; compare: string; ownLabel: string }) {
   const dark = typeof document !== "undefined" && document.documentElement.classList.contains("dark");
-  const data = SOURCES.map((s) => ({ ...s, value: sales[s.key], color: dark ? s.dark : s.light }));
+  const data = SOURCES.map((s) => ({ ...s, label: s.key === "own" ? ownLabel : s.label, value: sales[s.key], color: dark ? s.dark : s.light }));
   return (
     <Card className="min-w-0">
       <CardContent className="p-4 md:p-5">
@@ -355,6 +366,7 @@ function SourcesDonut({ sales, prevTotal, compare }: { sales: Dashboard["current
 
 function EarningsCard({ d, money }: { d: Dashboard; money: { exact: (c: number) => string } }) {
   const p = d.payouts;
+  if (!p) return null;
   const paidShare = p.totalCents > 0 ? (p.paidCents / p.totalCents) * 100 : 0;
   return (
     <Card className="min-w-0">
@@ -503,28 +515,36 @@ function ViewSourcesCard({ sources }: { sources: Dashboard["viewSources"] }) {
 }
 
 function VideoTable({ d, money }: { d: Dashboard; money: { exact: (c: number) => string } }) {
+  const copy = COPY[d.audience ?? "creator"];
+  const isPublisher = d.audience === "publisher";
+  const showMaker = d.audience !== "creator";
   if (d.videos.length === 0) {
     return (
       <Card>
         <CardContent className="p-6 text-center text-sm text-muted-foreground">
-          {d.category ? `No ${CATEGORY_LABEL[d.category] ?? d.category} videos in this period.` : "No videos in this period yet. Publish a video to see its numbers here."}
+          {d.category ? `No ${CATEGORY_LABEL[d.category] ?? d.category} videos in this period.` : copy.empty}
         </CardContent>
       </Card>
     );
   }
+  // A Publisher's sales are all their own, so there is nothing to split.
   const salesCell = (s: Dashboard["videos"][number]["sales"]) =>
-    s.total === 0 ? <span className="text-muted-foreground">0</span> : (
-      <span title={`Your audience ${s.own}, Publishers ${s.publisher}, brand reposts ${s.brand}`}>
+    s.total === 0 ? <span className="text-muted-foreground">0</span> : isPublisher ? <span>{s.total}</span> : (
+      <span title={`${copy.own} ${s.own}, Publishers ${s.publisher}, brand reposts ${s.brand}`}>
         {s.total}
         <span className="ml-1 text-[11px] text-muted-foreground">({s.own}/{s.publisher}/{s.brand})</span>
       </span>
     );
+  const sub = (v: Dashboard["videos"][number]) => {
+    const cat = v.category ? CATEGORY_LABEL[v.category] ?? v.category : "No category";
+    return showMaker && v.creatorName ? `${v.creatorName} · ${cat}` : cat;
+  };
   return (
     <Card className="min-w-0">
       <CardContent className="p-0">
         <div className="flex items-baseline justify-between px-4 pt-4 md:px-5">
           <p className="text-[12px] font-medium text-muted-foreground">By video</p>
-          <p className="text-[11px] text-muted-foreground">Sales: your audience / Publishers / brand reposts</p>
+          {!isPublisher && <p className="text-[11px] text-muted-foreground">Sales: {copy.ownShort} / Publishers / brand reposts</p>}
         </div>
         {/* Phones: one card per video, stats two by two. */}
         <ul className="mt-3 divide-y md:hidden" data-testid="list-dashboard-videos">
@@ -534,17 +554,17 @@ function VideoTable({ d, money }: { d: Dashboard; money: { exact: (c: number) =>
                 {v.thumbnailUrl ? <img src={v.thumbnailUrl} alt="" className="h-10 w-10 shrink-0 rounded-md object-cover" loading="lazy" /> : <div className="h-10 w-10 shrink-0 rounded-md bg-muted" />}
                 <div className="min-w-0">
                   <p className="truncate text-sm font-medium">{v.title}</p>
-                  <p className="text-[11px] text-muted-foreground">{v.category ? CATEGORY_LABEL[v.category] ?? v.category : "No category"}</p>
+                  <p className="truncate text-[11px] text-muted-foreground">{sub(v)}</p>
                 </div>
               </div>
               <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
                 <div className="flex justify-between"><dt className="text-muted-foreground">Views</dt><dd className="tabular-nums">{num(v.views)}</dd></div>
                 <div className="flex justify-between"><dt className="text-muted-foreground">Clicks</dt><dd className="tabular-nums">{num(v.clicks)}</dd></div>
                 <div className="flex justify-between"><dt className="text-muted-foreground">Avg. view</dt><dd className="tabular-nums">{formatWatchDuration(v.avgViewSeconds)}</dd></div>
-                <div className="flex justify-between"><dt className="text-muted-foreground">Reposts</dt><dd className="tabular-nums">{v.reposts}</dd></div>
+                {!isPublisher && <div className="flex justify-between"><dt className="text-muted-foreground">Reposts</dt><dd className="tabular-nums">{v.reposts}</dd></div>}
                 <div className="flex justify-between"><dt className="text-muted-foreground">Sales</dt><dd className="tabular-nums">{salesCell(v.sales)}</dd></div>
                 <div className="flex justify-between"><dt className="text-muted-foreground">Sales value</dt><dd className="tabular-nums">{money.exact(v.grossCents)}</dd></div>
-                <div className="col-span-2 flex justify-between"><dt className="text-muted-foreground">Your commission</dt><dd className="tabular-nums">{money.exact(v.commissionCents)}</dd></div>
+                <div className="col-span-2 flex justify-between"><dt className="text-muted-foreground">{d.audience === "brand" ? "Commission paid" : "Your commission"}</dt><dd className="tabular-nums">{money.exact(v.commissionCents)}</dd></div>
               </dl>
             </li>
           ))}
@@ -557,10 +577,10 @@ function VideoTable({ d, money }: { d: Dashboard; money: { exact: (c: number) =>
                 <th className="px-3 py-2 text-right font-medium">Views</th>
                 <th className="px-3 py-2 text-right font-medium">Clicks</th>
                 <th className="px-3 py-2 text-right font-medium">Avg. view</th>
-                <th className="px-3 py-2 text-right font-medium">Reposts</th>
+                {!isPublisher && <th className="px-3 py-2 text-right font-medium">Reposts</th>}
                 <th className="px-3 py-2 text-right font-medium">Sales</th>
                 <th className="px-3 py-2 text-right font-medium">Sales value</th>
-                <th className="px-5 py-2 text-right font-medium">Commission</th>
+                <th className="px-5 py-2 text-right font-medium">{d.audience === "brand" ? "Commission paid" : "Commission"}</th>
               </tr>
             </thead>
             <tbody className="divide-y">
@@ -571,14 +591,14 @@ function VideoTable({ d, money }: { d: Dashboard; money: { exact: (c: number) =>
                       {v.thumbnailUrl ? <img src={v.thumbnailUrl} alt="" className="h-9 w-9 shrink-0 rounded-md object-cover" loading="lazy" /> : <div className="h-9 w-9 shrink-0 rounded-md bg-muted" />}
                       <div className="min-w-0">
                         <p className="truncate font-medium">{v.title}</p>
-                        <p className="text-[11px] text-muted-foreground">{v.category ? CATEGORY_LABEL[v.category] ?? v.category : "No category"}</p>
+                        <p className="truncate text-[11px] text-muted-foreground">{sub(v)}</p>
                       </div>
                     </div>
                   </td>
                   <td className="px-3 py-2.5 text-right tabular-nums">{num(v.views)}</td>
                   <td className="px-3 py-2.5 text-right tabular-nums">{num(v.clicks)}</td>
                   <td className="px-3 py-2.5 text-right tabular-nums">{formatWatchDuration(v.avgViewSeconds)}</td>
-                  <td className="px-3 py-2.5 text-right tabular-nums">{v.reposts}</td>
+                  {!isPublisher && <td className="px-3 py-2.5 text-right tabular-nums">{v.reposts}</td>}
                   <td className="px-3 py-2.5 text-right tabular-nums">{salesCell(v.sales)}</td>
                   <td className="px-3 py-2.5 text-right tabular-nums">{money.exact(v.grossCents)}</td>
                   <td className="px-5 py-2.5 text-right tabular-nums">{money.exact(v.commissionCents)}</td>
@@ -597,7 +617,17 @@ function presetRange(days: number): { from: Date; to: Date } {
   return { from: new Date(to.getTime() - days * DAY), to };
 }
 
+/** The creator's own dashboard (16 Nov 2026). */
 export function CreatorDashboard() {
+  return <PerformanceDashboard audience="creator" />;
+}
+
+/**
+ * The dashboard for any account type (18 Nov 2026): creators and brands see
+ * every repost's results on their videos; Publishers only their own.
+ */
+export function PerformanceDashboard({ audience }: { audience: DashboardAudience }) {
+  const copy = COPY[audience];
   const [preset, setPreset] = useState<Preset>("30d");
   const [range, setRange] = useState(() => presetRange(30));
   const [picked, setPicked] = useState<DateRange | undefined>();
@@ -605,8 +635,8 @@ export function CreatorDashboard() {
   const [category, setCategory] = useState("all");
   const [currency, setCurrency] = useState<DashboardCurrency>("usd");
 
-  const url = `/api/creator/dashboard?${new URLSearchParams({
-    from: range.from.toISOString(), to: range.to.toISOString(), category, currency,
+  const url = `/api/dashboard/performance?${new URLSearchParams({
+    as: audience, from: range.from.toISOString(), to: range.to.toISOString(), category, currency,
   }).toString()}`;
   const { data, isLoading, isError } = useQuery<Dashboard>({ queryKey: [url], placeholderData: (prev) => prev });
   // The server says which currency it used (US dollars if a rate was missing).
@@ -639,7 +669,7 @@ export function CreatorDashboard() {
         <div>
           <h2 id="creator-dashboard-title" className="text-lg font-semibold tracking-tight">Performance</h2>
           <p className="text-sm text-muted-foreground">
-            {data ? `${format(new Date(data.period.from), "d MMM")} to ${format(new Date(new Date(data.period.to).getTime() - 1), "d MMM yyyy")}, averages per video across ${data.videoCount} ${data.videoCount === 1 ? "video" : "videos"}` : "Averages per video for the period you pick"}
+            {data ? `${format(new Date(data.period.from), "d MMM")} to ${format(new Date(new Date(data.period.to).getTime() - 1), "d MMM yyyy")}, averages per video across ${data.videoCount} ${data.videoCount === 1 ? copy.videos.replace(/^videos/, "video") : copy.videos}` : "Averages per video for the period you pick"}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -745,34 +775,60 @@ export function CreatorDashboard() {
             <Metric icon={MousePointerClick} label="Avg. clicks" value={num(c.avg.clicksPerVideo)}
               hint={`Per video, ${num(c.clicks)} in total`}
               current={c.avg.clicksPerVideo} previous={p.avg.clicksPerVideo} compare={compare} testId="stat-avg-clicks" tone={TONES[4]} />
-            <Metric icon={Repeat2} label="Avg. reposts" value={num(c.avg.repostsPerVideo)}
-              hint={`Per video, ${c.repostsByBrand} brand, ${c.repostsByPublisher} Publisher`}
-              current={c.avg.repostsPerVideo} previous={p.avg.repostsPerVideo} compare={compare} testId="stat-avg-reposts" tone={TONES[0]} />
+            <Metric icon={Repeat2} label={audience === "publisher" ? "Videos reposted" : "Avg. reposts"} value={audience === "publisher" ? num(c.reposts) : num(c.avg.repostsPerVideo)}
+              hint={audience === "publisher" ? "New on your pages this period" : `Per video, ${c.repostsByBrand} brand, ${c.repostsByPublisher} Publisher`}
+              current={audience === "publisher" ? c.reposts : c.avg.repostsPerVideo} previous={audience === "publisher" ? p.reposts : p.avg.repostsPerVideo} compare={compare} testId="stat-avg-reposts" tone={TONES[0]} />
             <Metric icon={Target} label="Conversion rate" value={`${c.conversionRate}%`}
               hint="Sales per click"
               current={c.conversionRate} previous={p.conversionRate} compare={compare} testId="stat-conversion-rate" tone={TONES[1]} ring={c.conversionRate} />
             <Metric icon={DollarSign} label="Avg. sales value" value={fmt.exact(c.avg.grossPerVideoCents)}
               hint={c.sales.total > 0 ? `Per video, avg. order ${fmt.exact(c.avg.orderValueCents)}` : "No sales yet in this period"}
               current={c.avg.grossPerVideoCents} previous={p.avg.grossPerVideoCents} compare={compare} testId="stat-avg-gross" tone={TONES[2]} />
-            <Metric icon={Users} label="Avg. audience sales" value={num(c.avg.ownSalesPerVideo)} hint={`Your own audience, ${c.sales.own} in total`}
-              current={c.avg.ownSalesPerVideo} previous={p.avg.ownSalesPerVideo} compare={compare} testId="stat-avg-own-sales" tone={TONES[3]} />
-            <Metric icon={ShoppingBag} label="Avg. Publisher sales" value={num(c.avg.publisherSalesPerVideo)} hint={`From Publishers, ${c.sales.publisher} in total`}
-              current={c.avg.publisherSalesPerVideo} previous={p.avg.publisherSalesPerVideo} compare={compare} testId="stat-avg-publisher-sales" tone={TONES[4]} />
-            <Metric icon={Store} label="Avg. brand sales" value={num(c.avg.brandSalesPerVideo)} hint={`From brand reposts, ${c.sales.brand} in total`}
-              current={c.avg.brandSalesPerVideo} previous={p.avg.brandSalesPerVideo} compare={compare} testId="stat-avg-brand-sales" tone={TONES[0]} />
-            <Metric icon={Wallet} label="Commission earned" value={fmt.exact(c.commissionCents)} hint="Before payout"
+            {audience === "publisher" ? (
+              <>
+                <Metric icon={ShoppingBag} label="Sales" value={num(c.sales.total)} hint="Orders from your pages"
+                  current={c.sales.total} previous={p.sales.total} compare={compare} testId="stat-sales" tone={TONES[3]} />
+                <Metric icon={Store} label="Gross sales value" value={fmt.exact(c.grossCents)}
+                  hint={c.sales.total > 0 ? `From ${c.sales.total} ${c.sales.total === 1 ? "sale" : "sales"}` : "No sales yet in this period"}
+                  current={c.grossCents} previous={p.grossCents} compare={compare} testId="stat-gross" tone={TONES[4]} />
+                <Metric icon={Package} label="Avg. order value" value={fmt.exact(c.avg.orderValueCents)} hint="Per sale"
+                  current={c.avg.orderValueCents} previous={p.avg.orderValueCents} compare={compare} testId="stat-order-value" tone={TONES[0]} />
+              </>
+            ) : (
+              <>
+                <Metric icon={Users} label={copy.ownAvg} value={num(c.avg.ownSalesPerVideo)} hint={`${copy.own}, ${c.sales.own} in total`}
+                  current={c.avg.ownSalesPerVideo} previous={p.avg.ownSalesPerVideo} compare={compare} testId="stat-avg-own-sales" tone={TONES[3]} />
+                <Metric icon={ShoppingBag} label="Avg. Publisher sales" value={num(c.avg.publisherSalesPerVideo)} hint={`From Publishers, ${c.sales.publisher} in total`}
+                  current={c.avg.publisherSalesPerVideo} previous={p.avg.publisherSalesPerVideo} compare={compare} testId="stat-avg-publisher-sales" tone={TONES[4]} />
+                <Metric icon={Store} label="Avg. brand sales" value={num(c.avg.brandSalesPerVideo)} hint={`From brand reposts, ${c.sales.brand} in total`}
+                  current={c.avg.brandSalesPerVideo} previous={p.avg.brandSalesPerVideo} compare={compare} testId="stat-avg-brand-sales" tone={TONES[0]} />
+              </>
+            )}
+            <Metric icon={Wallet} label={copy.commission} value={fmt.exact(c.commissionCents)} hint={copy.commissionHint}
               current={c.commissionCents} previous={p.commissionCents} compare={compare} testId="stat-commission" tone={TONES[1]} />
           </div>
 
-          <div className="grid gap-3 lg:grid-cols-3">
-            <TrendChart series={data.series} bucket={data.period.bucket} money={fmt.whole} />
-            <SourcesDonut sales={c.sales} prevTotal={p.sales.total} compare={compare} />
-          </div>
+          {audience === "publisher" ? (
+            <>
+              <div className="grid gap-3 lg:grid-cols-3">
+                <TrendChart series={data.series} bucket={data.period.bucket} money={fmt.whole} />
+                <TopProductsCard products={data.topProducts} money={fmt} />
+              </div>
+              <ViewSourcesCard sources={data.viewSources} />
+            </>
+          ) : (
+            <>
+              <div className="grid gap-3 lg:grid-cols-3">
+                <TrendChart series={data.series} bucket={data.period.bucket} money={fmt.whole} />
+                <SourcesDonut sales={c.sales} prevTotal={p.sales.total} compare={compare} ownLabel={copy.own} />
+              </div>
 
-          <div className="grid gap-3 lg:grid-cols-2">
-            <TopProductsCard products={data.topProducts} money={fmt} />
-            <ViewSourcesCard sources={data.viewSources} />
-          </div>
+              <div className="grid gap-3 lg:grid-cols-2">
+                <TopProductsCard products={data.topProducts} money={fmt} />
+                <ViewSourcesCard sources={data.viewSources} />
+              </div>
+            </>
+          )}
 
           <EarningsCard d={data} money={fmt} />
           <VideoTable d={data} money={fmt} />

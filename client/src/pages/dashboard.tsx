@@ -4,20 +4,18 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { StatCard } from "@/components/StatCard";
-import { greeting, todayLabel, monthToDateLabel } from "@/lib/greeting";
+import { HomeHighlights } from "@/components/HomeHighlights";
+import { greeting, todayLabel } from "@/lib/greeting";
 import { AffiliateCard } from "@/components/AffiliateCard";
 import { DashboardTabs } from "@/components/DashboardTabs";
 import { AffiliateTable } from "@/components/AffiliateTable";
 import { VideoUploadModal } from "@/components/VideoUploadModal";
 import { CreatorRewardNotification } from "@/components/EarningsNotification";
-import { Eye, DollarSign, MousePointer, Upload, Play, TrendingUp, ArrowRight } from "lucide-react";
+import { Eye, Upload, Play, TrendingUp } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useLocation } from "wouter";
 import type { Video, Brand, User } from "@shared/schema";
-import type { MonthStats } from "@shared/monthStats";
-import { formatStatMoney } from "@/lib/currency";
 
 export default function Dashboard() {
   const [activeTab, setActiveTab] = useState("stats");
@@ -43,12 +41,6 @@ export default function Dashboard() {
 
   const { data: brands = [] } = useQuery<Brand[]>({
     queryKey: ["/api/brands"],
-  });
-
-  // Month to date, from real orders and this creator's own events. The
-  // lifetime /api/analytics/stats is not what a "This month" heading promises.
-  const { data: stats } = useQuery<MonthStats>({
-    queryKey: ["/api/analytics/month"],
   });
 
   const videoMutation = useMutation({
@@ -152,57 +144,11 @@ export default function Dashboard() {
       <DashboardTabs activeTab={activeTab} onTabChange={setActiveTab} />
 
       {activeTab === "stats" && (
-        // A section, not a card holding cards: a quiet heading with the window
-        // the numbers cover, then one framed panel. The money metric leads.
-        <section className="space-y-3" aria-labelledby="stats-heading">
-          <div className="flex items-baseline justify-between gap-3">
-            <h2 id="stats-heading" className="text-base font-semibold tracking-tight">This month</h2>
-            <span className="text-xs text-muted-foreground tabular-nums">{monthToDateLabel()}</span>
-          </div>
-          <div className="stat-panel grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5">
-            {/* Gross sales the creator's videos drove — NOT a Materialized
-                balance. The platform creator commission rate is 0 by default
-                (brands pay creators directly), so this must never be labelled
-                "Revenue" or "Earnings". See server/feeConfig.ts. */}
-            <StatCard
-              hero
-              className="col-span-2 sm:col-span-3 lg:col-span-2"
-              title="Attributed Sales"
-              value={formatStatMoney(stats?.revenue ?? 0, stats?.currency)}
-              subtitle={stats?.orders
-                ? `${stats.orders.toLocaleString()} ${stats.orders === 1 ? "order" : "orders"} your videos led to`
-                : "What your videos sold for the brands in them"}
-              icon={DollarSign}
-              sparkline={stats?.revenueByDay}
-              action={
-                <>
-                  <span className="block">No sales yet this month.</span>
-                  <button type="button" className="stat-card__cta" onClick={() => navigate("/creator/my-videos")} data-testid="button-stat-tag-product">
-                    Tag a brand's product in a video
-                    <ArrowRight className="h-3.5 w-3.5" aria-hidden="true" />
-                  </button>
-                </>
-              }
-            />
-            <StatCard
-              title="Views"
-              value={(stats?.views ?? 0).toLocaleString()}
-              subtitle="Plays across every page your videos are embedded on"
-              icon={Eye}
-            />
-            <StatCard
-              title="Product clicks"
-              value={(stats?.clicks ?? 0).toLocaleString()}
-              subtitle="Taps through to a brand's store"
-              icon={MousePointer}
-            />
-            <StatCard
-              title="Click-through"
-              value={`${(stats?.ctr ?? 0).toFixed(2)}%`}
-              subtitle="Clicks per view"
-              icon={MousePointer}
-            />
-          </div>
+        // This month's views, click-through rate and sales, then the three best
+        // videos (client, 18 Nov 2026: "the most valuable stats are what they
+        // first see when they login"). Same numbers as Analytics.
+        <section className="space-y-3">
+          <HomeHighlights audience="creator" />
           <p className="text-xs text-muted-foreground leading-relaxed" data-testid="text-attributed-sales-note">
             <span className="font-medium text-foreground/80">Attributed Sales</span> is the value your
             videos generated for brands. Your commission is paid to you directly by the brand you work
