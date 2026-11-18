@@ -136,9 +136,7 @@ function Metric({
         {ring !== undefined && <span className="absolute right-4 top-4 hidden sm:block md:right-5 md:top-5"><RateRing pct={ring} /></span>}
         <div className="flex items-start justify-between gap-2">
           <div className={cn("flex min-w-0 items-center gap-2 text-muted-foreground", ring !== undefined && "sm:pr-11")}>
-            <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[color-mix(in_srgb,var(--tl)_12%,transparent)] text-[color:var(--tl)] dark:bg-[color-mix(in_srgb,var(--td)_18%,transparent)] dark:text-[color:var(--td)]">
-              <Icon className="h-3.5 w-3.5" aria-hidden="true" />
-            </span>
+            <Icon className="h-4 w-4 shrink-0 text-[color:var(--tl)] dark:text-[color:var(--td)]" aria-hidden="true" />
             <p className="truncate text-[12px] font-medium">{label}</p>
           </div>
 
