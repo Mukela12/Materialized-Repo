@@ -343,7 +343,7 @@ export interface IStorage {
    * correlated subqueries each to answer it.
    */
   countVoucherRedemptions(voucherId: string): Promise<number>;
-  listVouchers(): Promise<Array<Voucher & { redemptionCount: number; redeemedBy: string | null }>>;
+  listVouchers(): Promise<Array<Voucher & { redemptionCount: number; redeemedBy: string | null; referrerEmail: string | null }>>;
   setVoucherAssignee(id: string, assignedTo: string | null): Promise<boolean>;
   /**
    * Set the partner on one code from the admin table.
@@ -353,6 +353,14 @@ export interface IStorage {
    * fixing one entry or filling them in by hand.
    */
   setVoucherPartner(id: string, partner: string | null): Promise<boolean>;
+  /**
+   * Set (or clear) the partner ACCOUNT credited with a code's sign-ups, after
+   * the code was minted. A partner is usually handed their code before they
+   * have an account, so this cannot only be set at mint time. The credit is
+   * read from the voucher at the moment of each sale (server/partners.ts), so
+   * it covers everyone who already joined with the code.
+   */
+  setVoucherReferrer(id: string, referrerUserId: string | null): Promise<boolean>;
   /** How many vouchers belong to one batch. Used to cap invitation minting. */
   countVouchersInBatch(batchId: string): Promise<number>;
 
@@ -2295,13 +2303,14 @@ export class MemStorage implements IStorage {
     return this.voucherRedemptionsList.filter(r => r.voucherId === voucherId).length;
   }
 
-  async listVouchers(): Promise<Array<Voucher & { redemptionCount: number; redeemedBy: string | null }>> {
+  async listVouchers(): Promise<Array<Voucher & { redemptionCount: number; redeemedBy: string | null; referrerEmail: string | null }>> {
     return Array.from(this.vouchersMap.values()).map(v => {
       const first = this.voucherRedemptionsList.find(r => r.voucherId === v.id);
       return {
         ...v,
         redemptionCount: this.voucherRedemptionsList.filter(r => r.voucherId === v.id).length,
         redeemedBy: first ? (this.users.get(first.userId)?.email ?? null) : null,
+        referrerEmail: (v as any).referrerUserId ? (this.users.get((v as any).referrerUserId)?.email ?? null) : null,
       };
     });
   }
@@ -2375,6 +2384,13 @@ export class MemStorage implements IStorage {
     const v = this.vouchersMap.get(id);
     if (!v) return false;
     (v as any).partner = partner;
+    return true;
+  }
+
+  async setVoucherReferrer(id: string, referrerUserId: string | null): Promise<boolean> {
+    const v = this.vouchersMap.get(id);
+    if (!v) return false;
+    (v as any).referrerUserId = referrerUserId;
     return true;
   }
 
@@ -4441,7 +4457,7 @@ export class DatabaseStorage implements IStorage {
     return row?.n ?? 0;
   }
 
-  async listVouchers(): Promise<Array<Voucher & { redemptionCount: number; redeemedBy: string | null }>> {
+  async listVouchers(): Promise<Array<Voucher & { redemptionCount: number; redeemedBy: string | null; referrerEmail: string | null }>> {
     // NOTE ON `${vouchers}.id` RATHER THAN `${vouchers.id}`
     // Drizzle renders an interpolated column inside a sql`` template UNQUALIFIED
     // — `${vouchers.id}` becomes bare "id". In a subquery whose own FROM has no
@@ -4464,8 +4480,12 @@ export class DatabaseStorage implements IStorage {
         join ${users} u on u.id = vr.user_id
         where vr.voucher_id = ${vouchers}.id
         order by vr.redeemed_at limit 1)`,
+      // The partner account credited with this code's sign-ups, by email, so
+      // the admin table can show and edit it.
+      referrerEmail: sql<string | null>`(
+        select u.email from ${users} u where u.id = ${vouchers}.referrer_user_id)`,
     }).from(vouchers).orderBy(desc(vouchers.createdAt)).limit(1000);
-    return rows.map(r => ({ ...r.v, redemptionCount: r.redemptionCount, redeemedBy: r.redeemedBy }));
+    return rows.map(r => ({ ...r.v, redemptionCount: r.redemptionCount, redeemedBy: r.redeemedBy, referrerEmail: r.referrerEmail }));
   }
 
   /**
@@ -4625,6 +4645,12 @@ export class DatabaseStorage implements IStorage {
   async setVoucherPartner(id: string, partner: string | null): Promise<boolean> {
     const [row] = await db.update(vouchers)
       .set({ partner }).where(eq(vouchers.id, id)).returning({ id: vouchers.id });
+    return !!row;
+  }
+
+  async setVoucherReferrer(id: string, referrerUserId: string | null): Promise<boolean> {
+    const [row] = await db.update(vouchers)
+      .set({ referrerUserId }).where(eq(vouchers.id, id)).returning({ id: vouchers.id });
     return !!row;
   }
 

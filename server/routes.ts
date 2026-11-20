@@ -7070,6 +7070,31 @@ export async function registerRoutes(
   });
 
   /**
+   * Admin: set who is credited with a code's sign-ups, by the partner's
+   * account email, after the code exists (client, 20 Nov 2026: partners are
+   * sent one shared code such as GUSHCLOUD26 before they have an account).
+   * A blank email clears it. The credit is read at the moment of each sale,
+   * so it covers the people who already joined with the code.
+   */
+  app.patch("/api/admin/vouchers/:id/referrer", requireAdmin, async (req, res) => {
+    try {
+      const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
+      let referrerUserId: string | null = null;
+      if (email) {
+        const partner = await storage.getUserByEmail(email);
+        if (!partner) return res.status(400).json({ error: `No account uses ${email} yet. Ask them to sign up first, then add them here.` });
+        referrerUserId = partner.id;
+      }
+      const ok = await storage.setVoucherReferrer(req.params.id, referrerUserId);
+      if (!ok) return res.status(404).json({ error: "Voucher not found" });
+      res.json({ ok: true, referrerEmail: email || null });
+    } catch (error) {
+      console.error("Voucher referrer error:", error);
+      res.status(500).json({ error: "Failed to save" });
+    }
+  });
+
+  /**
    * Admin: revoke. Sets a timestamp rather than deleting — the accounts already
    * created under this voucher keep their access and stay explicable.
    */

@@ -62,6 +62,8 @@ interface VoucherRow {
   creatorBonusMonths?: number | null;
   /** The partner credited with this code's sign-ups. */
   referrerUserId?: string | null;
+  /** That partner's account email, for showing and editing in the table. */
+  referrerEmail?: string | null;
   /** Who actually redeemed it, once someone has. */
   redeemedBy: string | null;
 }
@@ -148,6 +150,22 @@ export function VoucherManager() {
       apiRequest("PATCH", `/api/admin/vouchers/${id}/partner`, { partner }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/admin/vouchers"] }),
     onError: () => toast({ title: "Could not save partner", variant: "destructive" }),
+  });
+
+  /** Who is credited with the code's sign-ups: the partner's account email. */
+  const [referrerReset, setReferrerReset] = useState(0);
+  const setReferrer = useMutation({
+    mutationFn: ({ id, email }: { id: string; email: string }) =>
+      apiRequest("PATCH", `/api/admin/vouchers/${id}/referrer`, { email }),
+    onSuccess: (_b, vars) => {
+      qc.invalidateQueries({ queryKey: ["/api/admin/vouchers"] });
+      toast({ title: vars.email ? "Partner credited" : "Partner credit removed" });
+    },
+    onError: (e: Error) => {
+      // Put the saved value back in the box, so it never shows an email that was refused.
+      setReferrerReset((n) => n + 1);
+      toast({ title: "Could not credit that partner", description: serverMessage(e), variant: "destructive" });
+    },
   });
 
   const revoke = useMutation({
@@ -717,6 +735,22 @@ export function VoucherManager() {
                             if (val !== (v.partner ?? "")) setPartner.mutate({ id: v.id, partner: val });
                           }}
                           data-testid={`input-partner-${v.id}`}
+                        />
+                        {/* Who earns the partner share on these sign-ups. Set here
+                            once the partner has an account, since their code
+                            usually goes out before they sign up. */}
+                        <Input
+                          key={`${v.id}-${v.referrerEmail ?? ""}-${referrerReset}`}
+                          type="email"
+                          className="mt-1 h-7 text-xs"
+                          placeholder="credit to: email"
+                          aria-label={`Partner account credited for ${v.code}`}
+                          defaultValue={v.referrerEmail ?? ""}
+                          onBlur={(e) => {
+                            const val = e.target.value.trim().toLowerCase();
+                            if (val !== (v.referrerEmail ?? "")) setReferrer.mutate({ id: v.id, email: val });
+                          }}
+                          data-testid={`input-referrer-${v.id}`}
                         />
                       </td>
                       <td className="py-2 pr-4 tabular-nums">
