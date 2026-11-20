@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>MTRLZD Partner Guide for creator platforms</title>
+<!--
+  The partner guide sent to creator platforms and agencies (client, 20 Nov 2026:
+  Gushcloud, Faver, Genflick). Build the PDF with:  node docs/partner-guide/build.cjs
+  Everything marked LIVE is in production; the Partner API on page 3 is planned.
+  No codes or secrets belong in this file: a partner's code goes in the email.
+-->
+<style>
+  @font-face { font-family: Aileron; font-weight: 400; src: url("../../client/public/fonts/Aileron/Aileron-Regular.otf"); }
+  @font-face { font-family: Aileron; font-weight: 600; src: url("../../client/public/fonts/Aileron/Aileron-SemiBold.otf"); }
+  @font-face { font-family: Aileron; font-weight: 700; src: url("../../client/public/fonts/Aileron/Aileron-Bold.otf"); }
+  @font-face { font-family: Aileron; font-weight: 900; src: url("../../client/public/fonts/Aileron/Aileron-Heavy.otf"); }
+  @page { size: A4; margin: 0; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body { font-family: Aileron, "Helvetica Neue", Arial, sans-serif; color: #15171c; font-size: 9.6pt; line-height: 1.5; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .page { position: relative; width: 210mm; height: 297mm; overflow: hidden; page-break-after: always; }
+  .page:last-child { page-break-after: auto; }
+  .body { padding: 9mm 18mm 0; }
+  .hero { background: #111318; color: #fff; padding: 9mm 18mm 8mm; }
+  .hero img { height: 9mm; display: block; }
+  .eyebrow { margin-top: 7mm; font-size: 7.6pt; letter-spacing: .22em; color: #9aa0ab; text-transform: uppercase; }
+  .hero h1 { margin: 3mm 0 0; font-size: 21pt; line-height: 1.15; font-weight: 700; letter-spacing: -.01em; }
+  .hero p { margin: 4mm 0 0; max-width: 150mm; font-size: 10.6pt; line-height: 1.5; color: #c9cdd4; }
+  .top { display: flex; justify-content: space-between; align-items: baseline; padding: 9mm 18mm 5mm; border-bottom: .3mm solid #e3e5e9; }
+  .top b { font-weight: 900; letter-spacing: .2em; font-size: 9.5pt; }
+  .top span { font-size: 9pt; color: #6b7280; }
+  h2 { margin: 0 0 3mm; font-size: 13pt; font-weight: 700; letter-spacing: -.005em; }
+  h2 + .lead { margin-top: -1.5mm; }
+  h3 { margin: 5mm 0 2mm; font-size: 9.8pt; font-weight: 700; }
+  p { margin: 0 0 3mm; }
+  .muted { color: #5f6672; }
+  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4mm; }
+  .step { border: .3mm solid #dfe2e7; border-radius: 3.2mm; padding: 4mm 4.2mm 3.6mm; }
+  .step .n { font-size: 17pt; font-weight: 700; color: #2456e6; line-height: 1; }
+  .step p { margin: 2.6mm 0 0; font-size: 9.2pt; line-height: 1.5; }
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; font-size: 7.4pt; letter-spacing: .12em; color: #5f6672; font-weight: 700; text-transform: uppercase; padding: 0 2.5mm 2.4mm; border-bottom: .3mm solid #cfd3da; }
+  td { vertical-align: top; padding: 2.3mm 2.5mm; border-bottom: .25mm solid #e3e5e9; font-size: 9.2pt; line-height: 1.45; }
+  td.k { font-weight: 700; width: 56mm; }
+  td.k small { font-weight: 400; font-size: 9.2pt; }
+  td.s { width: 21mm; }
+  .pill { display: inline-block; font-size: 6.9pt; font-weight: 700; letter-spacing: .1em; border-radius: 1.2mm; padding: .7mm 2.1mm; }
+  .live { background: #dff3e6; color: #17713c; }
+  .next { background: #fbecc8; color: #8a5a00; }
+  .note { margin-top: 4mm; background: #f3f4f6; border-left: 1mm solid #2456e6; border-radius: 0 2mm 2mm 0; padding: 3.4mm 5mm; font-size: 9.2pt; line-height: 1.5; }
+  .note b { font-weight: 700; }
+  pre { margin: 0 0 3mm; background: #111318; color: #e8eaee; border-radius: 2.4mm; padding: 3.6mm 4.5mm; font: 7.7pt/1.5 Menlo, Consolas, monospace; white-space: pre-wrap; word-break: break-word; }
+  code { font: 8.1pt Menlo, Consolas, monospace; background: #eef0f3; border-radius: 1mm; padding: .3mm 1.3mm; }
+  pre code { background: none; padding: 0; font: inherit; }
+  .sec { margin-top: 6.5mm; }
+  .sec h2 .pill { vertical-align: 1mm; margin-left: 2mm; }
+  .list { counter-reset: n; margin: 0; padding: 0; list-style: none; }
+  .list li { counter-increment: n; display: flex; gap: 4mm; padding: 2.3mm 0; border-bottom: .25mm solid #e3e5e9; font-size: 9.2pt; }
+  .list li:first-child { border-top: .25mm solid #e3e5e9; }
+  .list li::before { content: counter(n); font-weight: 700; color: #2456e6; width: 3mm; flex: none; }
+  .foot { position: absolute; left: 18mm; right: 18mm; bottom: 9mm; display: flex; justify-content: space-between; border-top: .3mm solid #e3e5e9; padding-top: 3mm; font-size: 8pt; color: #6b7280; }
+  a { color: inherit; text-decoration: none; }
+</style>
+</head>
+<body>
+
+<!-- ───────────────────────────── Page 1 ───────────────────────────── -->
+<section class="page">
+  <div class="hero">
+    <img src="../../client/public/mtrlzd-wordmark.png" alt="MTRLZD">
+    <div class="eyebrow">Partner Guide · Creator platforms · V2 · November 2026</div>
+    <h1>Bring shoppable video to your creators</h1>
+    <p>Your creators upload a video, tag the products in it and publish it on their own site. Their audience watches and buys without leaving the video.</p>
+  </div>
+  <div class="body">
+    <h2>How it works</h2>
+    <div class="steps">
+      <div class="step"><div class="n">1</div><p>You share one partner code, or a sign-up link with it filled in. Each creator gets 30 days free, with no card.</p></div>
+      <div class="step"><div class="n">2</div><p>The creator uploads a video, tags a brand's products as they appear, and publishes the player on their own site.</p></div>
+      <div class="step"><div class="n">3</div><p>Viewers buy inside the video. Each account that joins with your code is credited to you, and you see its sales.</p></div>
+    </div>
+
+    <div class="sec">
+      <h2>What's available</h2>
+      <table>
+        <tr><th>Piece</th><th>Status</th><th>What it does</th></tr>
+        <tr><td class="k">Partner code</td><td class="s"><span class="pill live">LIVE</span></td><td>One code for all your creators. Each gets 30 days free from the day they join.</td></tr>
+        <tr><td class="k">Sign-up link and button</td><td class="s"><span class="pill live">LIVE</span></td><td>Opens MTRLZD sign-up with your code filled in. For your platform, emails and messages.</td></tr>
+        <tr><td class="k">Shoppable player link</td><td class="s"><span class="pill live">LIVE</span></td><td>One URL per video. Opens the player with its products and in-video checkout.</td></tr>
+        <tr><td class="k">Web embed <small>and script widget</small></td><td class="s"><span class="pill live">LIVE</span></td><td>The player on a creator's own website, blog or store, or on a page of yours.</td></tr>
+        <tr><td class="k">Tracking codes</td><td class="s"><span class="pill live">LIVE</span></td><td>Credit each link's views, product clicks and sales to the right page or campaign.</td></tr>
+        <tr><td class="k">Partner sales page</td><td class="s"><span class="pill live">LIVE</span></td><td>The accounts you brought in, every sale you earned on and how it was split.</td></tr>
+        <tr><td class="k">Partner API <small>and the "Connect MTRLZD" plugin</small></td><td class="s"><span class="pill next">NEXT</span></td><td>Creators connect MTRLZD inside your platform and manage their videos there. See page 4.</td></tr>
+      </table>
+    </div>
+
+    <div class="note"><b>How the money moves.</b> Checkout happens inside the player. MTRLZD takes 100% of the payment through Stripe, and in the same moment Stripe sends the brand its 85%. MTRLZD's 15% covers the card fee and pays the creators, publishers and partners on the sale, so your partner share never comes out of the creator's or the brand's money.</div>
+  </div>
+  <div class="foot"><span>MTRLZD · www.mtrlzd.com</span><span>Partner Guide for creator platforms v2</span><span>1 / 4</span></div>
+</section>
+
+<!-- ───────────────────────────── Page 2 ───────────────────────────── -->
+<section class="page">
+  <div class="top"><b>MTRLZD</b><span>Live today · no API key needed</span></div>
+  <div class="body" style="padding-top:8mm">
+    <h2>1. Your partner code <span class="pill live">LIVE</span></h2>
+    <p class="lead">Your code is in the email this guide came with. A creator types it into the voucher box at sign-up, or you send the link below and it is filled in for them.</p>
+    <pre><code>https://www.mtrlzd.com/register?code={yourCode}&amp;role=creator</code></pre>
+    <table>
+      <tr><th>What your creator gets</th><th>How it works</th></tr>
+      <tr><td class="k">30 days free</td><td>Counted from the day they join. No card is asked for during the free period.</td></tr>
+      <tr><td class="k">A Creator account</td><td>The code only works for Creator sign-ups. Typing it with or without capitals, spaces or dashes works.</td></tr>
+      <tr><td class="k">A clear answer</td><td>If the code is mistyped, used up or expired, sign-up says so before the account is made.</td></tr>
+    </table>
+
+    <div class="sec">
+      <h2>2. A "Join MTRLZD" button for your platform <span class="pill live">LIVE</span></h2>
+      <p class="lead">Paste this into a dashboard page, a help article or an email. Change the colours to match your brand.</p>
+<pre><code>&lt;a href="https://www.mtrlzd.com/register?code={yourCode}&amp;role=creator"
+   target="_blank" rel="noopener"
+   style="display:inline-block;padding:12px 26px;background:#111;color:#fff;
+          border-radius:999px;font:600 15px Arial,sans-serif;text-decoration:none"&gt;
+  Make your videos shoppable
+&lt;/a&gt;</code></pre>
+    </div>
+
+    <div class="sec">
+      <h2>3. What your creators do <span class="pill live">LIVE</span></h2>
+      <ol class="list">
+        <li><span><b>Upload a video.</b> A short guide opens the first time they sign in.</span></li>
+        <li><span><b>Tag a brand's products</b> at the moment they appear. If the brand is not on MTRLZD yet, the creator invites it.</span></li>
+        <li><span><b>Publish.</b> They copy the embed code onto their own site, or share the player link in a newsletter or link in bio.</span></li>
+      </ol>
+    </div>
+
+    <div class="sec">
+      <h2>4. Your partner sales page <span class="pill live">LIVE</span></h2>
+      <p class="lead">Sign in to MTRLZD yourself and we switch on your partner status. Your account then has a Partner sales page.</p>
+      <table>
+        <tr><th>You see</th><th>What it shows</th></tr>
+        <tr><td class="k">The accounts you brought in</td><td>Each creator and brand credited to you, the day they joined and the day they stop earning for you.</td></tr>
+        <tr><td class="k">Every sale you earned on</td><td>What the brand, the creator and you each received, and whether your share is held, in the next payout or paid. Exports as a CSV.</td></tr>
+      </table>
+    </div>
+  </div>
+  <div class="foot"><span>MTRLZD · www.mtrlzd.com</span><span>Partner Guide for creator platforms v2</span><span>2 / 4</span></div>
+</section>
+
+<!-- ───────────────────────────── Page 3 ───────────────────────────── -->
+<section class="page">
+  <div class="top"><b>MTRLZD</b><span>Live today · no API key needed</span></div>
+  <div class="body" style="padding-top:8mm">
+    <h2>5. Putting the player on a page <span class="pill live">LIVE</span></h2>
+    <p class="lead">Every published video has a Copy embed code button, so a creator never writes these by hand. They are here for your team, for pages you build yourselves.</p>
+    <table>
+      <tr><th>Part</th><th>Meaning</th></tr>
+      <tr><td class="k" style="width:36mm"><code>{videoId}</code></td><td>The video's ID on MTRLZD.</td></tr>
+      <tr><td class="k"><code>{trackingCode}</code></td><td>Credits the views, product clicks and sales on that visit to one page or campaign. Without it, the video's own default code is used.</td></tr>
+    </table>
+
+    <h3>Shoppable player link</h3>
+    <pre><code>https://www.mtrlzd.com/embed/{videoId}?utm={trackingCode}</code></pre>
+    <p class="muted">Try a live example: www.mtrlzd.com/embed/830068a4-1a47-4a1e-85ff-3f8215939c08</p>
+
+    <h3>Web embed</h3>
+<pre><code>&lt;iframe src="https://www.mtrlzd.com/embed/{videoId}?utm={trackingCode}"
+  width="100%" height="450" frameborder="0" allowfullscreen
+  allow="autoplay; encrypted-media; picture-in-picture"&gt;&lt;/iframe&gt;</code></pre>
+
+    <h3>Script widget</h3>
+    <p>The video with a row of its products under it, drawn into the page by one script tag.</p>
+<pre><code>&lt;div id="vc-widget-{videoId}"&gt;&lt;/div&gt;
+&lt;script src="https://www.mtrlzd.com/embed/{videoId}/widget.js?utm={trackingCode}" async&gt;&lt;/script&gt;</code></pre>
+
+    <h3>Playlist embed</h3>
+    <p>A curated set of shoppable videos on one page.</p>
+<pre><code>&lt;div data-playlist="{playlistId}"&gt;&lt;/div&gt;
+&lt;script src="https://www.mtrlzd.com/embed/playlist.js" async&gt;&lt;/script&gt;</code></pre>
+
+    <div class="sec">
+      <h2>6. Your tools in the Creator Toolkit <span class="pill live">LIVE</span></h2>
+      <p>The creator homepage on MTRLZD has a Creator Toolkit: cards that introduce partner tools with a short video, a sign-up link and an optional voucher code. Every click on a card is counted, so we can show you the traffic we send. Send us your referral link and your API docs, and we'll review how to connect them.</p>
+    </div>
+  </div>
+  <div class="foot"><span>MTRLZD · www.mtrlzd.com</span><span>Partner Guide for creator platforms v2</span><span>3 / 4</span></div>
+</section>
+
+<!-- ───────────────────────────── Page 4 ───────────────────────────── -->
+<section class="page">
+  <div class="top"><b>MTRLZD</b><span>Next · Partner API</span></div>
+  <div class="body" style="padding-top:8mm">
+    <h2>The "Connect MTRLZD" plugin <span class="pill next">NEXT</span></h2>
+    <p>The Partner API lets a creator connect their MTRLZD account inside your platform once, then see their shoppable videos, copy a player link and read their results without leaving your product. This is the planned shape, shared so your team can review it early. It is not live yet, and we'll finalise it with your feedback.</p>
+
+    <h3>Connecting an account</h3>
+    <p>Your creator taps "Connect MTRLZD", signs in and approves the connection. Your platform receives a key for that account and the creator can revoke it at any time. Account keys already exist in MTRLZD's settings and will be the credential the API accepts.</p>
+
+    <h3>Planned endpoints</h3>
+    <table>
+      <tr><th>Request</th><th>Returns</th></tr>
+      <tr><td style="width:80mm"><code>GET /api/partner/v1/videos</code></td><td>The account's published videos: title, cover image, player link.</td></tr>
+      <tr><td><code>GET /api/partner/v1/videos/{videoId}</code></td><td>One video with its products and its embed code.</td></tr>
+      <tr><td><code>POST /api/partner/v1/campaigns</code></td><td>A tracking code for one of your pages or campaigns.</td></tr>
+      <tr><td><code>GET /api/partner/v1/campaigns/{code}/stats</code></td><td>Views, product clicks, orders and sales for that code.</td></tr>
+      <tr><td>Webhook <code>order.completed</code></td><td>A notice to your platform each time a viewer buys.</td></tr>
+    </table>
+
+    <h3>Example response (planned)</h3>
+<pre><code>GET /api/partner/v1/videos
+Authorization: Bearer mat_••••••••
+{ "videos": [ {
+    "id": "830068a4-1a47-4a1e-85ff-3f8215939c08",
+    "title": "Street style",
+    "coverImageUrl": "https://.../thumbnail.jpg",
+    "playerUrl": "https://www.mtrlzd.com/embed/830068a4-...?utm=...",
+    "products": 3
+} ] }</code></pre>
+
+    <div class="sec">
+      <h2>Getting started</h2>
+      <ol class="list">
+        <li><span>Share your code or sign-up link with your creators.</span></li>
+        <li><span>Sign in to MTRLZD yourself, so we can switch on your partner status and credit your code's sign-ups to your account.</span></li>
+        <li><span>Tell us which plugin flows matter most, and send your API docs for the Creator Toolkit.</span></li>
+      </ol>
+    </div>
+    <p style="margin-top:6mm"><b>Contact:</b> Bethanie Ashton, MTRLZD · contact@mtrlzd.com · www.mtrlzd.com</p>
+  </div>
+  <div class="foot"><span>MTRLZD · www.mtrlzd.com</span><span>Partner Guide for creator platforms v2</span><span>4 / 4</span></div>
+</section>
+</body>
+</html>
