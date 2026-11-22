@@ -269,10 +269,13 @@ describe("partner limits (client, 26 Oct 2026)", () => {
     delete process.env.PARTNER_REFERRAL_DAYS;
   });
 
-  it("only pay a partner whose own account is active", () => {
+  // Client, 22 Nov 2026: a partner's own plan no longer decides it. They earn
+  // while their partner status is on, and it goes off after 60 days of no activity.
+  it("only pay a partner whose partner status is on, whatever their own plan", () => {
     const src = readFileSync(join(__dirname, "../../server/partners.ts"), "utf8");
-    expect(src).toMatch(/s\.status in \('active', 'trialing'\)/);
-    expect(src).toMatch(/u\.free_access and \(u\.free_access_until is null or u\.free_access_until > \$\{now\}\)/);
+    const deals = src.slice(src.indexOf("const deals = await db.execute"), src.indexOf("const out: Array<{ userId: string; pct: number }>"));
+    expect(deals).toMatch(/and ps\.deactivated_at is null/);
+    expect(deals).not.toMatch(/brand_subscriptions|free_access/);
   });
 
   it("give Paris creators their extra 5% for 3 months", () => {

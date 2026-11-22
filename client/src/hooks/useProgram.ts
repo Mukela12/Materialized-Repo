@@ -7,6 +7,8 @@ export interface ProgramMe {
   senderName?: string;
   /** Has a partner commission deal (pages/partner-sales.tsx). */
   partner?: boolean;
+  /** Their share of the sales of the accounts they brought in, e.g. 2. */
+  partnerPct?: number | null;
   seats?: Record<"brand" | "creator" | "publisher", { limit: number; sent: number; remaining: number; offer: string | null; problem: string | null }>;
   defaultSubject?: string;
   defaultMessage?: string;

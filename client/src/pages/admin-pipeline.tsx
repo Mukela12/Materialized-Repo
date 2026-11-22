@@ -7,6 +7,7 @@ import { useTableControls, type SortDir } from "@/hooks/useTableControls";
 import { exportToCsv } from "@/lib/exportCsv";
 import { TableToolbar } from "@/components/TableToolbar";
 import { VoucherManager } from "@/components/VoucherManager";
+import { AdminCrm } from "@/components/AdminCrm";
 import { ProgramSendersAdmin } from "@/components/ProgramSendersAdmin";
 import { AdminActivity } from "@/components/AdminActivity";
 import { AdminToolkit } from "@/components/AdminToolkit";
@@ -1688,7 +1689,7 @@ export default function AdminPipeline() {
    * someone where the vouchers are meant "go to /admin, then find the seventh
    * tab" — and a reload dropped them back on Overview mid-task.
    */
-  const TABS = ["overview", "activity", "users", "videos", "brands", "pipeline", "money", "vouchers", "emails", "homepage"] as const;
+  const TABS = ["overview", "activity", "crm", "users", "videos", "brands", "pipeline", "money", "vouchers", "emails", "homepage"] as const;
   type AdminTab = (typeof TABS)[number];
   const tabFromUrl = () => {
     const t = new URLSearchParams(window.location.search).get("tab") as AdminTab | null;
@@ -1802,7 +1803,7 @@ export default function AdminPipeline() {
                   : "border-transparent text-muted-foreground hover:text-foreground"
               }`}
             >
-              {tab === "money" ? "Money Ops" : tab}
+              {tab === "money" ? "Money Ops" : tab === "crm" ? "CRM" : tab}
             </button>
           ))}
         </div>
@@ -1811,6 +1812,7 @@ export default function AdminPipeline() {
         {activeTab === "activity" && <AdminActivity />}
         {activeTab === "homepage" && <AdminToolkit />}
         {activeTab === "emails" && <AdminJourneys />}
+        {activeTab === "crm" && <AdminCrm />}
         {activeTab === "users" && <AdminUsers />}
         {activeTab === "videos" && <AdminVideos />}
         {activeTab === "brands" && <AdminBrands />}

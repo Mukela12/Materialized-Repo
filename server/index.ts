@@ -558,6 +558,22 @@ function startScheduler() {
           return runInviteCampaigns({ now: new Date(), origin: process.env.APP_URL || "https://www.mtrlzd.com", send: sendCampaignInvites });
         },
       },
+      // Partner inactivity (server/crm.ts): each morning, switch off the
+      // partner status of any partner with no activity for 60 days. Admin
+      // sees who in the CRM; nothing is emailed to the partner.
+      {
+        name: "partner-inactivity",
+        schedule: process.env.PARTNER_INACTIVITY_CRON || "30 3 * * *",
+        run: async () => {
+          const { sweepPartnerInactivity } = await import("./crm");
+          const off = await sweepPartnerInactivity(new Date());
+          return {
+            status: "success" as const,
+            items: off.length,
+            detail: off.length ? `Partner status switched off: ${off.map((p) => p.name).join(", ")}` : "No partner reached 60 days without activity",
+          };
+        },
+      },
       // The Monday and Thursday snapshot for the client (server/snapshotReport.ts).
       {
         name: "snapshot-report",

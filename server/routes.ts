@@ -2628,6 +2628,7 @@ export async function registerRoutes(
       enabled: true, programName: ctx.sender.programName, senderName: ctx.senderName,
       // Has a partner commission deal, so the Partner sales page applies.
       partner: ctx.sender.commissionPct != null,
+      partnerPct: ctx.sender.commissionPct != null ? Number(ctx.sender.commissionPct) : null,
       seats: { brand: seat("brand"), creator: seat("creator"), publisher: seat("publisher") },
       defaultSubject: DEFAULT_SUBJECT, defaultMessage: DEFAULT_MESSAGE, maxRecipients: MAX_RECIPIENTS,
       emailReady: isEmailConfigured(),
@@ -6334,6 +6335,53 @@ export async function registerRoutes(
   });
 
   // Admin user list
+  // ==================== ADMIN CRM (client, 22 Nov 2026) ====================
+  // One table of every account with its type, status, admin notes, free
+  // trial, videos, views, sales and revenue, and each partner's activity.
+
+  app.get("/api/admin/crm", requireAdmin, async (_req, res) => {
+    try {
+      const { crmReport } = await import("./crm");
+      res.json(await crmReport());
+    } catch (error) {
+      console.error("Admin CRM error:", error);
+      res.status(500).json({ error: "Failed to load the CRM" });
+    }
+  });
+
+  /** Admin: the company, the notes and Archived on one account. */
+  app.patch("/api/admin/crm/:userId", requireAdmin, async (req, res) => {
+    try {
+      const body = req.body ?? {};
+      const fields: { company?: string; notes?: string; archived?: boolean } = {};
+      if (typeof body.company === "string") fields.company = body.company.slice(0, 120);
+      if (typeof body.notes === "string") fields.notes = body.notes.slice(0, 4000);
+      if (typeof body.archived === "boolean") fields.archived = body.archived;
+      if (Object.keys(fields).length === 0) return res.status(400).json({ error: "Nothing to save" });
+      const { setCrmFields } = await import("./crm");
+      const ok = await setCrmFields(req.params.userId, fields);
+      if (!ok) return res.status(404).json({ error: "Account not found" });
+      res.json({ ok: true });
+    } catch (error) {
+      console.error("Admin CRM save error:", error);
+      res.status(500).json({ error: "Failed to save" });
+    }
+  });
+
+  /** Admin: switch a partner's status on (restarts the 60 days) or off. */
+  app.post("/api/admin/crm/:userId/partner-status", requireAdmin, async (req, res) => {
+    try {
+      if (typeof req.body?.active !== "boolean") return res.status(400).json({ error: "active must be true or false" });
+      const { setPartnerActive } = await import("./crm");
+      const ok = await setPartnerActive(req.params.userId, req.body.active);
+      if (!ok) return res.status(404).json({ error: req.body.active ? "This account has no partner deal" : "This account has no partner deal, or its partner status is already off" });
+      res.json({ ok: true, active: req.body.active });
+    } catch (error) {
+      console.error("Admin partner status error:", error);
+      res.status(500).json({ error: "Failed to save" });
+    }
+  });
+
   app.get("/api/admin/users", requireAdmin, async (req, res) => {
     try {
       const { db } = await import("./db");

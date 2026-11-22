@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { HomeHighlights } from "@/components/HomeHighlights";
+import { PartnerPayouts } from "@/components/PartnerPayouts";
 import { CreatorToolkit } from "@/components/CreatorToolkit";
 import { greeting, todayLabel } from "@/lib/greeting";
 import { AffiliateCard } from "@/components/AffiliateCard";
@@ -153,6 +154,7 @@ export default function Dashboard() {
         // first see when they login"). Same numbers as Analytics.
         <section className="space-y-3">
           <HomeHighlights audience="creator" />
+          <PartnerPayouts role="creator" />
           <p className="text-xs text-muted-foreground leading-relaxed" data-testid="text-attributed-sales-note">
             <span className="font-medium text-foreground/80">Attributed Sales</span> is the value your
             videos generated for brands. Your commission is paid to you directly by the brand you work

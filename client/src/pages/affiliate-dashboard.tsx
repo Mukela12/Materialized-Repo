@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { HomeHighlights } from "@/components/HomeHighlights";
+import { PartnerPayouts } from "@/components/PartnerPayouts";
 import { greeting, todayLabel } from "@/lib/greeting";
 import { 
   DollarSign, 
@@ -84,6 +85,7 @@ export default function AffiliateDashboard() {
       {/* This month's views, click-through rate and earnings from their own
           pages only, then their three best videos (client, 18 Nov 2026). */}
       <HomeHighlights audience="publisher" />
+      <PartnerPayouts role="affiliate" />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card>

@@ -99,7 +99,7 @@ export default function PartnerSales() {
         <div className="rounded-xl border border-amber-300/60 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200" data-testid="partner-deal-notice">
           {deal.pct == null
             ? "You don't have an active partner commission right now, so new sales won't earn you a share. Talk to the MTRLZD team to set one up."
-            : "Your MTRLZD account isn't active, so new sales won't earn you a share until it is. Your referrals stay on MTRLZD either way."}
+            : "Your partner status is paused because there has been no activity for 60 days, so new sales won't earn you a share until it is switched back on. Talk to the MTRLZD team to restart it. Your referrals stay on MTRLZD either way."}
         </div>
       )}
 

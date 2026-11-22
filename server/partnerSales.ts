@@ -210,10 +210,8 @@ async function saleRows(partnerId: string) {
 
 export async function partnerSalesReport(partnerId: string, feePct: number, now = new Date()): Promise<PartnerSalesReport> {
   const [dealRow] = (await db.execute(sql`
-    select ps.commission_pct, ps.commission_until,
-      (exists (select 1 from brand_subscriptions s where s.user_id = u.id and s.status in ('active', 'trialing'))
-        or (u.free_access and (u.free_access_until is null or u.free_access_until > ${now}))) as active
-    from program_senders ps join users u on u.id = ps.user_id where ps.user_id = ${partnerId}`)).rows as any[];
+    select ps.commission_pct, ps.commission_until, (ps.deactivated_at is null) as active
+    from program_senders ps where ps.user_id = ${partnerId}`)).rows as any[];
 
   const refRows = await referralRows(partnerId);
   const referrals = refRows.map((r) => shapeReferral(r, now));
@@ -230,6 +228,7 @@ export async function partnerSalesReport(partnerId: string, feePct: number, now 
       // The % as it would apply now; null when there is no deal or it has ended.
       pct: dealRow ? activeDealPct(dealRow, now) : null,
       until: dealRow?.commission_until ? iso(dealRow.commission_until) : null,
+      // Partner status on: not switched off for inactivity (server/crm.ts).
       accountActive: !!dealRow?.active,
       referralDays: partnerReferralDays(),
       holdDays: commissionHoldDays(),

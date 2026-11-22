@@ -6,6 +6,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { HomeHighlights } from "@/components/HomeHighlights";
+import { PartnerPayouts } from "@/components/PartnerPayouts";
 import { CreatorPassesLeft } from "@/components/CreatorPassesLeft";
 import { greeting, todayLabel } from "@/lib/greeting";
 import { BrandDashboardTabs } from "@/components/BrandDashboardTabs";
@@ -182,7 +183,11 @@ export default function BrandDashboard() {
       {activeTab === "stats" && (
         // This month's views, click-through rate and affiliate sales, then the
         // three best videos with the brand's products (client, 18 Nov 2026).
-        <HomeHighlights audience="brand" />
+        // A partner also sees their partner payouts here (client, 22 Nov 2026).
+        <div className="space-y-4">
+          <HomeHighlights audience="brand" />
+          <PartnerPayouts role="brand" />
+        </div>
       )}
 
       {activeTab === "stats" && (

@@ -17,13 +17,15 @@
  * Each partner is paid once per sale, never on a sale of their own, and the
  * total never eats into the reserve (server/feeConfig.ts computeSaleSplit).
  *
- * Two limits (client, 26 Oct 2026):
- *   - a partner earns only while their own MTRLZD account is active (a plan,
- *     a trial or free access). "If they unsubscribe, their referrals remain on
- *     mtrlzd as independent users and the Partner's fee is absorbed by mtrlzd."
+ * Two limits:
+ *   - a partner earns only while their partner status is on. It is switched
+ *     off after 60 days with no activity and back on by admin (client, 22 Nov
+ *     2026; server/crm.ts). Before that the rule was "while their own MTRLZD
+ *     account is active" (26 Oct 2026); the client told partners they earn
+ *     whether their own account is live or not, so their plan no longer counts.
  *   - on each referral for 90 days from when it joined, counted from the
  *     account the partner brought in (a brand's creators count from the
- *     brand), "to encourage their continued brand referrals".
+ *     brand), "to encourage their continued brand referrals" (26 Oct 2026).
  */
 import { sql } from "drizzle-orm";
 import { db } from "./db";
@@ -108,15 +110,13 @@ export async function partnersForSale(args: {
   }
   if (ids.size === 0) return [];
   const list = Array.from(ids);
-  // Only partners whose own account is active: a plan (or its trial), or free access.
+  // Only partners whose partner status is on. It is switched off after 60
+  // days with no activity (server/crm.ts) and back on by admin. A partner's
+  // own plan no longer matters (client, 22 Nov 2026).
   const deals = await db.execute(sql`
     select ps.user_id, ps.commission_pct, ps.commission_until from program_senders ps
-    join users u on u.id = ps.user_id
     where ps.user_id in (${sql.join(list.map((id) => sql`${id}`), sql`, `)})
-      and (
-        exists (select 1 from brand_subscriptions s where s.user_id = u.id and s.status in ('active', 'trialing'))
-        or (u.free_access and (u.free_access_until is null or u.free_access_until > ${now}))
-      )`);
+      and ps.deactivated_at is null`);
   const out: Array<{ userId: string; pct: number }> = [];
   for (const d of deals.rows as Array<{ user_id: string; commission_pct: string | null; commission_until: string | null }>) {
     const pct = activeDealPct(d, now);
