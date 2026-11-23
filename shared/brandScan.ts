@@ -141,7 +141,8 @@ const plain = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
  * account's uploaded fonts first, then a built-in. null when it is neither.
  *
  * "Montserrat Bold" and "Playfair Display Regular" match their family: a
- * guideline names the weight, the carousel sets its own.
+ * guideline names the weight, the carousel sets its own. An upload still named
+ * after its file ("canela-deck-regular") matches the family it starts with.
  */
 export function matchFont(name: unknown, uploaded: UploadedFont[] = []): { key: string; label: string } | null {
   if (typeof name !== "string" || !plain(name)) return null;
@@ -154,7 +155,12 @@ export function matchFont(name: unknown, uploaded: UploadedFont[] = []): { key: 
   if (exact) return exact;
   // Longest family first, so "DM Sans" is not taken for a font that merely starts "DM".
   const byLength = [...candidates].sort((a, b) => plain(b.label).length - plain(a.label).length);
-  return byLength.find((c) => plain(c.label).length >= 4 && wanted.startsWith(plain(c.label))) ?? null;
+  const family = byLength.find((c) => plain(c.label).length >= 4 && wanted.startsWith(plain(c.label)));
+  if (family) return family;
+  // The other way round: an upload keeps its file name unless it is renamed,
+  // so the guideline's "Canela" has to find "canela-deck-regular".
+  if (wanted.length < 4) return null;
+  return candidates.find((c) => plain(c.label).startsWith(wanted)) ?? null;
 }
 
 /** Lay a scan over the current settings. See the file header for the rules. */

@@ -2782,13 +2782,13 @@ export class MemStorage implements IStorage {
   }
 
   async getBrandFonts(userId: string): Promise<any[]> {
-    return Array.from(this.brandFontsMap.values()).filter((f: any) => f.userId === userId);
+    return Array.from(this.brandFontsMap.values()).filter((f: any) => f.userId === userId && !f.removedAt);
   }
 
   async deleteBrandFont(id: string, userId: string): Promise<boolean> {
     const f: any = this.brandFontsMap.get(id);
-    if (!f || f.userId !== userId) return false;
-    this.brandFontsMap.delete(id);
+    if (!f || f.userId !== userId || f.removedAt) return false;
+    f.removedAt = new Date();
     return true;
   }
 
@@ -4939,15 +4939,21 @@ export class DatabaseStorage implements IStorage {
 
   async getBrandFonts(userId: string): Promise<BrandFont[]> {
     return db.select().from(brandFonts)
-      .where(eq(brandFonts.userId, userId))
+      .where(and(eq(brandFonts.userId, userId), isNull(brandFonts.removedAt)))
       .orderBy(desc(brandFonts.createdAt));
   }
 
+  /**
+   * Take a font out of the account's list. The row stays, marked removed, so
+   * getBrandFontById still finds it for a video that already uses it (0058):
+   * deleting the row sent published videos back to the fallback font.
+   */
   async deleteBrandFont(id: string, userId: string): Promise<boolean> {
     // userId in the predicate, not checked beforehand — one statement, so there
-    // is no window between the check and the delete.
-    const rows = await db.delete(brandFonts)
-      .where(and(eq(brandFonts.id, id), eq(brandFonts.userId, userId)))
+    // is no window between the check and the change.
+    const rows = await db.update(brandFonts)
+      .set({ removedAt: new Date() })
+      .where(and(eq(brandFonts.id, id), eq(brandFonts.userId, userId), isNull(brandFonts.removedAt)))
       .returning({ id: brandFonts.id });
     return rows.length > 0;
   }

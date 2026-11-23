@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
-import { useBrandFontOptions } from "@/components/BrandFontUpload";
+import { useBrandFonts } from "@/components/BrandFontUpload";
+import { isCustomFontKey } from "@shared/brandFonts";
 import { CarouselMockup } from "@/components/CarouselMockup";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
@@ -97,7 +98,12 @@ export function ProductCarouselEditor({
   // So the hover color can actually be judged in the preview.
   const [hovered, setHovered] = useState(false);
   // The creator's uploaded typefaces, offered alongside the built-ins.
-  const brandFonts = useBrandFontOptions();
+  const { data: brandFontRows = [], isSuccess: brandFontsLoaded } = useBrandFonts();
+  const brandFonts = brandFontRows.map((f) => ({ value: f.key, label: f.label }));
+  // A font taken out of the account's list is still drawn on the videos that
+  // use it, so its picker says so instead of going blank.
+  const isRemovedFont = (value: string) =>
+    brandFontsLoaded && isCustomFontKey(value) && !brandFonts.some((f) => f.value === value);
   const [videoLoading, setVideoLoading] = useState(true);
 
   // "Custom" button text. `customLabel` is whether the Custom box is open and
@@ -483,9 +489,12 @@ export function ProductCarouselEditor({
                   )}
                   {brandFonts.map((font) => (
                     <SelectItem key={font.value} value={font.value} className="text-xs">
-                      {font.label}
+                      <span style={{ fontFamily: getFontFamily(font.value) }}>{font.label}</span>
                     </SelectItem>
                   ))}
+                  {isRemovedFont(settings.titleFont) && (
+                    <SelectItem value={settings.titleFont} className="text-xs">A font you removed</SelectItem>
+                  )}
                 </SelectContent>
               </Select>
             </div>
@@ -519,9 +528,12 @@ export function ProductCarouselEditor({
                   )}
                   {brandFonts.map((font) => (
                     <SelectItem key={font.value} value={font.value} className="text-xs">
-                      {font.label}
+                      <span style={{ fontFamily: getFontFamily(font.value) }}>{font.label}</span>
                     </SelectItem>
                   ))}
+                  {isRemovedFont(settings.buttonFont) && (
+                    <SelectItem value={settings.buttonFont} className="text-xs">A font you removed</SelectItem>
+                  )}
                 </SelectContent>
               </Select>
             </div>

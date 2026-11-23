@@ -23,6 +23,7 @@
 // The stacks live in shared/fonts.ts so the server-rendered embed resolves
 // fonts identically. BUILT_IN_FONTS is re-exported unchanged.
 export { BUILT_IN_FONTS } from "@shared/fonts";
+import { fontFaceRule, FONT_FORMATS, type FontFormat } from "@shared/brandFonts";
 import { fontStack as sharedFontStack } from "@shared/fonts";
 
 /**
@@ -92,6 +93,58 @@ export async function ensureGoogleFont(family: string): Promise<boolean> {
   try {
     await (document as any).fonts?.load?.(`16px "${name}"`);
     return Boolean((document as any).fonts?.check?.(`16px "${name}"`));
+  } catch {
+    return false;
+  }
+}
+
+// ── Uploaded fonts (.otf, .ttf, .woff, .woff2) ───────────────────────────────
+
+/** Uploaded fonts this page has already declared, by key. */
+const declaredUploads = new Set<string>();
+
+/**
+ * Tell the browser about an uploaded font, so the app can draw it.
+ *
+ * The embed has always written an @font-face rule for an uploaded font. The app
+ * never did: the font showed in the pickers, the setting saved, the embed was
+ * right, and every preview in the app stayed in the fallback face, which reads
+ * as "my font did not import" (found 23 Nov 2026 by uploading a real .otf).
+ *
+ * This writes the SAME rule the embed writes (shared/brandFonts.ts,
+ * fontFaceRule), so a preview and the published video cannot disagree, and the
+ * same checks apply: the family is the generated key, the file must be https.
+ * The file is fetched when text first uses it, and `swap` repaints that text
+ * once it arrives.
+ */
+export function declareUploadedFont(key: string, fileUrl: string, format: string): boolean {
+  if (declaredUploads.has(key)) return true;
+  if (typeof document === "undefined" || !(format in FONT_FORMATS)) return false;
+  const rule = fontFaceRule(key, fileUrl, format as FontFormat);
+  if (!rule) return false;
+  const style = document.createElement("style");
+  style.setAttribute("data-brand-font", key);
+  style.textContent = rule;
+  document.head.appendChild(style);
+  declaredUploads.add(key);
+  return true;
+}
+
+/**
+ * Can a browser draw this font file?
+ *
+ * The server checks the first bytes, which answers "is this a font file" and
+ * not "is it a font a browser accepts". A file cut short in transfer, or one of
+ * the desktop-only formats that carry a font header, passes that check, is
+ * stored, and then draws nothing. The browser's own loader is the real test,
+ * so it is asked before anything is sent. Where there is no loader to ask, the
+ * answer is yes and the server's check stands alone.
+ */
+export async function fontFileIsUsable(file: Blob): Promise<boolean> {
+  if (typeof FontFace === "undefined") return true;
+  try {
+    await new FontFace("mz-font-check", await file.arrayBuffer()).load();
+    return true;
   } catch {
     return false;
   }

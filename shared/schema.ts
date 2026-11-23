@@ -927,6 +927,8 @@ export const brandFonts = pgTable("brand_fonts", {
   /** Decided by sniffing the bytes, never by the extension or Content-Type. */
   format: text("format").notNull(),
   sizeBytes: integer("size_bytes"),
+  /** Set when the account removes it: gone from their list, kept for videos that use it (0058). */
+  removedAt: timestamp("removed_at"),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
 }, (t) => ({
   userIdx: index("brand_fonts_user_idx").on(t.userId),

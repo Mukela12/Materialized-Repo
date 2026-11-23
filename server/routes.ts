@@ -3573,7 +3573,8 @@ export async function registerRoutes(
        * A published embed may still reference it. Removing the file would break
        * type on a brand's live page the moment someone tidies up their font
        * list — a change made in our app silently damaging somebody else's site.
-       * The row goes; the bytes stay.
+       * The font leaves the account's list; its row (marked removed, 0058) and
+       * its bytes both stay, because the embed finds the file through the row.
        */
       res.json({ ok: true });
     } catch (error) {

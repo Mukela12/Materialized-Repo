@@ -15,7 +15,7 @@
  * was refused and why, rather than a generic failure, because "that .ttf is
  * actually a zip" is not something anyone guesses.
  */
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,7 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Trash2, Upload, Type } from "lucide-react";
 import { MAX_FONT_BYTES } from "@shared/brandFonts";
+import { declareUploadedFont, fontFileIsUsable, fontStack } from "@/lib/fonts";
 
 interface BrandFontRow {
   id: string;
@@ -41,9 +42,7 @@ export function BrandFontUpload() {
   const fileRef = useRef<HTMLInputElement>(null);
   const [label, setLabel] = useState("");
 
-  const { data: fonts = [], isLoading } = useQuery<BrandFontRow[]>({
-    queryKey: ["/api/brand-fonts"],
-  });
+  const { data: fonts = [], isLoading } = useBrandFonts();
 
   const upload = useMutation({
     mutationFn: async (file: File) => {
@@ -91,12 +90,29 @@ export function BrandFontUpload() {
     },
   });
 
-  const pick = (file: File | undefined) => {
+  const [checking, setChecking] = useState(false);
+
+  const pick = async (file: File | undefined) => {
     if (!file) return;
+    // So the same file can be chosen again after it is fixed.
+    if (fileRef.current) fileRef.current.value = "";
     if (file.size > MAX_FONT_BYTES) {
       toast({
         title: "That font is too large",
         description: `${(file.size / 1024 / 1024).toFixed(1)} MB. The limit is 5 MB, because every visitor to your embed downloads it.`,
+        variant: "destructive",
+      });
+      return;
+    }
+    // Asked of the browser before anything is sent: a file can carry a font's
+    // header and still be one no browser will draw (lib/fonts.ts).
+    setChecking(true);
+    const usable = await fontFileIsUsable(file);
+    setChecking(false);
+    if (!usable) {
+      toast({
+        title: `${file.name} can't be used on the web`,
+        description: "A browser could not read it. Export it again as .otf or .ttf, one style per file, or ask for the .woff2.",
         variant: "destructive",
       });
       return;
@@ -141,12 +157,12 @@ export function BrandFontUpload() {
           <Button
             variant="outline"
             className="w-full gap-2"
-            disabled={upload.isPending}
+            disabled={upload.isPending || checking}
             onClick={() => fileRef.current?.click()}
             data-testid="button-upload-font"
           >
             <Upload className="h-4 w-4" />
-            {upload.isPending ? "Uploading…" : "Choose a font file"}
+            {checking ? "Checking…" : upload.isPending ? "Uploading…" : "Choose a font file"}
           </Button>
         </div>
       </div>
@@ -166,7 +182,8 @@ export function BrandFontUpload() {
               <div className="flex items-center gap-2 min-w-0">
                 <Type className="h-4 w-4 shrink-0 text-muted-foreground" />
                 <div className="min-w-0">
-                  <p className="text-sm truncate">{f.label}</p>
+                  {/* Its own name in its own face: the proof it imported. */}
+                  <p className="text-base leading-snug truncate" style={{ fontFamily: fontStack(f.key) }} data-testid={`brand-font-sample-${f.id}`}>{f.label}</p>
                   <p className="text-xs text-muted-foreground">
                     {f.format.toUpperCase()}
                     {f.sizeBytes ? ` · ${(f.sizeBytes / 1024).toFixed(0)} KB` : ""}
@@ -189,8 +206,21 @@ export function BrandFontUpload() {
   );
 }
 
+/**
+ * This account's uploaded fonts, each one declared to the browser so anything
+ * on the page that names it is drawn in it (lib/fonts.ts, declareUploadedFont).
+ */
+export function useBrandFonts() {
+  const query = useQuery<BrandFontRow[]>({ queryKey: ["/api/brand-fonts"] });
+  const fonts = query.data;
+  useEffect(() => {
+    for (const f of fonts ?? []) declareUploadedFont(f.key, f.fileUrl, f.format);
+  }, [fonts]);
+  return query;
+}
+
 /** The uploaded fonts, shaped for a picker that also lists the built-ins. */
 export function useBrandFontOptions() {
-  const { data: fonts = [] } = useQuery<BrandFontRow[]>({ queryKey: ["/api/brand-fonts"] });
+  const { data: fonts = [] } = useBrandFonts();
   return fonts.map((f) => ({ value: f.key, label: f.label }));
 }
