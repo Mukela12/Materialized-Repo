@@ -423,7 +423,8 @@ export const brandKits = pgTable("brand_kits", {
   defaultShowButton: boolean("default_show_button").default(true),
   defaultShowPrice: boolean("default_show_price").default(true),
   defaultShowTitle: boolean("default_show_title").default(true),
-  defaultButtonLabel: buttonLabelEnum("default_button_label").default("BUY NOW"),
+  // Text since 0057: a ready-made label or the account's own, up to 9 characters.
+  defaultButtonLabel: text("default_button_label").default("BUY NOW"),
   defaultPosition: carouselPositionEnum("default_position").default("bottom"),
 
   // ── The rest of the client's styling list (0022) ──────────────────────────
@@ -451,6 +452,12 @@ export const brandKits = pgTable("brand_kits", {
   // 0052: the brand line has its own toggle, and the carousel a width (% of normal).
   defaultShowBrand: boolean("default_show_brand"),
   defaultCarouselWidth: integer("default_carousel_width"),
+  // 0057: the title font and the three text sizes (% of normal). They had
+  // controls and nowhere to be saved.
+  defaultTitleFont: text("default_title_font"),
+  defaultTitleFontSize: integer("default_title_font_size"),
+  defaultPriceFontSize: integer("default_price_font_size"),
+  defaultButtonFontSize: integer("default_button_font_size"),
 
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
   updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`),
@@ -470,7 +477,7 @@ export const videoCarouselOverrides = pgTable("video_carousel_overrides", {
   showButton: boolean("show_button"),
   showPrice: boolean("show_price"),
   showTitle: boolean("show_title"),
-  buttonLabel: buttonLabelEnum("button_label"),
+  buttonLabel: text("button_label"), // text since 0057, as on brand_kits
   buttonFont: text("button_font"),
   buttonColor: text("button_color"),
   buttonTextColor: text("button_text_color"),
@@ -487,6 +494,10 @@ export const videoCarouselOverrides = pgTable("video_carousel_overrides", {
   commerceEnabled: boolean("commerce_enabled"),
   showBrand: boolean("show_brand"),
   carouselWidth: integer("carousel_width"),
+  titleFont: text("title_font"),
+  titleFontSize: integer("title_font_size"),
+  priceFontSize: integer("price_font_size"),
+  buttonFontSize: integer("button_font_size"),
 
   manualProducts: text("manual_products"),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),

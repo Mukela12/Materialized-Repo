@@ -26,7 +26,17 @@ import { isCustomFontKey } from "./brandFonts";
 const FONT_KEYS = FONT_OPTIONS.map((f) => f.value) as readonly string[];
 
 export type CarouselPosition = (typeof CAROUSEL_POSITION_OPTIONS)[number];
-export type ButtonLabel = (typeof BUTTON_LABEL_OPTIONS)[number];
+/** One of the ready-made labels. */
+export type PresetButtonLabel = (typeof BUTTON_LABEL_OPTIONS)[number];
+/**
+ * The text on the buy button: a ready-made label, or the account's own text of
+ * up to BUTTON_LABEL_MAX characters (client, 23 Nov 2026: 'a "Custom" (up to 9
+ * characters) button text'). Always read it through safeButtonLabel.
+ */
+export type ButtonLabel = string;
+
+/** The longest ready-made labels ("PRE ORDER", "APPLY NOW") are nine too. */
+export const BUTTON_LABEL_MAX = 9;
 
 export interface CarouselSettings {
   position: CarouselPosition;
@@ -121,6 +131,9 @@ const SHARED_KEYS = [
   "carouselBackgroundColor", "buttonCornerRadius", "brandTitleColor",
   "productTitleColor", "buttonHoverColor", "buttonOpacity", "commerceEnabled",
   "showBrand", "carouselWidth",
+  // 0057. These four had controls and no column, so they were shown, changed
+  // and dropped on save.
+  "titleFont", "titleFontSize", "priceFontSize", "buttonFontSize",
 ] as const;
 
 /** Keys that only a per-video override carries. */
@@ -248,6 +261,54 @@ export function safeFontKey(value: unknown, fallback: string): string {
   return safeEnum(value, FONT_KEYS, fallback);
 }
 
+/**
+ * Everything that may NOT appear in custom button text. Allowed: digits,
+ * spaces, . ! + - %, and letters (Latin with accents, Greek, Cyrillic, kana,
+ * CJK, Hangul). Written as ranges because the build targets a level without
+ * \p{L}. No quote, bracket, ampersand, slash or backslash is in the set.
+ */
+const NOT_LABEL_TEXT = /[^0-9A-Za-z .!+%\-\u00C0-\u00D6\u00D8-\u00F6\u00F8-\u024F\u0370-\u03FF\u0400-\u04FF\u3040-\u30FF\u4E00-\u9FFF\uAC00-\uD7AF]/g;
+
+/**
+ * The buy button's text: a ready-made label, or custom text.
+ *
+ * Custom text is letters, digits, spaces and . ! + - % only, in capitals (the
+ * button is set in capitals everywhere it is drawn), at most BUTTON_LABEL_MAX
+ * characters. Anything else is removed rather than escaped: this string is
+ * written into the embed's script and into a brand's page, and none of the
+ * characters that can close a string or a tag are in the allowed set. Text
+ * with nothing left after cleaning falls back.
+ */
+export function safeButtonLabel(value: unknown, fallback: ButtonLabel): ButtonLabel {
+  if (typeof value !== "string") return fallback;
+  const preset = BUTTON_LABEL_OPTIONS.find((o) => o.toLowerCase() === value.trim().toLowerCase());
+  if (preset) return preset;
+  const cleaned = cleanButtonLabel(value).trim();
+  return cleaned || fallback;
+}
+
+/**
+ * Custom button text as the box holds it while someone types: the same
+ * cleaning as safeButtonLabel, but a space at the end is kept (so "SHOP " can
+ * become "SHOP NOW") and an empty box stays empty.
+ */
+export function cleanButtonLabel(value: string): string {
+  const kept = value
+    .normalize("NFC")
+    .replace(/\s+/g, " ")
+    .replace(NOT_LABEL_TEXT, "")
+    .replace(/^ /, "")
+    .toUpperCase();
+  // Every allowed character is one UTF-16 unit, so this counts characters.
+  return kept.slice(0, BUTTON_LABEL_MAX);
+}
+
+/** Is this the account's own text, not one of the ready-made labels? */
+export function isCustomButtonLabel(value: unknown): boolean {
+  return typeof value === "string"
+    && !BUTTON_LABEL_OPTIONS.some((o) => o.toLowerCase() === value.trim().toLowerCase());
+}
+
 /** A whole number inside [min, max], or the fallback. */
 export function safeInt(value: unknown, min: number, max: number, fallback: number): number {
   // `Number("")` and `Number(null)` are both 0, and 0 is finite — so an unset
@@ -292,7 +353,7 @@ export function sanitiseSettings(raw: Partial<CarouselSettings> | null | undefin
     buttonHoverColor: safeColor(r.buttonHoverColor, d.buttonHoverColor),
     buttonOpacity: safeInt(r.buttonOpacity, 0, 100, d.buttonOpacity),
     buttonCornerRadius: safeInt(r.buttonCornerRadius, 0, 999, d.buttonCornerRadius),
-    buttonLabel: safeEnum(r.buttonLabel, BUTTON_LABEL_OPTIONS, d.buttonLabel),
+    buttonLabel: safeButtonLabel(r.buttonLabel, d.buttonLabel),
 
     brandTitleColor: safeColor(r.brandTitleColor, d.brandTitleColor),
     productTitleColor: safeColor(r.productTitleColor, d.productTitleColor),

@@ -1,9 +1,10 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useBrandFontOptions } from "@/components/BrandFontUpload";
 import { CarouselMockup } from "@/components/CarouselMockup";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   CAROUSEL_DEFAULTS, panelBackground, buttonBackground, isStackedPosition,
+  BUTTON_LABEL_MAX, cleanButtonLabel, isCustomButtonLabel,
   type CarouselSettings,
 } from "@shared/carousel";
 import { CarouselPreviewFrame } from "@/components/CarouselPreviewFrame";
@@ -77,6 +78,9 @@ interface ProductCarouselEditorProps {
 
 const defaultSettings = CAROUSEL_DEFAULTS;
 
+/** The Select value for "Custom". Not a label anyone can save: it has a colon. */
+const CUSTOM_LABEL = "custom:text";
+
 // Stacks live in client/src/lib/fonts.ts alongside FONT_OPTIONS, so the list of
 // offered fonts and the list of loadable fonts cannot drift apart again.
 const getFontFamily = (font: string): string => fontStack(font);
@@ -95,6 +99,25 @@ export function ProductCarouselEditor({
   // The creator's uploaded typefaces, offered alongside the built-ins.
   const brandFonts = useBrandFontOptions();
   const [videoLoading, setVideoLoading] = useState(true);
+
+  // "Custom" button text. `customLabel` is whether the Custom box is open and
+  // `customText` what is in it, kept apart from the setting so an empty box can
+  // stay open while the button shows the standard label.
+  const [customLabel, setCustomLabel] = useState(() => isCustomButtonLabel(settings.buttonLabel));
+  const [customText, setCustomText] = useState(() => (isCustomButtonLabel(settings.buttonLabel) ? settings.buttonLabel : ""));
+  useEffect(() => {
+    if (isCustomButtonLabel(settings.buttonLabel)) {
+      // Saved custom text arriving (the page loading, another video opened).
+      setCustomLabel(true);
+      if (customText.trim() !== settings.buttonLabel) setCustomText(settings.buttonLabel);
+    } else if (customText.trim()) {
+      // A ready-made label set from outside (Reset, a default reloaded).
+      setCustomLabel(false);
+      setCustomText("");
+    }
+    // Only when the setting itself changes; typing is handled where it happens.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings.buttonLabel]);
 
   const updateSetting = <K extends keyof CarouselSettings>(
     key: K, 
@@ -197,9 +220,21 @@ export function ProductCarouselEditor({
 
             <div>
               <Label className="text-xs">Button Text</Label>
-              <Select 
-                value={settings.buttonLabel} 
-                onValueChange={(val) => updateSetting("buttonLabel", val as any)}
+              {/* A ready-made label, or "Custom": the account's own text, up to
+                  9 characters (client, 23 Nov 2026). While Custom is chosen the
+                  box below holds what is typed; while it is empty the button
+                  shows the standard label. */}
+              <Select
+                value={customLabel ? CUSTOM_LABEL : settings.buttonLabel}
+                onValueChange={(val) => {
+                  if (val === CUSTOM_LABEL) {
+                    setCustomLabel(true);
+                    setCustomText("");
+                  } else {
+                    setCustomLabel(false);
+                    updateSetting("buttonLabel", val);
+                  }
+                }}
               >
                 <SelectTrigger className="mt-1 h-8 text-xs" data-testid="select-button-label">
                   <SelectValue />
@@ -208,8 +243,42 @@ export function ProductCarouselEditor({
                   {BUTTON_LABEL_OPTIONS.map((label) => (
                     <SelectItem key={label} value={label} className="text-xs">{label}</SelectItem>
                   ))}
+                  <SelectItem value={CUSTOM_LABEL} className="text-xs" data-testid="option-button-label-custom">Custom</SelectItem>
                 </SelectContent>
               </Select>
+              {customLabel && (
+                <div className="mt-1.5">
+                  <div className="relative">
+                    <Input
+                      value={customText}
+                      onChange={(e) => {
+                        const next = cleanButtonLabel(e.target.value);
+                        setCustomText(next);
+                        updateSetting("buttonLabel", next.trim() || CAROUSEL_DEFAULTS.buttonLabel);
+                      }}
+                      maxLength={BUTTON_LABEL_MAX}
+                      placeholder="SHOP NOW"
+                      autoCapitalize="characters"
+                      autoComplete="off"
+                      spellCheck={false}
+                      aria-label="Custom button text"
+                      aria-describedby="custom-button-label-hint"
+                      className="h-9 pr-11 text-base uppercase tracking-wide sm:h-8 sm:text-xs"
+                      data-testid="input-button-label-custom"
+                    />
+                    <span
+                      className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-[11px] tabular-nums text-muted-foreground"
+                      aria-hidden="true"
+                      data-testid="count-button-label-custom"
+                    >
+                      {customText.length}/{BUTTON_LABEL_MAX}
+                    </span>
+                  </div>
+                  <p id="custom-button-label-hint" className="mt-1 text-[11px] leading-snug text-muted-foreground">
+                    Up to {BUTTON_LABEL_MAX} characters. Letters, numbers and . ! + - %
+                  </p>
+                </div>
+              )}
             </div>
           </div>
 

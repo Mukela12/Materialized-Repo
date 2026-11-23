@@ -1,5 +1,6 @@
-import { useState, useEffect } from "react";
-import { BrandFontUpload } from "@/components/BrandFontUpload";
+import { useState, useEffect, useRef } from "react";
+import { BrandFontUpload, useBrandFontOptions } from "@/components/BrandFontUpload";
+import { carouselFromBrandScan, type AppliedChange } from "@shared/brandScan";
 import { CarouselMockup } from "@/components/CarouselMockup";
 import { ProductCarouselEditor } from "@/components/ProductCarouselEditor";
 import {
@@ -20,7 +21,7 @@ import { Switch } from "@/components/ui/switch";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient, serverMessage } from "@/lib/queryClient";
 import { 
   Upload, 
   Palette, 
@@ -33,7 +34,9 @@ import {
   Check,
   Loader2,
   Sparkles,
-  Save
+  Save,
+  Undo2,
+  ArrowRight,
 } from "lucide-react";
 import type { BrandKit } from "@shared/schema";
 import { BUTTON_LABEL_OPTIONS, CAROUSEL_POSITION_OPTIONS } from "@shared/schema";
@@ -49,6 +52,22 @@ interface FontEntry {
   name: string;
   weight: string;
 }
+
+/** What the last scan did, for the summary under the upload box. */
+interface ScanOutcome {
+  fileName: string;
+  found: { colors: number; fonts: number };
+  applied: AppliedChange[];
+  fontsToUpload: string[];
+  /** The carousel as it was before the scan, for Undo. */
+  previous: CarouselSettings;
+  saved: boolean;
+}
+
+/** What the scanner reads. The server checks the same list. */
+const SCAN_TYPES = ["application/pdf", "image/png", "image/jpeg", "image/webp"];
+/** Under the server's request limit once the file is encoded for sending. */
+const SCAN_MAX_BYTES = 15 * 1024 * 1024;
 
 
 /**
@@ -119,6 +138,15 @@ export default function BrandKitPage() {
   const [fontChecking, setFontChecking] = useState(false);
   
   const [carouselSettings, setCarouselSettings] = useState<CarouselSettings>(CAROUSEL_DEFAULTS);
+
+  // The last scan: what it changed on the carousel, and the settings from
+  // before it so the change can be undone.
+  const [scanResult, setScanResult] = useState<ScanOutcome | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [isUndoing, setIsUndoing] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  // Fonts this account uploaded, so a scan can use them by name.
+  const uploadedFonts = useBrandFontOptions();
 
   const { data: brandKit, isLoading } = useQuery<BrandKit>({
     queryKey: ["/api/brand-kit"],
@@ -201,133 +229,187 @@ export default function BrandKitPage() {
     }));
   };
 
-  const handlePdfUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  /**
+   * Scan a brand guideline file, put what it finds on the default carousel,
+   * and save it.
+   *
+   * The scan used to stop at listing colours and fonts on this page: the
+   * carousel kept the platform's blue, and even the list was lost unless Save
+   * was pressed. The client (23 Nov 2026): "ensure that it scans and applies
+   * these settings to the product carousel, and holds it as a Default setting
+   * which can be over-written manually by the user in their Editing Suite."
+   *
+   * So one upload now does all three. What changed is shown underneath with an
+   * Undo, because the scan replaces colours someone may have chosen by hand.
+   * A video with its own styling keeps it: only the default moves.
+   */
+  const scanFile = async (file: File) => {
+    const type = file.type || (/\.pdf$/i.test(file.name) ? "application/pdf" : "");
+    if (!SCAN_TYPES.includes(type)) {
+      toast({ title: "That file can't be scanned", description: "Upload a PDF, PNG, JPG or WebP of your brand guidelines.", variant: "destructive" });
+      return;
+    }
+    if (file.size > SCAN_MAX_BYTES) {
+      toast({ title: "That file is too big", description: "The limit is 15 MB. Export a smaller PDF, or just the colour and font pages.", variant: "destructive" });
+      return;
+    }
 
     setIsUploading(true);
     setIsAnalyzing(true);
 
     try {
-      const reader = new FileReader();
-      const base64Promise = new Promise<string>((resolve, reject) => {
-        reader.onload = () => {
-          const result = reader.result as string;
-          resolve(result);
-        };
-        reader.onerror = () => reject(new Error("Failed to read file"));
-      });
-      reader.readAsDataURL(file);
-      
-      const fileData = await base64Promise;
-      const mimeType = file.type || "application/pdf";
-
-      const response = await fetch("/api/analyze-brand-guidelines", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fileData, mimeType }),
+      const fileData = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => reject(new Error("The file could not be read"));
+        reader.readAsDataURL(file);
       });
 
-      if (!response.ok) {
-        throw new Error("Failed to analyze brand guidelines");
+      const response = await apiRequest("POST", "/api/analyze-brand-guidelines", { fileData, mimeType: type });
+      const result = await response.json();
+      const analysis = result?.analysis ?? {};
+      const colors = analysis.colors || {};
+      const fonts = analysis.fonts || {};
+
+      const safeHexToCmyk = (hex: string | undefined | null) => {
+        if (!hex || typeof hex !== "string" || !hex.startsWith("#") || hex.length < 7) {
+          return { c: 0, m: 0, y: 0, k: 0 };
+        }
+        return hexToCmyk(hex);
+      };
+
+      const newExtractedColors: ColorEntry[] = [];
+      const named: [string, unknown][] = [
+        ["Primary", colors.primary], ["Secondary", colors.secondary], ["Accent", colors.accent],
+        ["Background", colors.background], ["Text", colors.text],
+      ];
+      for (const [name, hex] of named) {
+        if (hex && typeof hex === "string") newExtractedColors.push({ name, hex, cmyk: safeHexToCmyk(hex) });
+      }
+      if (Array.isArray(colors.additionalColors)) {
+        colors.additionalColors.forEach((hex: string, index: number) => {
+          if (hex && typeof hex === "string") {
+            newExtractedColors.push({ name: `Additional ${index + 1}`, hex, cmyk: safeHexToCmyk(hex) });
+          }
+        });
       }
 
-      const result = await response.json();
-      
-      if (result.success && result.analysis) {
-        const colors = result.analysis.colors || {};
-        const fonts = result.analysis.fonts || {};
-        
-        const safeHexToCmyk = (hex: string | undefined | null) => {
-          if (!hex || typeof hex !== "string" || !hex.startsWith("#") || hex.length < 7) {
-            return { c: 0, m: 0, y: 0, k: 0 };
+      const newExtractedFonts: FontEntry[] = [];
+      if (fonts.headingFont && typeof fonts.headingFont === "string") {
+        newExtractedFonts.push({ name: fonts.headingFont, weight: "600" });
+      }
+      if (fonts.bodyFont && typeof fonts.bodyFont === "string") {
+        newExtractedFonts.push({ name: fonts.bodyFont, weight: "400" });
+      }
+      if (fonts.accentFont && typeof fonts.accentFont === "string") {
+        newExtractedFonts.push({ name: fonts.accentFont, weight: "500" });
+      }
+      if (Array.isArray(fonts.additionalFonts)) {
+        fonts.additionalFonts.forEach((fontName: string) => {
+          if (fontName && typeof fontName === "string") {
+            newExtractedFonts.push({ name: fontName, weight: "400" });
           }
-          return hexToCmyk(hex);
-        };
+        });
+      }
 
-        const newExtractedColors: ColorEntry[] = [];
-        if (colors.primary && typeof colors.primary === "string") {
-          newExtractedColors.push({ 
-            name: "Primary", 
-            hex: colors.primary, 
-            cmyk: safeHexToCmyk(colors.primary) 
-          });
-        }
-        if (colors.secondary && typeof colors.secondary === "string") {
-          newExtractedColors.push({ 
-            name: "Secondary", 
-            hex: colors.secondary, 
-            cmyk: safeHexToCmyk(colors.secondary) 
-          });
-        }
-        if (colors.accent && typeof colors.accent === "string") {
-          newExtractedColors.push({ 
-            name: "Accent", 
-            hex: colors.accent, 
-            cmyk: safeHexToCmyk(colors.accent) 
-          });
-        }
-        if (colors.background && typeof colors.background === "string") {
-          newExtractedColors.push({ 
-            name: "Background", 
-            hex: colors.background, 
-            cmyk: safeHexToCmyk(colors.background) 
-          });
-        }
-        if (colors.text && typeof colors.text === "string") {
-          newExtractedColors.push({ 
-            name: "Text", 
-            hex: colors.text, 
-            cmyk: safeHexToCmyk(colors.text) 
-          });
-        }
-        if (Array.isArray(colors.additionalColors)) {
-          colors.additionalColors.forEach((hex: string, index: number) => {
-            if (hex && typeof hex === "string") {
-              newExtractedColors.push({ 
-                name: `Additional ${index + 1}`, 
-                hex, 
-                cmyk: safeHexToCmyk(hex) 
-              });
-            }
-          });
-        }
-        setExtractedColors(newExtractedColors);
+      const previous = carouselSettings;
+      const scan = carouselFromBrandScan(
+        analysis,
+        previous,
+        uploadedFonts.map((f) => ({ key: f.value, label: f.label })),
+      );
 
-        const newExtractedFonts: FontEntry[] = [];
-        if (fonts.headingFont && typeof fonts.headingFont === "string") {
-          newExtractedFonts.push({ name: fonts.headingFont, weight: "600" });
-        }
-        if (fonts.bodyFont && typeof fonts.bodyFont === "string") {
-          newExtractedFonts.push({ name: fonts.bodyFont, weight: "400" });
-        }
-        if (fonts.accentFont && typeof fonts.accentFont === "string") {
-          newExtractedFonts.push({ name: fonts.accentFont, weight: "500" });
-        }
-        if (Array.isArray(fonts.additionalFonts)) {
-          fonts.additionalFonts.forEach((fontName: string) => {
-            if (fontName && typeof fontName === "string") {
-              newExtractedFonts.push({ name: fontName, weight: "400" });
-            }
-          });
-        }
-        setExtractedFonts(newExtractedFonts);
-
+      if (newExtractedColors.length === 0 && newExtractedFonts.length === 0) {
         toast({
-          title: "PDF Analyzed",
-          description: `Extracted ${newExtractedColors.length} colors and ${newExtractedFonts.length} fonts from your brand guidelines.`,
+          title: "Nothing found in that file",
+          description: "No brand colors or fonts could be read from it. Try the pages that show your palette and typography.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      setExtractedColors(newExtractedColors);
+      setExtractedFonts(newExtractedFonts);
+      setCarouselSettings(scan.settings);
+
+      // Held as the default: saved now, not when someone remembers to press Save.
+      let saved = false;
+      try {
+        await apiRequest("POST", "/api/brand-kit", {
+          extractedColors: JSON.stringify(newExtractedColors),
+          extractedFonts: JSON.stringify(newExtractedFonts),
+          ...brandKitFromSettings(scan.settings),
+        });
+        saved = true;
+        queryClient.invalidateQueries({ queryKey: ["/api/brand-kit"] });
+      } catch (saveError) {
+        console.error("Saving the scanned brand kit failed:", saveError);
+      }
+
+      setScanResult({
+        fileName: file.name,
+        found: { colors: newExtractedColors.length, fonts: newExtractedFonts.length },
+        applied: scan.applied,
+        fontsToUpload: scan.fontsToUpload,
+        previous,
+        saved,
+      });
+
+      if (!saved) {
+        toast({
+          title: "Scanned, but not saved",
+          description: "Your colors are on the carousel below. Press Save Brand Kit to keep them.",
+          variant: "destructive",
+        });
+      } else if (scan.applied.length > 0) {
+        toast({
+          title: "Brand kit applied",
+          description: "Your default carousel now uses your brand's colors and fonts.",
+        });
+      } else {
+        toast({
+          title: "Brand kit scanned",
+          description: `Found ${newExtractedColors.length} colors and ${newExtractedFonts.length} fonts. None could be used on the carousel.`,
         });
       }
     } catch (error) {
-      console.error("Error analyzing PDF:", error);
+      console.error("Error analyzing brand guidelines:", error);
       toast({
-        title: "Analysis Failed",
-        description: error instanceof Error ? error.message : "Could not extract brand elements from PDF.",
+        title: "The scan didn't work",
+        description: serverMessage(error) || "Your brand guidelines could not be read. Try again in a moment.",
         variant: "destructive",
       });
     } finally {
       setIsUploading(false);
       setIsAnalyzing(false);
+    }
+  };
+
+  const handlePdfUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    // So choosing the same file again scans it again.
+    e.target.value = "";
+    if (file) void scanFile(file);
+  };
+
+  /** Put the carousel back to what it was before the last scan, and save that. */
+  const undoScan = async () => {
+    if (!scanResult) return;
+    setIsUndoing(true);
+    try {
+      await apiRequest("POST", "/api/brand-kit", brandKitFromSettings(scanResult.previous));
+      setCarouselSettings(scanResult.previous);
+      setScanResult(null);
+      queryClient.invalidateQueries({ queryKey: ["/api/brand-kit"] });
+      toast({ title: "Scan undone", description: "Your default carousel is back to how it was." });
+    } catch (error) {
+      toast({
+        title: "Couldn't undo",
+        description: serverMessage(error) || "Your default carousel was not changed back. Try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsUndoing(false);
     }
   };
 
@@ -431,17 +513,9 @@ export default function BrandKitPage() {
         extractedColors: JSON.stringify(extractedColors),
         manualFonts: JSON.stringify(manualFonts),
         manualColors: JSON.stringify(manualColors),
-        defaultButtonFont: carouselSettings.buttonFont,
-        defaultButtonColor: carouselSettings.buttonColor,
-        defaultButtonTextColor: carouselSettings.buttonTextColor,
-        defaultCornerRadius: carouselSettings.cornerRadius,
-        defaultBackgroundOpacity: carouselSettings.backgroundOpacity,
-        defaultShowThumbnail: carouselSettings.showThumbnail,
-        defaultShowButton: carouselSettings.showButton,
-        defaultShowPrice: carouselSettings.showPrice,
-        defaultShowTitle: carouselSettings.showTitle,
-        defaultButtonLabel: carouselSettings.buttonLabel,
-        defaultPosition: carouselSettings.position,
+        // Every carousel setting, through the one mapping. This list was
+        // written out by hand and had stopped at eleven of them.
+        ...brandKitFromSettings(carouselSettings),
       },
     });
   };
@@ -487,47 +561,169 @@ export default function BrandKitPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-lg">
             <FileText className="h-5 w-5 shrink-0" />
-            Upload Brand Guidelines PDF
+            Upload Brand Guidelines
           </CardTitle>
+          <p className="text-sm text-muted-foreground">
+            Your colors and fonts are read from the file, put on your product carousel and saved as your default.
+          </p>
         </CardHeader>
         <CardContent>
-          <div className="border-2 border-dashed border-border rounded-lg p-8 text-center">
+          <div
+            className={`rounded-lg border-2 border-dashed p-6 text-center transition-colors sm:p-8 ${
+              isDragging ? "border-primary bg-primary/5" : "border-border"
+            }`}
+            onDragOver={(e) => { e.preventDefault(); if (!isAnalyzing) setIsDragging(true); }}
+            onDragLeave={() => setIsDragging(false)}
+            onDrop={(e) => {
+              // Without this a dropped PDF opens in the tab and the page is gone.
+              e.preventDefault();
+              setIsDragging(false);
+              const file = e.dataTransfer.files?.[0];
+              if (file && !isAnalyzing) void scanFile(file);
+            }}
+            data-testid="brand-kit-drop-zone"
+          >
             <input
+              ref={fileInputRef}
               type="file"
-              accept=".pdf"
+              accept=".pdf,application/pdf,image/png,image/jpeg,image/webp"
               onChange={handlePdfUpload}
               className="hidden"
               id="pdf-upload"
               data-testid="input-pdf-upload"
             />
-            <label htmlFor="pdf-upload" className="cursor-pointer">
-              <div className="flex flex-col items-center gap-3">
-                {isAnalyzing ? (
-                  <Loader2 className="h-10 w-10 text-muted-foreground animate-spin" />
-                ) : (
-                  <Upload className="h-10 w-10 text-muted-foreground" />
-                )}
-                <div>
-                  <p className="font-medium">
-                    {isAnalyzing ? "Analyzing PDF..." : "Drop your brand guidelines PDF here"}
-                  </p>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    {isAnalyzing 
-                      ? "Extracting fonts and colors with AI"
-                      : "AI will extract fonts and colors automatically"
-                    }
-                  </p>
-                </div>
-                {!isAnalyzing && (
-                  <Button variant="outline" className="rounded-full" data-testid="button-browse-pdf">
-                    Browse Files
-                  </Button>
-                )}
+            <div className="flex flex-col items-center gap-3" aria-live="polite">
+              {isAnalyzing ? (
+                <Loader2 className="h-10 w-10 text-muted-foreground animate-spin" aria-hidden="true" />
+              ) : (
+                <Upload className="h-10 w-10 text-muted-foreground" aria-hidden="true" />
+              )}
+              <div>
+                <p className="font-medium">
+                  {isAnalyzing ? "Reading your brand guidelines" : "Drop your brand guidelines here"}
+                </p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  {isAnalyzing
+                    ? "This takes up to a minute. Keep this page open."
+                    : "PDF, PNG or JPG, up to 15 MB"}
+                </p>
               </div>
-            </label>
+              {!isAnalyzing && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="rounded-full"
+                  onClick={() => fileInputRef.current?.click()}
+                  data-testid="button-browse-pdf"
+                >
+                  Browse Files
+                </Button>
+              )}
+            </div>
           </div>
         </CardContent>
       </Card>
+
+      {scanResult && (
+        <Card data-testid="scan-result">
+          <CardHeader className="pb-3">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <Check className="h-4 w-4 shrink-0 text-green-600 dark:text-green-400" aria-hidden="true" />
+                  {scanResult.applied.length > 0
+                    ? (scanResult.saved ? "Applied to your default carousel" : "On your carousel, not saved yet")
+                    : "Scanned, nothing to apply"}
+                </CardTitle>
+                <p className="mt-1 truncate text-sm text-muted-foreground" data-testid="scan-result-source">
+                  {scanResult.found.colors} {scanResult.found.colors === 1 ? "color" : "colors"} and{" "}
+                  {scanResult.found.fonts} {scanResult.found.fonts === 1 ? "font" : "fonts"} found in {scanResult.fileName}
+                </p>
+              </div>
+              {scanResult.applied.length > 0 && (
+                <div className="flex shrink-0 gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="rounded-full gap-2"
+                    onClick={undoScan}
+                    disabled={isUndoing}
+                    data-testid="button-undo-scan"
+                  >
+                    {isUndoing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Undo2 className="h-4 w-4" />}
+                    Undo
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="rounded-full gap-2"
+                    onClick={() => setActiveTab("carousel")}
+                    data-testid="button-fine-tune-scan"
+                  >
+                    Fine-tune
+                    <ArrowRight className="h-4 w-4" />
+                  </Button>
+                </div>
+              )}
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {scanResult.applied.length > 0 ? (
+              <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+                <ul className="grid grid-cols-2 content-start gap-2" data-testid="scan-result-changes">
+                  {scanResult.applied.map((change) => (
+                    <li
+                      key={change.field}
+                      className="flex min-w-0 items-center gap-2.5 rounded-lg border p-2.5"
+                      data-testid={`scan-change-${change.field}`}
+                    >
+                      {change.kind === "color" ? (
+                        <span
+                          className="h-7 w-7 shrink-0 rounded-md border"
+                          style={{ backgroundColor: change.value }}
+                          aria-hidden="true"
+                        />
+                      ) : (
+                        <span
+                          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border text-xs font-semibold"
+                          style={{ fontFamily: fontStack(String(carouselSettings[change.field])) }}
+                          aria-hidden="true"
+                        >
+                          Aa
+                        </span>
+                      )}
+                      <span className="min-w-0">
+                        <span className="block truncate text-xs font-medium">{change.label}</span>
+                        <span className={`block truncate text-xs text-muted-foreground ${change.kind === "color" ? "font-mono" : ""}`}>
+                          {change.value}
+                        </span>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+                <div>
+                  <CarouselPreview settings={carouselSettings} testId="scan-result-preview" />
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                The file's colors and fonts are listed below. None of them could be used on the carousel, so it is unchanged.
+              </p>
+            )}
+            {scanResult.fontsToUpload.length > 0 && (
+              <p className="rounded-lg border border-amber-300/60 bg-amber-50 px-3 py-2 text-sm text-amber-900 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200" data-testid="scan-result-fonts-to-upload">
+                Your guidelines use {scanResult.fontsToUpload.join(" and ")}. Upload the .otf or .ttf under Fonts, then scan again to put {scanResult.fontsToUpload.length === 1 ? "it" : "them"} on the carousel.
+              </p>
+            )}
+            {scanResult.applied.length > 0 && (
+              <p className="text-xs text-muted-foreground">
+                Every video uses this default unless you have styled that video yourself. You can still change any one video in its editor.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="grid w-full grid-cols-4 rounded-full">

@@ -7,6 +7,7 @@ import { viewerHash, isUniqueViolation } from "./viewerIdentity";
 import { watchTrackerJs } from "./watchTime";
 import { canAccessUserResource, canBrowseLibrary, canAddFreeLinks } from "./authz";
 import { normaliseLinkUrl } from "@shared/linkUrl";
+import { CAROUSEL_DEFAULTS, safeButtonLabel } from "@shared/carousel";
 import { checkListingCheckout, listingReturnPath, LISTING_CHECKOUT_PURPOSE } from "./libraryCheckout";
 import { randomBytes } from "crypto";
 import { encryptSecret, decryptSecret } from "./crypto";
@@ -3609,16 +3610,25 @@ export async function registerRoutes(
       }
 
       const existingKit = await storage.getBrandKit(user.id);
-      
+
+      // The button text is free text since 0057 (a ready-made label or the
+      // account's own, up to 9 characters), so it is cleaned before it is kept.
+      const kitBody: Record<string, any> = { ...req.body };
+      // Whose kit it is comes from the session, never from the request.
+      for (const k of ["id", "userId", "createdAt", "updatedAt"]) delete kitBody[k];
+      if ("defaultButtonLabel" in kitBody) {
+        kitBody.defaultButtonLabel = safeButtonLabel(kitBody.defaultButtonLabel, CAROUSEL_DEFAULTS.buttonLabel);
+      }
+
       if (existingKit) {
-        const updated = await storage.updateBrandKit(existingKit.id, req.body);
+        const updated = await storage.updateBrandKit(existingKit.id, kitBody);
         return res.json(updated);
       }
 
       const newKit = await storage.createBrandKit({
+        ...kitBody,
         userId: user.id,
-        ...req.body,
-      });
+      } as any);
       res.status(201).json(newKit);
     } catch (error) {
       res.status(500).json({ error: "Failed to save brand kit" });
@@ -3711,6 +3721,12 @@ export async function registerRoutes(
       }
       const { manualProducts, ...settings } = req.body;
       const body: any = { ...settings };
+      // Which video it styles comes from the address, never from the request.
+      for (const k of ["id", "videoId", "createdAt"]) delete body[k];
+      // null means "use my default"; anything else is cleaned like the default is.
+      if (body.buttonLabel !== undefined && body.buttonLabel !== null) {
+        body.buttonLabel = safeButtonLabel(body.buttonLabel, "") || null;
+      }
       if (manualProducts !== undefined) {
         body.manualProducts = JSON.stringify(manualProducts);
       }

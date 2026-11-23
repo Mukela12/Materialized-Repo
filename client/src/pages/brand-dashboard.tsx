@@ -11,6 +11,7 @@ import { CreatorPassesLeft } from "@/components/CreatorPassesLeft";
 import { greeting, todayLabel } from "@/lib/greeting";
 import { BrandDashboardTabs } from "@/components/BrandDashboardTabs";
 import { VideoUploadModal } from "@/components/VideoUploadModal";
+import { ImportProgramButton, IMPORT_PROGRAM_PATH } from "@/components/ImportProgramButton";
 import { defaultCarouselSettings } from "@/components/ProductCarouselEditor";
 import { Eye, DollarSign, MousePointer, Users, Package, Link2, TrendingUp, Zap, Mail, Settings, Upload, Calculator, ArrowRight } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -155,7 +156,13 @@ export default function BrandDashboard() {
           <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">{todayLabel()}</p>
           <h1 className="mt-1 text-2xl md:text-3xl font-bold tracking-tight">{greeting(currentUser?.displayName, new Date(), { fullName: true })}</h1>
         </div>
-        <div className="flex gap-2 w-full sm:w-auto">
+        {/* Import first, and on a phone on a row of its own: it is the thing
+            a brand should do before anything else (client, 23 Nov 2026). */}
+        <div className="flex flex-wrap gap-2 w-full sm:w-auto sm:flex-nowrap">
+          <ImportProgramButton
+            className="basis-full sm:basis-auto"
+            onClick={() => navigate(IMPORT_PROGRAM_PATH)}
+          />
           <Button
             onClick={() => setUploadModalOpen(true)}
             className="rounded-full gap-2 flex-1 sm:flex-none"

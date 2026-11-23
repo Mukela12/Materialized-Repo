@@ -28,6 +28,7 @@ import { formatDistanceToNow } from "date-fns";
 import { parseContactCsv, isCsvFile } from "@/lib/csvImport";
 import { CsvFormatHint } from "@/components/CsvFormatHint";
 import { CreatorPassesLeft, useInvitePasses } from "@/components/CreatorPassesLeft";
+import { ImportProgramButton } from "@/components/ImportProgramButton";
 
 /**
  * The invitation a brand sends a creator, supplied by the client verbatim.
@@ -75,6 +76,7 @@ interface ParsedCSVRow {
 export default function BrandCreators() {
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const inviteCardRef = useRef<HTMLDivElement>(null);
   const [activeTab, setActiveTab] = useState("single");
   const [csvData, setCsvData] = useState<ParsedCSVRow[]>([]);
   const [isDragging, setIsDragging] = useState(false);
@@ -223,6 +225,26 @@ export default function BrandCreators() {
     reader.readAsText(file);
   };
 
+  /**
+   * Import Influencer Program: open the CSV tab, bring it into view and, when
+   * no file is loaded yet, open the file picker. The picker is opened a frame
+   * later because the tab's contents are only on the page once it is chosen.
+   */
+  const openImport = (pick = true) => {
+    setActiveTab("bulk");
+    requestAnimationFrame(() => {
+      inviteCardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      if (pick) fileInputRef.current?.click();
+    });
+  };
+
+  // Arriving from the dashboard's button (?import=1): the CSV tab, in view. No
+  // picker: a browser only opens one on a click made on this page.
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("import") === "1") openImport(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
@@ -266,15 +288,18 @@ export default function BrandCreators() {
 
   return (
     <div className="space-y-6 pb-24 md:pb-6">
-      <div>
-        <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Connect Your Creators</h1>
-        <p className="text-muted-foreground mt-1">
-          Invite content creators to feature your products in their videos
-        </p>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Connect Your Creators</h1>
+          <p className="text-muted-foreground mt-1">
+            Invite content creators to feature your products in their videos
+          </p>
+        </div>
+        <ImportProgramButton className="w-full shrink-0 sm:w-auto" onClick={() => openImport()} />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
+        <Card ref={inviteCardRef} className="scroll-mt-20">
           <CardHeader>
             <CardTitle className="text-lg font-semibold flex items-center gap-2">
               <Mail className="h-5 w-5" />

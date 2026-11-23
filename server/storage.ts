@@ -1430,6 +1430,10 @@ export class MemStorage implements IStorage {
       defaultCommerceEnabled: kit.defaultCommerceEnabled ?? null,
       defaultShowBrand: kit.defaultShowBrand ?? null,
       defaultCarouselWidth: kit.defaultCarouselWidth ?? null,
+      defaultTitleFont: kit.defaultTitleFont ?? null,
+      defaultTitleFontSize: kit.defaultTitleFontSize ?? null,
+      defaultPriceFontSize: kit.defaultPriceFontSize ?? null,
+      defaultButtonFontSize: kit.defaultButtonFontSize ?? null,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -1479,6 +1483,10 @@ export class MemStorage implements IStorage {
       commerceEnabled: override.commerceEnabled ?? null,
       showBrand: override.showBrand ?? null,
       carouselWidth: override.carouselWidth ?? null,
+      titleFont: override.titleFont ?? null,
+      titleFontSize: override.titleFontSize ?? null,
+      priceFontSize: override.priceFontSize ?? null,
+      buttonFontSize: override.buttonFontSize ?? null,
       manualProducts: override.manualProducts ?? null,
       createdAt: new Date(),
     };

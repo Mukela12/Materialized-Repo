@@ -7,7 +7,8 @@ import type { Product, Brand } from "@shared/schema";
 import { CAROUSEL_DEFAULT_BUTTON_COLOR, CAROUSEL_DEFAULT_BUTTON_TEXT_COLOR } from "@/lib/carouselDefaults";
 
 export type CarouselPosition = "bottom" | "top" | "left" | "right" | "bottom-left" | "bottom-right" | "top-left" | "top-right";
-export type ButtonLabel = "BUY NOW" | "PRE ORDER" | "RENT" | "ENQUIRE" | "APPLY NOW" | "DONATE" | "BOOK NOW" | "BID NOW";
+// A ready-made label or the account's own text (shared/carousel.ts, safeButtonLabel).
+export type ButtonLabel = string;
 
 export interface CarouselConfig {
   position: CarouselPosition;
