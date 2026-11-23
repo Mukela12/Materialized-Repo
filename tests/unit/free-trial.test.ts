@@ -72,7 +72,10 @@ describe("the payout nudge", () => {
   const handler = routes.slice(routes.indexOf('app.get("/api/payouts/nudge"'), routes.indexOf('app.get("/api/payouts/nudge"') + 2000);
 
   it("targets the earning roles and nobody else", () => {
-    expect(handler).toContain('user.role === "creator" || user.role === "affiliate"');
+    // The rule itself lives in shared/payoutNudge.ts (tested in
+    // payout-nudge-route.test.ts) so the banner and the server read one copy.
+    expect(handler).toContain("const inAudience = isPayoutNudgeAudience(user);");
+    expect(read("shared/payoutNudge.ts")).toContain('user.role === "creator" || user.role === "affiliate"');
   });
 
   it("stands down while a fee or card banner is up — one ask at a time", () => {

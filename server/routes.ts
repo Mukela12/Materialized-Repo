@@ -34,6 +34,7 @@ import { ensureOwnBrand } from "./brandAccount";
 import { parseReviewRequest, reviewLocked, importable, queueOrder, reviewCounts, parseBoundingBox } from "./placementReview";
 import { checkRedeemable, grantsOf, normaliseCode, generateVoucherCode, mintCodes, MAX_BATCH } from "./vouchers";
 import { isEntitled, hasFreeAccess, owesCardOnFile } from "./entitlement";
+import { isPayoutNudgeAudience } from "@shared/payoutNudge";
 import { owesSetupFee, oweableRole, setupFeeAudience } from "./setupFee";
 import { planForRole, planAmountMajor, roleLabel, portalHome } from "./subscriptionPlan";
 import { inviteVoucherFields, inviteBatchId, inviteCapPerBrand, isPayingBrand, inviteOfferEndFor, inviteOfferEndLabel } from "./inviteVoucher";
@@ -1723,8 +1724,24 @@ export async function registerRoutes(
     }
   });
 
+  /**
+   * Literal /api/payouts/<name> GET routes declared further down this file.
+   * Express matches in declaration order, so without this hand-off the :userId
+   * route below takes them as a user id: GET /api/payouts/nudge was answered
+   * "403 Forbidden" by requireSelfOrAdmin for every account that is not an
+   * admin, and the payout nudge never showed for anyone. Add a name here when
+   * a new literal route is added; tests/unit/payout-nudge-route.test.ts fails
+   * if one is missed.
+   */
+  const PAYOUT_LITERAL_ROUTES = ["nudge"];
+
   // List an affiliate's payouts
-  app.get("/api/payouts/:userId", requireSelfOrAdmin("userId"), async (req, res) => {
+  app.get("/api/payouts/:userId", (req, _res, next) => {
+    // next("route") skips this route's guard and handler and carries on to the
+    // literal route declared later.
+    if (PAYOUT_LITERAL_ROUTES.includes(req.params.userId)) return next("route");
+    next();
+  }, requireSelfOrAdmin("userId"), async (req, res) => {
     try {
       res.json(await storage.getPayouts(req.params.userId));
     } catch (error) {
@@ -7391,12 +7408,13 @@ export async function registerRoutes(
       if (!user) return res.status(401).json({ error: "Not authenticated" });
 
       const { hasFreeAccess } = await import("./entitlement");
-      // Publishers are stored with role "affiliate" — there is no third value.
-      const earningRole = user.role === "creator" || user.role === "affiliate";
+      // Creators and Publishers, never brands or admins. The banner reads the
+      // same rule and does not ask at all for an account outside it.
+      const inAudience = isPayoutNudgeAudience(user);
       const feeOutstanding = owesSetupFee(user) && !hasFreeAccess(user);
       const cardOutstanding = owesCardOnFile(user) && !feeOutstanding;
       res.json({
-        needed: earningRole && !user.stripeConnectOnboarded && !feeOutstanding && !cardOutstanding && !user.isAdmin,
+        needed: inAudience && !user.stripeConnectOnboarded && !feeOutstanding && !cardOutstanding,
         onboarded: !!user.stripeConnectOnboarded,
       });
     } catch (error) {

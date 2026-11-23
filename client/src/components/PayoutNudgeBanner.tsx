@@ -14,6 +14,8 @@ import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { isPayoutNudgeAudience } from "@shared/payoutNudge";
 import { Button } from "@/components/ui/button";
 import { Landmark, Loader2, X } from "lucide-react";
 
@@ -25,10 +27,16 @@ export function PayoutNudgeBanner() {
     try { return sessionStorage.getItem(DISMISS_KEY) === "1"; } catch { return false; }
   });
 
+  // Only creators and Publishers are ever nudged, so a brand or an admin does
+  // not send the request. The server applies the same rule.
+  const { data: user } = useCurrentUser();
+  const inAudience = isPayoutNudgeAudience(user);
+
   const { data } = useQuery<{ needed: boolean }>({
     queryKey: ["/api/payouts/nudge"],
     queryFn: () => fetch("/api/payouts/nudge", { credentials: "include" }).then((r) => r.json()),
     retry: false,
+    enabled: inAudience,
   });
 
   const start = useMutation({
@@ -43,7 +51,9 @@ export function PayoutNudgeBanner() {
     onError: () => toast({ title: "Could not start payout setup", variant: "destructive" }),
   });
 
-  if (dismissed || !data?.needed) return null;
+  // inAudience again: a cached answer from a previous sign-in in this tab must
+  // not show the banner to the account that is signed in now.
+  if (dismissed || !inAudience || !data?.needed) return null;
 
   const dismiss = () => {
     setDismissed(true);
