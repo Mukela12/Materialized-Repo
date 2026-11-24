@@ -6,10 +6,14 @@
  *
  * The cards are "backlit": a solid surface with a soft shadow in the card's
  * own colour that brightens and lifts on hover. No gradients.
+ *
+ * 24 Nov 2026: each card can carry an image with a short line that rises over
+ * it on hover (always visible where there is no hover, so phones see it), and
+ * an announcement bar with running text can sit above the cards.
  */
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { ArrowUpRight, Check, Copy, Film, Play, Trophy } from "lucide-react";
+import { ArrowUpRight, Check, Copy, Film, Megaphone, Play, Trophy } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,12 +23,13 @@ import { apiRequest, queryClient, serverMessage } from "@/lib/queryClient";
 import { cn } from "@/lib/utils";
 import { copyText } from "@/lib/clipboard";
 import { TONES } from "@/components/CreatorDashboard";
-import type { AwardsBanner, ChallengeCard, ToolCard } from "@shared/creatorToolkit";
+import type { Announcement, AwardsBanner, ChallengeCard, ToolCard } from "@shared/creatorToolkit";
 
 export interface ToolkitView {
   tools: (ToolCard & { slot: number })[];
   challenge: ChallengeCard;
   awards: AwardsBanner;
+  announcement?: Announcement | null;
   status: { month: string; open: boolean; opensAt: string; closesAt: string; announceAt: string };
   myEntries: { id: string; title: string }[];
   registeredHandle: string | null;
@@ -58,12 +63,44 @@ const nextRound = (opensAt: string) => {
 const dayMonth = (iso: string, endExclusive = false) =>
   new Date(new Date(iso).getTime() - (endExclusive ? 1 : 0)).toLocaleDateString(undefined, { day: "numeric", month: "long", timeZone: "UTC" });
 
+/**
+ * The short line over a card image. Where the device can hover it rises in
+ * when the card is hovered or focused; on touch screens it is simply there.
+ * A solid scrim, not a gradient, keeps the text readable on any image.
+ */
+function HoverCaption({ text, hidden }: { text: string; hidden?: boolean }) {
+  if (!text || hidden) return null;
+  return (
+    <p
+      className={cn(
+        "pointer-events-none absolute inset-x-0 bottom-0 bg-black/70 px-3 py-2 text-[13px] font-medium leading-snug text-white",
+        "transition-[opacity,transform] duration-200 ease-out motion-reduce:transition-none",
+        "[@media(hover:hover)]:translate-y-1 [@media(hover:hover)]:opacity-0",
+        "[@media(hover:hover)]:group-hover:translate-y-0 [@media(hover:hover)]:group-hover:opacity-100",
+        "[@media(hover:hover)]:group-focus-within:translate-y-0 [@media(hover:hover)]:group-focus-within:opacity-100",
+      )}
+      data-testid="text-card-hover"
+    >
+      {text}
+    </p>
+  );
+}
+
+/** A card's cover image with its hover line. */
+function CardImage({ src, caption }: { src: string; caption: string }) {
+  if (!src) return null;
+  return (
+    <div className="relative aspect-video w-full overflow-hidden bg-muted">
+      <img src={src} alt="" className="h-full w-full object-cover transition-transform duration-500 ease-out group-hover:scale-[1.03] motion-reduce:transition-none motion-reduce:group-hover:scale-100" loading="lazy" />
+      <HoverCaption text={caption} />
+    </div>
+  );
+}
+
 /** A video that plays inline when tapped, with the poster (or a quiet panel) before. */
-function ExplainerVideo({ src, poster, label }: { src: string; poster: string; label: string }) {
+function ExplainerVideo({ src, poster, label, caption = "" }: { src: string; poster: string; label: string; caption?: string }) {
   const [playing, setPlaying] = useState(false);
-  if (!src) {
-    return poster ? <img src={poster} alt="" className="aspect-video w-full object-cover" loading="lazy" /> : null;
-  }
+  if (!src) return <CardImage src={poster} caption={caption} />;
   return (
     <div className="relative aspect-video w-full bg-black">
       {playing ? (
@@ -82,6 +119,7 @@ function ExplainerVideo({ src, poster, label }: { src: string; poster: string; l
           </span>
         </button>
       )}
+      <HoverCaption text={caption} hidden={playing} />
     </div>
   );
 }
@@ -114,7 +152,7 @@ function ToolCardView({ tool, tone }: { tool: ToolkitView["tools"][number]; tone
   const g = glow(tone);
   return (
     <article {...g} data-testid={`card-toolkit-tool-${tool.slot}`}>
-      <ExplainerVideo src={tool.videoUrl} poster={tool.posterUrl} label={tool.name} />
+      <ExplainerVideo src={tool.videoUrl} poster={tool.posterUrl} label={tool.name} caption={tool.hoverText} />
       <div className="flex flex-1 flex-col gap-3 p-4">
         <div>
           <p className="text-[11px] font-medium uppercase tracking-[0.12em] text-[color:var(--tl)] dark:text-[color:var(--td)]">Creator tool</p>
@@ -141,6 +179,7 @@ function ChallengeCardView({ data, tone, onEnter }: { data: ToolkitView; tone: T
   const entered = data.myEntries.length > 0;
   return (
     <article {...g} data-testid="card-toolkit-challenge">
+      <CardImage src={c.imageUrl} caption={c.hoverText} />
       <div className="flex flex-1 flex-col gap-3 p-4 md:p-5">
         <div className="flex items-center gap-2 text-[color:var(--tl)] dark:text-[color:var(--td)]">
           <Trophy className="h-4 w-4" aria-hidden="true" />
@@ -245,6 +284,45 @@ function AwardsBannerView({ awards, registeredHandle, email }: { awards: AwardsB
   );
 }
 
+/**
+ * The announcement bar above the cards. Running text loops copies of the
+ * line and pauses while hovered; with reduced motion, or with scrolling off,
+ * the line simply wraps.
+ */
+export function AnnouncementBar({ a }: { a: Announcement }) {
+  const moving = a.scroll;
+  const line = (hiddenCopy = false) => (
+    <span className="flex shrink-0 items-center gap-3 pr-12" aria-hidden={hiddenCopy || undefined}>
+      <span className="text-sm font-medium">{a.text}</span>
+      {a.linkUrl && <ArrowUpRight className="h-3.5 w-3.5 shrink-0 opacity-70" aria-hidden="true" />}
+    </span>
+  );
+  const body = (
+    <div className="flex min-w-0 items-center gap-3">
+      <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary-foreground/15">
+        <Megaphone className="h-3.5 w-3.5" aria-hidden="true" />
+      </span>
+      {moving ? (
+        <div className="mz-ticker min-w-0 flex-1 overflow-hidden">
+          {/* Each half holds three copies so a short line still fills a wide bar; the loop moves one half. */}
+          <div className="mz-ticker-track">{line()}{line(true)}{line(true)}{line(true)}{line(true)}{line(true)}</div>
+          <span className="mz-ticker-still text-sm font-medium">{a.text}</span>
+        </div>
+      ) : (
+        <span className="min-w-0 flex-1 text-sm font-medium">{a.text}</span>
+      )}
+    </div>
+  );
+  const cls = "block rounded-xl bg-primary px-3 py-2 text-primary-foreground shadow-[0_10px_24px_-16px_hsl(var(--primary))]";
+  return a.linkUrl ? (
+    <a href={a.linkUrl} target="_blank" rel="noopener noreferrer" className={cn(cls, "transition-opacity hover:opacity-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2")} data-testid="link-toolkit-announcement">
+      {body}
+    </a>
+  ) : (
+    <div className={cls} role="note" data-testid="banner-toolkit-announcement">{body}</div>
+  );
+}
+
 export function CreatorToolkit({ email, onEnterChallenge }: { email: string; onEnterChallenge: () => void }) {
   const { data, isLoading, isError } = useQuery<ToolkitView>({ queryKey: ["/api/toolkit"] });
   if (isError) return null;
@@ -256,10 +334,11 @@ export function CreatorToolkit({ email, onEnterChallenge }: { email: string; onE
     );
   }
   const cards = data.tools.length + (data.challenge.enabled ? 1 : 0);
-  if (cards === 0 && !data.awards.enabled) return null;
+  if (cards === 0 && !data.awards.enabled && !data.announcement) return null;
   return (
     <section className="space-y-4" aria-labelledby="toolkit-heading" data-testid="section-creator-toolkit">
       <h2 id="toolkit-heading" className="text-base font-semibold tracking-tight">Creator Toolkit</h2>
+      {data.announcement && <AnnouncementBar a={data.announcement} />}
       {cards > 0 && (
         <div className={cn("grid gap-4", cards === 1 ? "sm:grid-cols-2 lg:grid-cols-3" : cards === 2 ? "sm:grid-cols-2" : "sm:grid-cols-2 lg:grid-cols-3")}>
           {data.tools.map((t, i) => <ToolCardView key={t.slot} tool={t} tone={TONES[i === 0 ? 0 : 1]} />)}

@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import {
   challengeStatus, judgingWindow, toolkitSchema, toolIsLive, DEFAULT_TOOLKIT, filmAwardRegistrationSchema,
+  announcementIsLive, HOVER_MAX, ANNOUNCEMENT_MAX,
 } from '../../shared/creatorToolkit';
 
 describe('Creator Challenge calendar', () => {
@@ -62,5 +63,56 @@ describe('wiring', () => {
     const page = read('client/src/pages/dashboard.tsx');
     expect(page).toMatch(/<CreatorToolkit /);
     expect(page).toMatch(/offerChallenge/);
+  });
+});
+
+describe('toolkit images, hover text and announcement bar (24 Nov 2026)', () => {
+  // Content as it was saved before these fields existed. It must still read,
+  // or getToolkit would fall back to the defaults and drop admin's edits.
+  const savedBefore = {
+    tools: [
+      { enabled: true, name: 'Clipur', tagline: 'Shorts in a click', videoUrl: '', posterUrl: 'https://res.cloudinary.com/x/c.jpg', ctaLabel: 'Sign up', linkUrl: 'https://clipur.com/?ref=mtrlzd', voucherCode: 'CLIPUR26' },
+      { enabled: false, name: '', tagline: '', videoUrl: '', posterUrl: '', ctaLabel: 'Sign up', linkUrl: '', voucherCode: '' },
+    ],
+    challenge: { enabled: true, title: 'Creator Challenge', prize: '$2,000', body: 'Upload and share.' },
+    awards: { enabled: true, title: 'Creator Film Awards', place: 'Cannes', dates: 'May 2027', highlights: ['Red carpet'], videoUrl: '', posterUrl: '' },
+  };
+
+  it('content saved before the new fields still parses, with them filled in empty', () => {
+    const r = toolkitSchema.safeParse(savedBefore);
+    expect(r.success).toBe(true);
+    if (!r.success) return;
+    expect(r.data.tools[0].name).toBe('Clipur');
+    expect(r.data.tools[0].hoverText).toBe('');
+    expect(r.data.challenge.imageUrl).toBe('');
+    expect(r.data.announcement).toEqual({ enabled: false, text: '', linkUrl: '', scroll: true });
+    expect(announcementIsLive(r.data.announcement)).toBe(false);
+  });
+
+  it('card images must be https links, like every other link here', () => {
+    const t = structuredClone(DEFAULT_TOOLKIT);
+    t.challenge.imageUrl = 'javascript:alert(1)';
+    expect(toolkitSchema.safeParse(t).success).toBe(false);
+    t.challenge.imageUrl = 'https://res.cloudinary.com/x/image/upload/v1/materialized/images/a.jpg';
+    expect(toolkitSchema.safeParse(t).success).toBe(true);
+    t.announcement = { enabled: true, text: 'New', linkUrl: 'http://x.com', scroll: true };
+    expect(toolkitSchema.safeParse(t).success).toBe(false);
+  });
+
+  it('hover text and the announcement are held to one short line', () => {
+    const t = structuredClone(DEFAULT_TOOLKIT);
+    t.tools[0].hoverText = 'x'.repeat(HOVER_MAX);
+    expect(toolkitSchema.safeParse(t).success).toBe(true);
+    t.tools[0].hoverText = 'x'.repeat(HOVER_MAX + 1);
+    expect(toolkitSchema.safeParse(t).success).toBe(false);
+    const u = structuredClone(DEFAULT_TOOLKIT);
+    u.announcement = { enabled: true, text: 'x'.repeat(ANNOUNCEMENT_MAX + 1), linkUrl: '', scroll: true };
+    expect(toolkitSchema.safeParse(u).success).toBe(false);
+  });
+
+  it('the bar shows only when switched on and it has text', () => {
+    expect(announcementIsLive({ enabled: true, text: 'New in the Toolkit', linkUrl: '', scroll: true })).toBe(true);
+    expect(announcementIsLive({ enabled: true, text: '   ', linkUrl: '', scroll: true })).toBe(false);
+    expect(announcementIsLive({ enabled: false, text: 'New', linkUrl: '', scroll: false })).toBe(false);
   });
 });

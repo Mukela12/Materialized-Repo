@@ -9,7 +9,7 @@
  */
 import { sql } from "drizzle-orm";
 import {
-  DEFAULT_TOOLKIT, toolkitSchema, challengeStatus, judgingWindow, toolIsLive,
+  DEFAULT_TOOLKIT, toolkitSchema, challengeStatus, judgingWindow, toolIsLive, announcementIsLive,
   type CreatorToolkit,
 } from "@shared/creatorToolkit";
 
@@ -50,6 +50,7 @@ export async function toolkitForViewer(userId: string, now: Date = new Date()) {
     tools: t.tools.map((tool, i) => ({ ...tool, slot: i })).filter(toolIsLive),
     challenge: t.challenge,
     awards: t.awards,
+    announcement: announcementIsLive(t.announcement) ? t.announcement : null,
     status,
     myEntries: entries.rows as { id: string; title: string }[],
     registeredHandle: (reg.rows[0]?.handle as string | undefined) ?? null,

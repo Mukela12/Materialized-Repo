@@ -777,3 +777,25 @@ main :where(p, h1, h2, h3, h4, li, dd, td) {
   .mz-glow-btn.mz-glow-btn, .mz-glow-btn.mz-glow-btn:hover, .mz-glow-btn.mz-glow-btn:active { transform: none; transition: background-color 160ms linear; }
   .mz-glow-btn.mz-glow-btn::before, .mz-glow-btn.mz-glow-btn:hover::before { animation: none; opacity: .55; transform: none; }
 }
+
+/*
+ * Creator Toolkit announcement bar (24 Nov 2026). Copies of the line run
+ * left in a loop and pause while hovered or focused. With reduced motion the
+ * track is hidden and one still copy wraps instead.
+ */
+@keyframes mz-ticker {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+.mz-ticker-track {
+  display: flex;
+  width: max-content;
+  animation: mz-ticker 40s linear infinite;
+}
+.mz-ticker:hover .mz-ticker-track,
+a:focus-visible .mz-ticker-track { animation-play-state: paused; }
+.mz-ticker-still { display: none; }
+@media (prefers-reduced-motion: reduce) {
+  .mz-ticker-track { display: none; }
+  .mz-ticker-still { display: block; }
+}

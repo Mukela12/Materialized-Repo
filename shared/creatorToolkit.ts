@@ -4,10 +4,20 @@
  * sign-up link and an optional voucher code), the monthly Creator Challenge,
  * and a full-width banner for the Creator Film Awards. Admin edits all of it
  * (Admin > Homepage); server/creatorToolkit.ts stores and validates it.
+ *
+ * 24 Nov 2026 (client: "we definitely need some imagery"): every card takes
+ * an uploaded image, a short line that shows over the image on hover, and an
+ * announcement bar with running text sits above the cards. The new fields
+ * have defaults, so content saved before them still reads instead of falling
+ * back to DEFAULT_TOOLKIT.
  */
 import { z } from "zod";
 
 const text = (max: number) => z.string().trim().max(max);
+/** The hover line on a card image: one short sentence. */
+export const HOVER_MAX = 120;
+/** The announcement bar: about one line on a laptop. */
+export const ANNOUNCEMENT_MAX = 160;
 /** Optional https link; blank is allowed and means "none". */
 const link = z.string().trim().max(1000).refine((v) => v === "" || /^https:\/\/[^\s]+$/i.test(v), "Use a full https:// link");
 
@@ -19,6 +29,8 @@ export const toolCardSchema = z.object({
   videoUrl: link,
   /** Shown before the video plays; optional. */
   posterUrl: link,
+  /** Shown over the image or video cover on hover (always shown on touch screens). */
+  hoverText: text(HOVER_MAX).default(""),
   ctaLabel: text(40),
   /** The partner's referral or sign-up link. Clicks go through MTRLZD so they are counted. */
   linkUrl: link,
@@ -31,6 +43,9 @@ export const challengeSchema = z.object({
   title: text(80),
   prize: text(40),
   body: text(400),
+  /** An image across the top of the card; optional. */
+  imageUrl: link.default(""),
+  hoverText: text(HOVER_MAX).default(""),
 });
 export type ChallengeCard = z.infer<typeof challengeSchema>;
 
@@ -46,14 +61,27 @@ export const awardsSchema = z.object({
 });
 export type AwardsBanner = z.infer<typeof awardsSchema>;
 
+/** A thin bar above the cards. With `scroll` on, the text runs across it. */
+export const announcementSchema = z.object({
+  enabled: z.boolean().default(false),
+  text: text(ANNOUNCEMENT_MAX).default(""),
+  /** Optional: the whole bar links here. */
+  linkUrl: link.default(""),
+  scroll: z.boolean().default(true),
+});
+export type Announcement = z.infer<typeof announcementSchema>;
+
+export const EMPTY_ANNOUNCEMENT: Announcement = { enabled: false, text: "", linkUrl: "", scroll: true };
+
 export const toolkitSchema = z.object({
   tools: z.array(toolCardSchema).length(2),
   challenge: challengeSchema,
   awards: awardsSchema,
+  announcement: announcementSchema.default(EMPTY_ANNOUNCEMENT),
 });
 export type CreatorToolkit = z.infer<typeof toolkitSchema>;
 
-const emptyTool: ToolCard = { enabled: false, name: "", tagline: "", videoUrl: "", posterUrl: "", ctaLabel: "Sign up", linkUrl: "", voucherCode: "" };
+const emptyTool: ToolCard = { enabled: false, name: "", tagline: "", videoUrl: "", posterUrl: "", hoverText: "", ctaLabel: "Sign up", linkUrl: "", voucherCode: "" };
 
 /** What shows before admin has edited anything: the challenge and the awards, no tools. */
 export const DEFAULT_TOOLKIT: CreatorToolkit = {
@@ -63,6 +91,8 @@ export const DEFAULT_TOOLKIT: CreatorToolkit = {
     title: "Creator Challenge",
     prize: "$2,000",
     body: "Upload a video, tick Enter Creator Challenge, publish and share it with your audience. The most views, clicks, sales and reposts wins the cash prize.",
+    imageUrl: "",
+    hoverText: "",
   },
   awards: {
     enabled: true,
@@ -73,7 +103,13 @@ export const DEFAULT_TOOLKIT: CreatorToolkit = {
     videoUrl: "",
     posterUrl: "",
   },
+  announcement: { ...EMPTY_ANNOUNCEMENT },
 };
+
+/** The bar shows once it is switched on and has text. */
+export function announcementIsLive(a: Announcement): boolean {
+  return a.enabled && a.text.trim() !== "";
+}
 
 /** A tool card is shown only when it is switched on and has a name and a link. */
 export function toolIsLive(t: ToolCard): boolean {

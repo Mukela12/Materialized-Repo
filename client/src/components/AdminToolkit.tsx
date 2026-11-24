@@ -3,10 +3,14 @@
  * creator homepage (two partner tool cards, the Creator Challenge card and
  * the Creator Film Awards banner) and see how it is doing: clicks per tool,
  * Film Awards registrations, and the month's challenge entries ranked.
+ *
+ * 24 Nov 2026: images are uploaded here (to the same Cloudinary library as
+ * the rest of the app) rather than pasted as links, each card has a hover
+ * line, and the announcement bar above the cards is edited at the top.
  */
-import { useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { Download, Save } from "lucide-react";
+import { Download, ImagePlus, Loader2, Save, X } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,7 +21,18 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient, serverMessage } from "@/lib/queryClient";
 import { exportToCsv } from "@/lib/exportCsv";
-import { monthKey, type CreatorToolkit, type ToolCard } from "@shared/creatorToolkit";
+import { useUpload } from "@/hooks/use-upload";
+import { AnnouncementBar } from "@/components/CreatorToolkit";
+import {
+  ANNOUNCEMENT_MAX, HOVER_MAX, monthKey, type CreatorToolkit, type ToolCard,
+} from "@shared/creatorToolkit";
+
+/** How many image uploads are running; Save waits for them. */
+const UploadsBusy = createContext<(delta: number) => void>(() => {});
+
+/** Card images: the formats every browser draws, up to 10 MB. */
+const IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
+const IMAGE_MAX_BYTES = 10 * 1024 * 1024;
 
 interface Report {
   month: string;
@@ -34,6 +49,86 @@ function Field({ label, children, hint }: { label: string; children: React.React
       {children}
       {hint && <p className="text-[11px] text-muted-foreground">{hint}</p>}
     </div>
+  );
+}
+
+/**
+ * An uploaded image with a preview. Upload puts the file in the app's image
+ * library and fills in its address; the address can still be pasted by hand.
+ * Nothing changes on the homepage until Save homepage.
+ */
+function ImageField({ label, value, onChange, testId, hint }: { label: string; value: string; onChange: (url: string) => void; testId: string; hint?: string }) {
+  const { toast } = useToast();
+  const input = useRef<HTMLInputElement>(null);
+  const { uploadFile, isUploading, progress } = useUpload();
+  const busy = useContext(UploadsBusy);
+  // Save waits for this upload: saving mid-upload would keep the old image.
+  useEffect(() => {
+    if (!isUploading) return;
+    busy(1);
+    return () => busy(-1);
+  }, [isUploading, busy]);
+  const pick = async (file: File | undefined) => {
+    if (!file) return;
+    if (!IMAGE_TYPES.includes(file.type)) {
+      toast({ title: "Not uploaded", description: `${file.name} isn't a JPG, PNG, WebP or GIF.`, variant: "destructive" });
+      return;
+    }
+    if (file.size > IMAGE_MAX_BYTES) {
+      toast({ title: "Not uploaded", description: `${file.name} is over 10 MB. Export a smaller copy and try again.`, variant: "destructive" });
+      return;
+    }
+    try {
+      const r = await uploadFile(file);
+      onChange(r.objectUrl);
+    } catch (err) {
+      toast({ title: "Upload failed", description: err instanceof Error ? err.message : "Try again.", variant: "destructive" });
+    }
+  };
+  return (
+    <Field label={label} hint={hint ?? "JPG, PNG, WebP or GIF up to 10 MB. A wide image (16:9) fits the card best."}>
+      <div className="flex items-start gap-3">
+        <div className="relative aspect-video w-32 shrink-0 overflow-hidden rounded-md border bg-muted">
+          {value ? <img src={value} alt="" className="h-full w-full object-cover" data-testid={`img-${testId}`} />
+            : <span className="flex h-full items-center justify-center text-[11px] text-muted-foreground">No image</span>}
+          {isUploading && (
+            <span className="absolute inset-0 flex items-center justify-center bg-background/80 text-xs font-medium tabular-nums">
+              <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" aria-hidden="true" />{progress}%
+            </span>
+          )}
+        </div>
+        <div className="min-w-0 flex-1 space-y-2">
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="outline" size="sm" className="gap-1.5" disabled={isUploading} onClick={() => input.current?.click()} data-testid={`button-upload-${testId}`}>
+              <ImagePlus className="h-3.5 w-3.5" aria-hidden="true" />{value ? "Replace image" : "Upload image"}
+            </Button>
+            {value && !isUploading && (
+              <Button type="button" variant="ghost" size="sm" className="gap-1.5 text-muted-foreground" onClick={() => onChange("")} data-testid={`button-remove-${testId}`}>
+                <X className="h-3.5 w-3.5" aria-hidden="true" />Remove
+              </Button>
+            )}
+          </div>
+          <Input value={value} onChange={(e) => onChange(e.target.value)} placeholder="or paste an https:// image link" aria-label={`${label} link`} className="h-8 text-xs" />
+          <input
+            ref={input}
+            type="file"
+            accept={IMAGE_TYPES.join(",")}
+            className="hidden"
+            onChange={(e) => { void pick(e.target.files?.[0]); e.target.value = ""; }}
+            data-testid={`input-file-${testId}`}
+          />
+        </div>
+      </div>
+    </Field>
+  );
+}
+
+/** The hover line, with a live count. */
+function HoverField({ value, onChange, testId }: { value: string; onChange: (v: string) => void; testId: string }) {
+  return (
+    <Field label="Hover text (optional)" hint={`Rises over the image when someone hovers the card, and always shows on phones. ${value.length}/${HOVER_MAX}`}>
+      <Input value={value} maxLength={HOVER_MAX} onChange={(e) => onChange(e.target.value)} placeholder="One short line, e.g. what creators get" data-testid={`input-hover-${testId}`} />
+    </Field>
   );
 }
 
@@ -61,7 +156,11 @@ function ToolEditor({ i, tool, set }: { i: number; tool: ToolCard; set: (t: Tool
         <Field label="Explainer video link (optional)" hint="An .mp4 link, for example from your Bunny or Cloudinary library.">
           <Input value={tool.videoUrl} onChange={f("videoUrl")} placeholder="https://…/tool.mp4" />
         </Field>
-        <div className="sm:col-span-2"><Field label="Cover image link (optional)"><Input value={tool.posterUrl} onChange={f("posterUrl")} placeholder="https://…/cover.jpg" /></Field></div>
+        <div className="sm:col-span-2">
+          <ImageField label="Card image (optional)" value={tool.posterUrl} onChange={(url) => set({ ...tool, posterUrl: url })} testId={`tool-${i}`}
+            hint="Shows at the top of the card, and as the cover before the video plays. JPG, PNG, WebP or GIF up to 10 MB; 16:9 fits best." />
+        </div>
+        <div className="sm:col-span-2"><HoverField value={tool.hoverText} onChange={(v) => set({ ...tool, hoverText: v })} testId={`tool-${i}`} /></div>
       </CardContent>
     </Card>
   );
@@ -74,6 +173,8 @@ export function AdminToolkit() {
     queryKey: [`/api/admin/toolkit?month=${month}`],
   });
   const [draft, setDraft] = useState<CreatorToolkit | null>(null);
+  const [uploading, setUploading] = useState(0);
+  const onBusy = useCallback((delta: number) => setUploading((n) => Math.max(0, n + delta)), []);
   useEffect(() => { if (data && !draft) setDraft(data.content); }, [data, draft]);
 
   const save = useMutation({
@@ -92,18 +193,47 @@ export function AdminToolkit() {
   const setTool = (i: number) => (t: ToolCard) => setDraft({ ...draft, tools: draft.tools.map((x, j) => (j === i ? t : x)) as CreatorToolkit["tools"] });
   const ch = draft.challenge;
   const aw = draft.awards;
+  const an = draft.announcement;
 
   return (
+    <UploadsBusy.Provider value={onBusy}>
     <div className="space-y-6" data-testid="admin-toolkit">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h2 className="text-lg font-semibold tracking-tight">Creator homepage</h2>
-          <p className="text-sm text-muted-foreground">The Creator Toolkit every creator sees under their numbers: two partner tools, the Creator Challenge and the Film Awards.</p>
+          <p className="text-sm text-muted-foreground">The Creator Toolkit every creator sees under their numbers: an announcement bar, two partner tools, the Creator Challenge and the Film Awards.</p>
         </div>
-        <Button className="gap-2 rounded-full" onClick={() => save.mutate({ ...draft, awards: { ...draft.awards, highlights: draft.awards.highlights.map((h) => h.trim()).filter(Boolean) } })} disabled={save.isPending} data-testid="button-save-toolkit">
-          <Save className="h-4 w-4" />{save.isPending ? "Saving…" : "Save homepage"}
+        <Button className="gap-2 rounded-full" onClick={() => save.mutate({ ...draft, awards: { ...draft.awards, highlights: draft.awards.highlights.map((h) => h.trim()).filter(Boolean) } })} disabled={save.isPending || uploading > 0} data-testid="button-save-toolkit">
+          <Save className="h-4 w-4" />{save.isPending ? "Saving…" : uploading > 0 ? "Uploading…" : "Save homepage"}
         </Button>
       </div>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between gap-3 space-y-0">
+          <CardTitle className="text-base">Announcement bar</CardTitle>
+          <label className="flex items-center gap-2 text-sm">Show<Switch checked={an.enabled} onCheckedChange={(v) => setDraft({ ...draft, announcement: { ...an, enabled: v } })} data-testid="switch-announcement" /></label>
+        </CardHeader>
+        <CardContent className="grid gap-3 sm:grid-cols-2">
+          <div className="sm:col-span-2">
+            <Field label="Text" hint={`One line above the cards. ${an.text.length}/${ANNOUNCEMENT_MAX}`}>
+              <Input value={an.text} maxLength={ANNOUNCEMENT_MAX} onChange={(e) => setDraft({ ...draft, announcement: { ...an, text: e.target.value } })} placeholder="New in the Toolkit: book hotels for your travel shoots with WINK" data-testid="input-announcement-text" />
+            </Field>
+          </div>
+          <Field label="Link (optional)" hint="The whole bar opens this link.">
+            <Input value={an.linkUrl} onChange={(e) => setDraft({ ...draft, announcement: { ...an, linkUrl: e.target.value } })} placeholder="https://…" data-testid="input-announcement-link" />
+          </Field>
+          <label className="flex items-center gap-2 self-end pb-2 text-sm">
+            <Switch checked={an.scroll} onCheckedChange={(v) => setDraft({ ...draft, announcement: { ...an, scroll: v } })} data-testid="switch-announcement-scroll" />
+            Running text
+          </label>
+          {an.text.trim() && (
+            <div className="sm:col-span-2 space-y-1.5">
+              <Label className="text-xs">Preview</Label>
+              <AnnouncementBar a={an} />
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       <div className="grid gap-4 lg:grid-cols-2">
         <ToolEditor i={0} tool={draft.tools[0]} set={setTool(0)} />
@@ -125,6 +255,10 @@ export function AdminToolkit() {
                 <Textarea rows={3} value={ch.body} onChange={(e) => setDraft({ ...draft, challenge: { ...ch, body: e.target.value } })} />
               </Field>
             </div>
+            <div className="sm:col-span-2">
+              <ImageField label="Card image (optional)" value={ch.imageUrl} onChange={(url) => setDraft({ ...draft, challenge: { ...ch, imageUrl: url } })} testId="challenge" />
+            </div>
+            <div className="sm:col-span-2"><HoverField value={ch.hoverText} onChange={(v) => setDraft({ ...draft, challenge: { ...ch, hoverText: v } })} testId="challenge" /></div>
           </CardContent>
         </Card>
 
@@ -140,6 +274,10 @@ export function AdminToolkit() {
             <Field label="Background video link" hint="Plays muted on a loop, e.g. the mansion video.">
               <Input value={aw.videoUrl} onChange={(e) => setDraft({ ...draft, awards: { ...aw, videoUrl: e.target.value } })} placeholder="https://…/mansion.mp4" data-testid="input-awards-video" />
             </Field>
+            <div className="sm:col-span-2">
+              <ImageField label="Cover image (optional)" value={aw.posterUrl} onChange={(url) => setDraft({ ...draft, awards: { ...aw, posterUrl: url } })} testId="awards"
+                hint="Shows beside the text, or before the background video loads. JPG, PNG, WebP or GIF up to 10 MB." />
+            </div>
             <div className="sm:col-span-2">
               <Field label="Highlights, one per line (up to 6)">
                 <Textarea rows={4} value={aw.highlights.join("\n")} onChange={(e) => setDraft({ ...draft, awards: { ...aw, highlights: e.target.value.split("\n").map((l) => l.trimStart()).slice(0, 6) } })} />
@@ -209,5 +347,6 @@ export function AdminToolkit() {
         </CardContent>
       </Card>
     </div>
+    </UploadsBusy.Provider>
   );
 }
