@@ -17,6 +17,7 @@ import { recordFeeAccrual, voidFeeAccrual } from "./feeAccruals";
 import { generateFeeInvoice, finalizeFeeInvoice } from "./feeInvoicing";
 import { quoteCheckout, checkoutIdempotencyKey, parsePriceToCents } from "./inVideoCheckout";
 import { publicOrigin } from "./publicOrigin";
+import { registerWinkRoutes } from "./winkRoutes";
 import {
   sniffFontFormat, sanitiseFontLabel, customFontKey, FONT_FORMATS, MAX_FONT_BYTES,
 } from "@shared/brandFonts";
@@ -4285,6 +4286,9 @@ export async function registerRoutes(
   });
 
   // ==================== VIDEO PRODUCT OVERLAYS ====================
+
+  // WINK hotels on videos: search, add to a carousel, and the BOOK NOW redirect.
+  registerWinkRoutes(app);
 
   app.get("/api/videos/:id/overlays", async (req, res) => {
     try {
@@ -8869,6 +8873,9 @@ ${embedCarouselCss(carousel)}
   </div>
   <script>
     var utm="${utm.replace(/[<>"'\\]/g, "")}",videoId="${video.id}",apiBase="${apiBase}",CURRENCY_SYMBOL="${embedCurrencySymbol()}",PK="${process.env.STRIPE_PUBLISHABLE_KEY || ""}",BUY_LABEL=${JSON.stringify(carousel.buttonLabel)},COMMERCE_ON=${carousel.commerceEnabled};
+    // A price typed as a number gets the currency sign; a label that already
+    // says what it is ("from $142" on a WINK hotel, "£20") is shown as it is.
+    function priceText(v){v=String(v);return /^[0-9]/.test(v)?CURRENCY_SYMBOL+v:v;}
     var vid=document.getElementById("vid");
     // Transformed server-side by videoDeliveryUrl — the raw original is never
     // sent to the browser, and the embed and the widget can no longer drift to
@@ -8949,7 +8956,7 @@ ${embedCarouselCss(carousel)}
       // "Brand Title color changes the Price color".
       if(p.brandName){var bd=document.createElement("div");bd.className="product-brand";bd.textContent=p.brandName;a.appendChild(bd);}
       var nameDiv=document.createElement("div");nameDiv.className="product-name";nameDiv.textContent=p.name;a.appendChild(nameDiv);
-      if(p.price){var priceDiv=document.createElement("div");priceDiv.className="product-price";priceDiv.textContent=CURRENCY_SYMBOL+p.price;a.appendChild(priceDiv);}
+      if(p.price){var priceDiv=document.createElement("div");priceDiv.className="product-price";priceDiv.textContent=priceText(p.price);a.appendChild(priceDiv);}
       a.addEventListener("click",function(){track("click",p.productId?{productId:p.productId}:null)});
       carousel.appendChild(a);
       // Remembered with its window so timeupdate can show and hide it.
@@ -9091,7 +9098,7 @@ ${embedCarouselCss(carousel)}
         var left=document.createElement("div");left.style.cssText="min-width:0;flex:1";
         if(p.brandName){var bn=document.createElement("div");bn.className="product-brand";bn.textContent=p.brandName;left.appendChild(bn);}
         var n=document.createElement("div");n.className="product-name";n.textContent=p.name;left.appendChild(n);
-        if(p.price){var pr=document.createElement("div");pr.className="product-price";pr.textContent=CURRENCY_SYMBOL+p.price;left.appendChild(pr);}
+        if(p.price){var pr=document.createElement("div");pr.className="product-price";pr.textContent=priceText(p.price);left.appendChild(pr);}
         row.appendChild(left);
         var cta=document.createElement("span");
         cta.className="buy-btn end-cta";
@@ -9169,6 +9176,7 @@ ${embedCarouselCss(carousel)}
       res.set("Access-Control-Allow-Origin", "*");
       res.send(`(function(){
   var videoId="${video.id}",utm="${utm.replace(/"/g, "")}",apiBase="${apiBase}",CURRENCY_SYMBOL="${embedCurrencySymbol()}";
+  function priceText(v){v=String(v);return /^[0-9]/.test(v)?CURRENCY_SYMBOL+v:v;}
   var el=document.getElementById("vc-widget-"+videoId);
   if(!el){console.error("[Materialized] Widget container not found");return;}
   el.style.position="relative";el.style.width="100%";el.style.maxWidth="640px";
@@ -9203,7 +9211,7 @@ ${embedCarouselCss(carousel)}
       if(p.brandName){var bd=document.createElement("div");bd.style.cssText=WSTYLE.brand;bd.textContent=p.brandName;a.appendChild(bd);}
       var nd=document.createElement("div");nd.style.cssText=WSTYLE.name;
       nd.textContent=p.name||"";a.appendChild(nd);
-      if(p.price){var pd=document.createElement("div");pd.style.cssText=WSTYLE.price;pd.textContent=CURRENCY_SYMBOL+p.price;a.appendChild(pd);}
+      if(p.price){var pd=document.createElement("div");pd.style.cssText=WSTYLE.price;pd.textContent=priceText(p.price);a.appendChild(pd);}
       a.addEventListener("click",function(){track("click",p.productId?{productId:p.productId}:null)});
       c.appendChild(a);
     });

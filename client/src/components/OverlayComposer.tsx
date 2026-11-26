@@ -30,7 +30,8 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { ImageDropField } from "@/components/ImageDropField";
-import { Layers, Plus, Clock, Trash2, ExternalLink, Pencil } from "lucide-react";
+import { Layers, Plus, Clock, Trash2, ExternalLink, Pencil, BedDouble } from "lucide-react";
+import { WinkHotelPicker } from "@/components/WinkHotelPicker";
 import type { VideoProductOverlay, Product, Brand } from "@shared/schema";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -62,6 +63,8 @@ export function OverlayComposer({
   const queryClient = useQueryClient();
 
   const [showAdd, setShowAdd] = useState(startExpanded);
+  /** The WINK hotel search, shown instead of the product form. */
+  const [showHotels, setShowHotels] = useState(false);
   /** The overlay being edited, or null when adding a new one. */
   const [editingId, setEditingId] = useState<number | null>(null);
   const [oName, setOName] = useState("");
@@ -96,6 +99,7 @@ export function OverlayComposer({
 
   /** Load an existing overlay into the form rather than making them retype it. */
   const beginEdit = (o: VideoProductOverlay) => {
+    setShowHotels(false);
     setEditingId(o.id as number);
     setOName(o.name ?? "");
     setOUrl(o.productUrl ?? "");
@@ -108,6 +112,12 @@ export function OverlayComposer({
     setOEndTime(o.endTime == null ? "" : String(parseFloat(o.endTime)));
     setShowAdd(true);
   };
+
+  // Only offered once WINK is set up on this server.
+  const { data: wink } = useQuery<{ enabled: boolean }>({
+    queryKey: ["/api/wink/status"],
+    enabled,
+  });
 
   const { data: overlays = [] } = useQuery<VideoProductOverlay[]>({
     queryKey: ["/api/videos", videoId, "overlays"],
@@ -213,9 +223,20 @@ export function OverlayComposer({
               )}
             </Button>
           )}
+          {wink?.enabled && (
+            <Button
+              variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1"
+              onClick={() => { setShowHotels((p) => !p); setShowAdd(false); resetForm(); }}
+              data-testid="button-toggle-add-hotel"
+              aria-expanded={showHotels}
+            >
+              <BedDouble className="h-3 w-3" />
+              Add Hotel
+            </Button>
+          )}
           <Button
             variant="ghost" size="sm" className="h-7 px-2 text-xs gap-1"
-            onClick={() => setShowAdd((p) => !p)}
+            onClick={() => { setShowAdd((p) => !p); setShowHotels(false); }}
             data-testid="button-toggle-add-overlay"
           >
             <Plus className="h-3 w-3" />
@@ -227,6 +248,8 @@ export function OverlayComposer({
       <p className="text-xs text-muted-foreground">
         The products and links in the carousel on your video, each with its own button text if you like. Leave the end time blank to show one for the whole video.
       </p>
+
+      {showHotels && <WinkHotelPicker videoId={videoId} />}
 
       {showAdd && (
         <div className="space-y-2 border border-border rounded-lg p-3 bg-background">
@@ -363,6 +386,9 @@ export function OverlayComposer({
                   <div className="flex items-center gap-2">
                     <p className="text-xs font-medium truncate">{o.name}</p>
                     <Badge variant="outline" className="text-xs shrink-0">{posLabel}</Badge>
+                    {o.source === "wink" && (
+                      <Badge variant="secondary" className="text-xs shrink-0" data-testid={`badge-wink-${o.id}`}>WINK hotel</Badge>
+                    )}
                   </div>
                   <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1">
                     <Clock className="h-2.5 w-2.5" />
@@ -407,7 +433,7 @@ export function OverlayComposer({
           })}
         </div>
       ) : (
-        !showAdd && (
+        !showAdd && !showHotels && (
           <p className="text-xs text-muted-foreground text-center py-2">
             No links yet. Add one, or review the products AI found in the video.
           </p>
