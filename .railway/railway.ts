@@ -56,6 +56,12 @@ export default defineRailway(() => {
       STRIPE_SECRET_KEY: preserve(),
       STRIPE_WEBHOOK_SECRET: preserve(),
       STRIPE_WEBHOOK_SECRET_CONNECT: preserve(),
+      // WINK hotels (26 Nov 2026). Test-site values until WINK_ENV=production
+      // is set with live-site keys; see server/integrations/wink/winkHotels.ts.
+      WINK_ACCOUNT_ID: preserve(),
+      WINK_CLIENT_ID: preserve(),
+      WINK_CLIENT_SECRET: preserve(),
+      WINK_CUSTOMIZATION_ID: preserve(),
     },
     build: {
       // Nixpacks, not Railway's default Railpack: nixpacks.toml at the repo

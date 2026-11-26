@@ -34,15 +34,32 @@ function allowSearch(uid: string): boolean {
   return true;
 }
 
+/**
+ * Who may search and add hotels. On WINK's test site (WINK_ENV unset) the
+ * hotels are WINK's dummy listings, so only admin accounts see the feature:
+ * the team can try it on the live MTRLZD site while creators never meet a
+ * test hotel. With WINK_ENV=production it is every signed-in account.
+ * The BOOK NOW redirect is never gated: viewers on brands' sites click it.
+ */
+async function canUseWink(uid: string | undefined): Promise<boolean> {
+  const cfg = winkConfig();
+  if (!cfg || !uid) return false;
+  if (cfg.env === "production") return true;
+  const user = await storage.getUser(uid);
+  return !!user?.isAdmin;
+}
+
 export function registerWinkRoutes(app: Express) {
-  app.get("/api/wink/status", (_req, res) => {
-    res.json({ enabled: winkConfig() != null });
+  app.get("/api/wink/status", async (req, res) => {
+    const cfg = winkConfig();
+    const enabled = await canUseWink((req.session as any)?.userId).catch(() => false);
+    res.json({ enabled, testMode: !!cfg && cfg.env !== "production" && enabled });
   });
 
   app.get("/api/wink/hotels", async (req: Request, res: Response) => {
     const uid = (req.session as any)?.userId;
     if (!uid) return res.status(401).json({ error: "Not authenticated" });
-    if (!winkConfig()) return res.status(503).json({ error: "Hotel booking isn't switched on yet." });
+    if (!(await canUseWink(uid))) return res.status(503).json({ error: "Hotel booking isn't switched on yet." });
     const q = typeof req.query.q === "string" ? req.query.q.trim().slice(0, 80) : "";
     if (q.length < 2) return res.status(400).json({ error: "Type a city or hotel name." });
     if (!allowSearch(uid)) return res.status(429).json({ error: "Too many searches. Try again in a minute." });
@@ -62,7 +79,7 @@ export function registerWinkRoutes(app: Express) {
     if (!video) return res.status(404).json({ error: "Video not found" });
     const actor = await storage.getUser(uid);
     if (!actor?.isAdmin && video.creatorId !== uid) return res.status(403).json({ error: "Forbidden" });
-    if (!winkConfig()) return res.status(503).json({ error: "Hotel booking isn't switched on yet." });
+    if (!(await canUseWink(uid))) return res.status(503).json({ error: "Hotel booking isn't switched on yet." });
 
     const { urlName, position, startTime, endTime } = req.body ?? {};
     if (!isWinkSlug(urlName)) return res.status(400).json({ error: "Choose a hotel from the search." });

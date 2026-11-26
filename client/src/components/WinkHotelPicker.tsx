@@ -29,6 +29,7 @@ export interface WinkHotel {
 export function WinkHotelPicker({ videoId, onAdded }: { videoId: string; onAdded?: () => void }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { data: status } = useQuery<{ enabled: boolean; testMode?: boolean }>({ queryKey: ["/api/wink/status"] });
   const [typed, setTyped] = useState("");
   const [term, setTerm] = useState("");
 
@@ -78,6 +79,11 @@ export function WinkHotelPicker({ videoId, onAdded }: { videoId: string; onAdded
         <p className="text-xs text-muted-foreground">
           Hotels on WINK. Viewers book on WINK's page and MTRLZD earns commission on every stay.
         </p>
+        {status?.testMode && (
+          <p className="text-xs text-amber-600 dark:text-amber-400" data-testid="text-wink-test-mode">
+            Test mode: these are WINK's sample hotels and only admin accounts can see this.
+          </p>
+        )}
       </div>
 
       {error ? (
